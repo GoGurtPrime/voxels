@@ -1,0 +1,129 @@
+/**
+ * @file test_world_gen.cpp
+ * @brief Automated regression tests for the procedural world generation pipeline.
+ *
+ * @details Covers determinism, seed variation, cave carving, and safe-spawn placement for the
+ *          terrain generation pipeline and world spawn calculation logic.
+ */
+
+#include <catch2/catch_test_macros.hpp>
+
+#include "voxels/world/generation_pipeline.hpp"
+#include "voxels/world/world.hpp"
+
+TEST_CASE("WorldGen.Determinism", "[world][generation]") {
+    voxels::WorldOptions options{};
+    options.seed = 12345u;
+    options.renderDistanceChunks = 3;
+    options.simulationDistanceChunks = 3;
+
+    voxels::WorldGenerator generator(options);
+    const voxels::Chunk chunkA = generator.GenerateChunk({0, 0, 0});
+    const voxels::Chunk chunkB = generator.GenerateChunk({0, 0, 0});
+
+    REQUIRE(chunkA.GetWidth() == chunkB.GetWidth());
+    REQUIRE(chunkA.GetHeight() == chunkB.GetHeight());
+    REQUIRE(chunkA.GetDepth() == chunkB.GetDepth());
+
+    for (std::uint32_t z = 0; z < chunkA.GetDepth(); ++z) {
+        for (std::uint32_t y = 0; y < chunkA.GetHeight(); ++y) {
+            for (std::uint32_t x = 0; x < chunkA.GetWidth(); ++x) {
+                REQUIRE(chunkA.GetBlock(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z)) ==
+                        chunkB.GetBlock(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z)));
+            }
+        }
+    }
+}
+
+TEST_CASE("WorldGen.SeedVariation", "[world][generation]") {
+    voxels::WorldOptions a{};
+    a.seed = 12345u;
+    a.renderDistanceChunks = 3;
+    a.simulationDistanceChunks = 3;
+
+    voxels::WorldOptions b{};
+    b.seed = 54321u;
+    b.renderDistanceChunks = 3;
+    b.simulationDistanceChunks = 3;
+
+    voxels::WorldGenerator generatorA(a);
+    voxels::WorldGenerator generatorB(b);
+
+    const voxels::Chunk chunkA = generatorA.GenerateChunk({0, 0, 0});
+    const voxels::Chunk chunkB = generatorB.GenerateChunk({0, 0, 0});
+
+    bool different = false;
+    for (std::uint32_t z = 0; z < chunkA.GetDepth(); ++z) {
+        for (std::uint32_t y = 0; y < chunkA.GetHeight(); ++y) {
+            for (std::uint32_t x = 0; x < chunkA.GetWidth(); ++x) {
+                if (chunkA.GetBlock(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z)) !=
+                    chunkB.GetBlock(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z))) {
+                    different = true;
+                    break;
+                }
+            }
+            if (different) {
+                break;
+            }
+        }
+        if (different) {
+            break;
+        }
+    }
+
+    REQUIRE(different);
+}
+
+TEST_CASE("WorldGen.CaveCarving", "[world][generation]") {
+    voxels::WorldOptions options{};
+    options.seed = 12345u;
+    options.renderDistanceChunks = 3;
+    options.simulationDistanceChunks = 3;
+    options.sandboxMode = false;
+
+    voxels::WorldGenerator generator(options);
+    const voxels::Chunk chunk = generator.GenerateChunk({0, 0, 0});
+
+    bool foundCaveAir = false;
+    for (std::uint32_t z = 0; z < chunk.GetDepth(); ++z) {
+        for (std::uint32_t y = 0; y < 40u; ++y) {
+            for (std::uint32_t x = 0; x < chunk.GetWidth(); ++x) {
+                if (chunk.GetBlock(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z)) ==
+                    static_cast<voxels::BlockId>(voxels::BlockType::Air)) {
+                    foundCaveAir = true;
+                    break;
+                }
+            }
+            if (foundCaveAir) {
+                break;
+            }
+        }
+        if (foundCaveAir) {
+            break;
+        }
+    }
+
+    REQUIRE(foundCaveAir);
+}
+
+TEST_CASE("WorldGen.SafeSpawnFinding", "[world][generation]") {
+    voxels::WorldOptions options{};
+    options.seed = 12345u;
+    options.renderDistanceChunks = 3;
+    options.simulationDistanceChunks = 3;
+
+    voxels::WorldGenerator generator(options);
+    const voxels::Chunk chunk = generator.GenerateChunk({0, 0, 0});
+
+    const voxels::Vec3I spawn = voxels::FindSafeSpawn(chunk, 0, 0);
+
+    INFO("spawn = (" << spawn.x << ", " << spawn.y << ", " << spawn.z << ")");
+    REQUIRE(spawn.x >= 0);
+    REQUIRE(spawn.x < static_cast<int>(chunk.GetWidth()));
+    REQUIRE(spawn.z >= 0);
+    REQUIRE(spawn.z < static_cast<int>(chunk.GetDepth()));
+    REQUIRE(spawn.y > 0);
+    REQUIRE(chunk.GetBlock(spawn.x, spawn.y, spawn.z) == static_cast<voxels::BlockId>(voxels::BlockType::Air));
+    REQUIRE(chunk.GetBlock(spawn.x, spawn.y - 1, spawn.z) != static_cast<voxels::BlockId>(voxels::BlockType::Air));
+    REQUIRE(chunk.GetBlock(spawn.x, spawn.y - 1, spawn.z) != static_cast<voxels::BlockId>(voxels::BlockType::Water));
+}

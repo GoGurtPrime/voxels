@@ -1,0 +1,7 @@
+{
+  "server_name": "Voxel World Server",
+  "port": 27015,
+  "max_players": 16,
+  "public_visibility": false,
+  "motd": "Welcome to the server!"
+}

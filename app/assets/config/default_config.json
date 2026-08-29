@@ -1,0 +1,24 @@
+{
+  "windowMode": "Windowed",
+  "resolution": {
+    "width": 1280,
+    "height": 720,
+    "refreshRate": 60
+  },
+  "renderDistance": 8,
+  "simulationDistance": 4,
+  "fieldOfView": 90.0,
+  "antiAliasingSamples": 4,
+  "shadowQuality": "Medium",
+  "masterVolume": 1.0,
+  "musicVolume": 0.7,
+  "sfxVolume": 0.8,
+  "keyBindings": {
+    "moveForward": "W",
+    "moveBack": "S",
+    "moveLeft": "A",
+    "moveRight": "D",
+    "jump": "Space",
+    "interact": "E"
+  }
+}
