@@ -17,7 +17,7 @@
 namespace voxels {
 namespace {
 constexpr int kChunkSize = 16;
-constexpr int kSeaLevel = 48;
+constexpr int kSeaLevel = 24;
 constexpr BlockId kAir = static_cast<BlockId>(BlockType::Air);
 constexpr BlockId kStone = static_cast<BlockId>(BlockType::Stone);
 constexpr BlockId kDirt = static_cast<BlockId>(BlockType::Dirt);
@@ -63,8 +63,9 @@ constexpr BlockId kBedrock = static_cast<BlockId>(BlockType::Bedrock);
     const double temperature = climate.Fractal2D(x * 0.005, z * 0.005, 3, 0.58, 2.0);
     const double humidity = climate.Fractal2D(x * 0.006 + 83.0, z * 0.006 - 29.0, 3, 0.58, 2.0);
     const double cellEdge = cells.Cellular2D(x * 0.012, z * 0.012);
-    const double mountainWeight = SmoothStep(0.44, 0.73, peaks.Ridged2D(x * 0.009, z * 0.009, 4, 0.53, 2.0)) *
-                                 SmoothStep(0.36, 0.70, continentalness * 0.5 + 0.5);
+    const double mountainMask = SmoothStep(0.58, 0.78, peaks.Fractal2D(x * 0.0038, z * 0.0038, 3, 0.58, 2.0));
+    const double mountainWeight = mountainMask * SmoothStep(0.46, 0.72, continentalness * 0.5 + 0.5) *
+                                  SmoothStep(0.42, 0.70, erosion);
     Biome biome = Biome::Plains;
     if (continentalness < -0.22) biome = Biome::Ocean;
     else if (continentalness < -0.10) biome = Biome::Beach;
@@ -73,30 +74,31 @@ constexpr BlockId kBedrock = static_cast<BlockId>(BlockType::Bedrock);
     else if (humidity > 0.58) biome = Biome::Forest;
     else if (erosion < 0.39) biome = Biome::Hills;
 
-    const double rolling = terrain.Fractal2D(x * 0.021, z * 0.021, 4, 0.52, 2.0) * 13.0 - 6.5;
-    const double mountains = mountainWeight * (30.0 + peaks.Ridged2D(x * 0.016, z * 0.016, 3, 0.55, 2.0) * 36.0);
-    double height = static_cast<double>(kSeaLevel) + rolling + mountains - (1.0 - erosion) * 5.0;
+    const double rolling = terrain.Fractal2D(x * 0.014, z * 0.014, 3, 0.56, 2.0) * 9.0 - 4.5;
+    const double foothills = peaks.Fractal2D(x * 0.008, z * 0.008, 3, 0.58, 2.0) * 10.0 - 5.0;
+    const double mountains = mountainWeight * (18.0 + peaks.Ridged2D(x * 0.011, z * 0.011, 2, 0.58, 2.0) * 20.0);
+    double height = static_cast<double>(kSeaLevel) + rolling + foothills * mountainWeight + mountains - (1.0 - erosion) * 3.0;
     if (biome == Biome::Ocean) height = kSeaLevel - 8.0 + rolling * 0.22;
     if (biome == Biome::Beach) height = kSeaLevel + rolling * 0.16;
     if (biome == Biome::Desert) height += 2.0;
-    return {std::clamp(static_cast<int>(std::lround(height)), 5, 118), biome,
+    return {std::clamp(static_cast<int>(std::lround(height)), 5, 70), biome,
             static_cast<float>(SmoothStep(0.12, 0.34, cellEdge))};
 }
 
 [[nodiscard]] bool IsCave(std::uint64_t seed, int x, int y, int z, int surfaceY) noexcept {
-    if (y < 4 || y >= surfaceY - 3 || (surfaceY <= kSeaLevel && y < kSeaLevel)) return false;
+    if (y < 8 || y >= surfaceY - 8 || (surfaceY <= kSeaLevel && y < kSeaLevel)) return false;
     const Noise worm(PhaseSeed(seed, 5));
     const Noise cavern(PhaseSeed(seed, 6));
-    const double tunnel = worm.Ridged3D(x * 0.035, y * 0.052, z * 0.035, 3, 0.55, 2.0);
-    const double cavernValue = cavern.Ridged3D(x * 0.016, y * 0.021, z * 0.016, 3, 0.55, 2.0);
-    return tunnel > 0.79 || (y < 38 && cavernValue > 0.84);
+    const double tunnel = worm.Ridged3D(x * 0.046, y * 0.062, z * 0.046, 2, 0.58, 2.0);
+    const double cavernValue = cavern.Ridged3D(x * 0.022, y * 0.027, z * 0.022, 2, 0.58, 2.0);
+    return tunnel > 0.90 || (y < 30 && cavernValue > 0.93);
 }
 
 [[nodiscard]] BlockId OreFor(std::uint64_t seed, int x, int y, int z) noexcept {
     const Noise coal(PhaseSeed(seed, 7));
     const Noise iron(PhaseSeed(seed, 8));
-    if (y >= 22 && y <= 72 && coal.Ridged3D(x * 0.13, y * 0.13, z * 0.13, 2, 0.58, 2.0) > 0.78) return kCoal;
-    if (y >= 7 && y <= 48 && iron.Ridged3D(x * 0.16, y * 0.16, z * 0.16, 2, 0.58, 2.0) > 0.83) return kIron;
+    if (y >= 18 && y <= 44 && coal.Ridged3D(x * 0.18, y * 0.18, z * 0.18, 2, 0.55, 2.0) > 0.91) return kCoal;
+    if (y >= 6 && y <= 28 && iron.Ridged3D(x * 0.21, y * 0.21, z * 0.21, 2, 0.55, 2.0) > 0.94) return kIron;
     return kStone;
 }
 
