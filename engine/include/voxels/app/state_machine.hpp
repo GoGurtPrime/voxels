@@ -16,6 +16,11 @@
 #include <string_view>
 #include <vector>
 
+#include "voxels/app/menus.hpp"
+#include "voxels/app/save_manager.hpp"
+#include "voxels/world/world.hpp"
+#include "voxels/world/world_options.hpp"
+
 namespace voxels {
 
 enum class AppStateId {
@@ -27,6 +32,10 @@ enum class AppStateId {
     InGame,
     PauseMenu
 };
+
+class WorldCreationController;
+class PauseMenuController;
+class LoadingScreenModel;
 
 [[nodiscard]] std::string_view ToString(AppStateId id) noexcept;
 
@@ -65,6 +74,24 @@ public:
 class LoadingScreenState final : public IAppState {
 public:
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::LoadingScreen; }
+
+    void SetSaveManager(ISaveManager& manager) noexcept { m_saveManager = &manager; }
+    void SetSaveName(std::string saveName) noexcept { m_saveName = std::move(saveName); }
+    void SetWorldOptions(WorldOptions options) noexcept { m_options = std::move(options); }
+
+    void RunGeneration();
+    [[nodiscard]] const World& GetWorld() const noexcept { return m_world; }
+    [[nodiscard]] Vec3I GetSpawnPosition() const noexcept { return m_spawnPosition; }
+    [[nodiscard]] GenerationPhase GetPhase() const noexcept { return m_phase; }
+    [[nodiscard]] float GetProgress() const noexcept;
+
+private:
+    ISaveManager* m_saveManager = nullptr;
+    std::string m_saveName;
+    WorldOptions m_options{};
+    World m_world;
+    GenerationPhase m_phase = GenerationPhase::Shape;
+    Vec3I m_spawnPosition{0, 1, 0};
 };
 
 class InGameState final : public IAppState {

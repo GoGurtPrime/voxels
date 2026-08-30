@@ -20,6 +20,7 @@ struct WorldOptions {
     bool permadeath = false;
     bool alwaysSunny = true;
     bool sandboxMode = false;
+    bool visibility = true;
     bool isPublic = true;
     int renderDistanceChunks = 8;
     int simulationDistanceChunks = 4;

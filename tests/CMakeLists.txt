@@ -14,6 +14,7 @@ add_executable(voxels_tests
     test_networking.cpp
     test_gameplay.cpp
     test_runtime_integration.cpp
+    test_mvp_playthrough.cpp
 )
 
 target_link_libraries(voxels_tests

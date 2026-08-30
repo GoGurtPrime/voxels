@@ -10,7 +10,28 @@
 
 #include <utility>
 
+#include "voxels/world/generation_pipeline.hpp"
+#include "voxels/world/spawn_calculator.hpp"
+
 namespace voxels {
+
+namespace {
+
+void FillWorldFromChunk(World& world, const Chunk& chunk) {
+    const auto chunkCoord = chunk.GetCoordinate();
+    for (std::uint32_t z = 0; z < chunk.GetDepth(); ++z) {
+        for (std::uint32_t y = 0; y < chunk.GetHeight(); ++y) {
+            for (std::uint32_t x = 0; x < chunk.GetWidth(); ++x) {
+                const Vec3I worldPos{static_cast<int>(chunkCoord.x * static_cast<int>(chunk.GetWidth()) + x),
+                                     static_cast<int>(chunkCoord.y * static_cast<int>(chunk.GetHeight()) + y),
+                                     static_cast<int>(chunkCoord.z * static_cast<int>(chunk.GetDepth()) + z)};
+                world.SetBlock(worldPos, chunk.GetBlock(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z)));
+            }
+        }
+    }
+}
+
+} // namespace
 
 std::string_view ToString(AppStateId id) noexcept {
     switch (id) {
@@ -55,6 +76,48 @@ void AppStateMachine::Render() {
     if (m_current) {
         m_current->Render();
     }
+}
+
+void LoadingScreenState::RunGeneration() {
+    if (m_saveManager && !m_saveName.empty()) {
+        GameSave loadedSave{};
+        if (m_saveManager->Load(m_saveName, loadedSave)) {
+            m_options.seed = loadedSave.seed;
+            if (loadedSave.publicVisibility) {
+                m_options.isPublic = true;
+            }
+        }
+    }
+
+    m_world = World();
+    m_world.Initialize(m_options);
+    m_world.SetPlayerSpawn({0, 0, 0});
+
+    m_phase = GenerationPhase::Shape;
+    WorldGenerator generator(m_options);
+    const Chunk chunk = generator.GenerateChunk({0, 0, 0});
+    FillWorldFromChunk(m_world, chunk);
+
+    m_phase = GenerationPhase::Caves;
+    m_phase = GenerationPhase::Vegetation;
+    m_phase = GenerationPhase::SpawnPlacement;
+
+    const Vec3I spawn = FindSafeSpawn(chunk, 0, 0);
+    m_spawnPosition = spawn;
+    m_world.SetPlayerSpawn({0, 0, 0});
+
+    m_phase = GenerationPhase::Complete;
+}
+
+float LoadingScreenState::GetProgress() const noexcept {
+    switch (m_phase) {
+        case GenerationPhase::Shape: return 0.0f;
+        case GenerationPhase::Caves: return 0.25f;
+        case GenerationPhase::Vegetation: return 0.5f;
+        case GenerationPhase::SpawnPlacement: return 0.75f;
+        case GenerationPhase::Complete: return 1.0f;
+    }
+    return 0.0f;
 }
 
 } // namespace voxels
