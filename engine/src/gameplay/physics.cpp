@@ -77,8 +77,10 @@ void Physics::ResolveAxis(const World& world, Player& player, int axis, float de
         const int endZ = static_cast<int>(std::floor(player.state.position.z + kPlayerHalfWidth - 0.02f));
 
         for (int cell = minCell; cell <= maxCell; ++cell) {
-            if ((delta > 0.0f && static_cast<float>(cell) < old + kPlayerHalfWidth) ||
-                (delta < 0.0f && static_cast<float>(cell + 1) > old - kPlayerHalfWidth)) {
+            if ((delta > 0.0f && (static_cast<float>(cell) < old + kPlayerHalfWidth ||
+                                  static_cast<float>(cell) > next + kPlayerHalfWidth)) ||
+                (delta < 0.0f && (static_cast<float>(cell + 1) > old - kPlayerHalfWidth ||
+                                  static_cast<float>(cell + 1) < next - kPlayerHalfWidth))) {
                 continue;
             }
             for (int y = startY; y <= endY; ++y) {
@@ -114,8 +116,10 @@ void Physics::ResolveAxis(const World& world, Player& player, int axis, float de
         const int endZ = static_cast<int>(std::floor(player.state.position.z + kPlayerHalfWidth - 0.02f));
 
         for (int cell = minCell; cell <= maxCell; ++cell) {
-            if ((delta > 0.0f && static_cast<float>(cell) < old + kPlayerHalfHeight) ||
-                (delta < 0.0f && static_cast<float>(cell + 1) > old - kPlayerHalfHeight)) {
+            if ((delta > 0.0f && (static_cast<float>(cell) < old + kPlayerHalfHeight ||
+                                  static_cast<float>(cell) > next + kPlayerHalfHeight)) ||
+                (delta < 0.0f && (static_cast<float>(cell + 1) > old - kPlayerHalfHeight ||
+                                  static_cast<float>(cell + 1) < next - kPlayerHalfHeight))) {
                 continue;
             }
             for (int x = startX; x <= endX; ++x) {
@@ -152,8 +156,10 @@ void Physics::ResolveAxis(const World& world, Player& player, int axis, float de
         const int endY = static_cast<int>(std::floor(player.state.position.y + kPlayerHalfHeight - 0.02f));
 
         for (int cell = minCell; cell <= maxCell; ++cell) {
-            if ((delta > 0.0f && static_cast<float>(cell) < old + kPlayerHalfWidth) ||
-                (delta < 0.0f && static_cast<float>(cell + 1) > old - kPlayerHalfWidth)) {
+            if ((delta > 0.0f && (static_cast<float>(cell) < old + kPlayerHalfWidth ||
+                                  static_cast<float>(cell) > next + kPlayerHalfWidth)) ||
+                (delta < 0.0f && (static_cast<float>(cell + 1) > old - kPlayerHalfWidth ||
+                                  static_cast<float>(cell + 1) < next - kPlayerHalfWidth))) {
                 continue;
             }
             for (int x = startX; x <= endX; ++x) {

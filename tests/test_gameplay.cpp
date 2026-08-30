@@ -65,6 +65,33 @@ TEST_CASE("Physics.JumpArc", "[gameplay][physics]") {
     REQUIRE(player.state.position.y == Catch::Approx(startY).margin(0.08f));
 }
 
+TEST_CASE("Physics.JumpApexIncreasesWhenCeilingBlockIsRemoved", "[gameplay][physics]") {
+    const auto simulateJumpApex = [](int ceilingY) {
+        voxels::World world;
+        world.SetBlock(voxels::Vec3I{0, 0, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+        world.SetBlock(voxels::Vec3I{0, ceilingY, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+
+        voxels::Player player;
+        player.state.position = voxels::Vec3{0.5f, 1.9f, 0.5f};
+        player.state.onGround = true;
+
+        voxels::gameplay::Physics::Jump(player);
+        float apex = player.state.position.y;
+        for (int step = 0; step < 200; ++step) {
+            voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f);
+            apex = std::max(apex, player.state.position.y);
+        }
+        return apex;
+    };
+
+    const float twoBlockOpeningApex = simulateJumpApex(3);
+    const float threeBlockOpeningApex = simulateJumpApex(4);
+
+    REQUIRE(twoBlockOpeningApex == Catch::Approx(2.1f).margin(0.02f));
+    REQUIRE(threeBlockOpeningApex == Catch::Approx(3.1f).margin(0.02f));
+    REQUIRE(threeBlockOpeningApex - twoBlockOpeningApex == Catch::Approx(1.0f).margin(0.02f));
+}
+
 TEST_CASE("Physics.HorizontalCollisionStopsAtWall", "[gameplay][physics]") {
     voxels::World world;
     world.SetBlock(voxels::Vec3I{2, 1, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
@@ -74,7 +101,7 @@ TEST_CASE("Physics.HorizontalCollisionStopsAtWall", "[gameplay][physics]") {
     player.state.position = voxels::Vec3{1.0f, 1.9f, 0.5f};
     player.state.velocity = voxels::Vec3{6.0f, 0.0f, 0.0f};
 
-    voxels::gameplay::Physics::Step(world, player, 0.1f);
+    voxels::gameplay::Physics::Step(world, player, 0.2f);
 
     REQUIRE(player.state.position.x <= 1.7f);
     REQUIRE(player.state.position.x >= 1.0f);
