@@ -131,3 +131,18 @@ TEST_CASE("CameraController.UpdatesMovementFromInput", "[gameplay][camera]") {
     REQUIRE(player.state.velocity.z != Catch::Approx(0.0f));
     REQUIRE(player.state.velocity.y == Catch::Approx(0.0f));
 }
+
+TEST_CASE("CameraController.YawWrapsWithoutChangingTurnDirection", "[gameplay][camera]") {
+    voxels::GamePreferences preferences;
+    voxels::Player player;
+    player.state.yaw = -3.13f;
+
+    voxels::InputState input;
+    input.mouseX = 20.0f;
+
+    voxels::gameplay::CameraController controller;
+    controller.Update(player, input, preferences, 1.0f / 60.0f);
+
+    REQUIRE(player.state.yaw > 3.0f);
+    REQUIRE(player.state.yaw <= 3.141593f);
+}

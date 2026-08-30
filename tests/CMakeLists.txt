@@ -14,6 +14,7 @@ add_executable(voxels_tests
     test_networking.cpp
     test_gameplay.cpp
     test_runtime_integration.cpp
+    test_player_and_streaming.cpp
     test_mvp_playthrough.cpp
     test_build_environment.cpp
     test_render_backend.cpp
