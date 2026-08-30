@@ -55,7 +55,16 @@ void InputManager::BindAction(const std::string& actionName, InputBinding bindin
 }
 
 std::vector<InputBinding> InputManager::GetBindings() const { return m_bindings; }
-void InputManager::InjectKeyEvent(int code, bool pressed, int player) { if (auto* channel = Channel(player)) channel->keys[code] = pressed; }
+void InputManager::InjectKeyEvent(int code, bool pressed, int player) {
+    if (auto* channel = Channel(player)) {
+        channel->keys[code] = pressed;
+        if (code >= 'a' && code <= 'z') {
+            channel->keys[code - ('a' - 'A')] = pressed;
+        } else if (code >= 'A' && code <= 'Z') {
+            channel->keys[code + ('a' - 'A')] = pressed;
+        }
+    }
+}
 void InputManager::InjectMouseDelta(float x, float y, int player) { if (auto* channel = Channel(player)) { channel->mouseX += x; channel->mouseY += y; } }
 void InputManager::InjectAxisEvent(InputAxis axis, float value, int player) { if (auto* channel = Channel(player)) channel->axes[axis] = ApplyAxisSettings(value, channel->axisSettings[axis]); }
 void InputManager::InjectControllerConnection(int player, bool connected) { if (auto* channel = Channel(player)) channel->state = connected ? PlayerSlotState::Connected : PlayerSlotState::Disconnected; }
@@ -73,7 +82,9 @@ bool InputManager::IsActionActive(const std::string& actionName, int player) con
     const auto binding = std::find_if(m_bindings.begin(), m_bindings.end(), [&](const auto& item) { return item.actionName == actionName; });
     if (binding == m_bindings.end()) return false;
     if (binding->deviceType == InputDeviceType::Gamepad) return channel->buttons.contains(binding->primaryCode) && channel->buttons.at(binding->primaryCode);
-    return channel->keys.contains(binding->primaryCode) && channel->keys.at(binding->primaryCode);
+    const bool primaryActive = channel->keys.contains(binding->primaryCode) && channel->keys.at(binding->primaryCode);
+    const bool secondaryActive = binding->secondaryCode != 0 && channel->keys.contains(binding->secondaryCode) && channel->keys.at(binding->secondaryCode);
+    return primaryActive || secondaryActive;
 }
 
 float InputManager::GetAxis(InputAxis axis, int player) const { const auto* channel = Channel(player); return channel != nullptr && channel->axes.contains(axis) ? channel->axes.at(axis) : 0.0f; }

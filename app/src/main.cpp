@@ -22,6 +22,7 @@
 #include "voxels/core/paths.hpp"
 #include "voxels/engine.hpp"
 #include "voxels/graphics/gl_renderer.hpp"
+#include "voxels/input/input_manager.hpp"
 #include "voxels/networking/client.hpp"
 #include "voxels/networking/server.hpp"
 #include "voxels/platform/platform.hpp"
@@ -32,8 +33,8 @@ namespace {
 
 class WindowEventListener final : public voxels::IPlatformEventListener {
 public:
-    WindowEventListener(bool& runningFlag, voxels::graphics::GLRenderer& renderer)
-        : m_running(runningFlag), m_renderer(renderer) {}
+    WindowEventListener(bool& runningFlag, voxels::graphics::GLRenderer& renderer, voxels::InputManager& inputManager)
+        : m_running(runningFlag), m_renderer(renderer), m_inputManager(inputManager) {}
 
     void OnPlatformEvent(const voxels::PlatformEvent& event) override {
         if (event.type == voxels::PlatformEventType::WindowClosed ||
@@ -41,12 +42,19 @@ public:
             m_running = false;
         } else if (event.type == voxels::PlatformEventType::WindowResized) {
             m_renderer.SetViewport(event.width, event.height);
+        } else if (event.type == voxels::PlatformEventType::KeyDown) {
+            m_inputManager.InjectKeyEvent(static_cast<int>(event.keyCode), true);
+        } else if (event.type == voxels::PlatformEventType::KeyUp) {
+            m_inputManager.InjectKeyEvent(static_cast<int>(event.keyCode), false);
+        } else if (event.type == voxels::PlatformEventType::MouseMotion) {
+            m_inputManager.InjectMouseDelta(static_cast<float>(event.relativeX), static_cast<float>(event.relativeY));
         }
     }
 
 private:
     bool& m_running;
     voxels::graphics::GLRenderer& m_renderer;
+    voxels::InputManager& m_inputManager;
 };
 
 constexpr double kFixedStepSeconds = 1.0 / 60.0;
@@ -175,10 +183,13 @@ int main(int argc, char** argv) {
     if (options.seedOverride) {
         worldOptions.seed = static_cast<std::uint64_t>(options.seed);
     }
+    voxels::InputManager inputManager;
     auto inGameState = std::make_unique<voxels::InGameState>();
     inGameState->SetBlockRegistry(&blockRegistry);
     inGameState->SetTextureAtlas(&textureAtlas);
     inGameState->SetWorldOptions(worldOptions);
+    inGameState->SetInputManager(&inputManager);
+    inGameState->SetPlatform(platform);
     stateMachine.TransitionTo(std::move(inGameState));
 
     voxels::networking::GameServer localServer;
@@ -190,7 +201,7 @@ int main(int argc, char** argv) {
     }
 
     bool running = true;
-    WindowEventListener windowListener(running, renderer);
+    WindowEventListener windowListener(running, renderer, inputManager);
     if (platform != nullptr) {
         platform->RegisterEventListener(&windowListener, 100);
         const auto [drawableW, drawableH] = platform->GetDrawableSize();

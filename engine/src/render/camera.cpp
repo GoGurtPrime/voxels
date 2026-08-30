@@ -28,13 +28,10 @@ glm::mat4 Camera::Projection() const {
 }
 
 glm::mat4 Camera::View() const {
-    const float radPitch = (std::abs(pitch) > 3.14159265f) ? glm::radians(pitch) : pitch;
-    const float radYaw = (std::abs(yaw) > 3.14159265f) ? glm::radians(yaw) : yaw;
-
-    const float cosPitch = std::cos(radPitch);
-    const float sinPitch = std::sin(radPitch);
-    const float cosYaw = std::cos(radYaw);
-    const float sinYaw = std::sin(radYaw);
+    const float cosPitch = std::cos(pitch);
+    const float sinPitch = std::sin(pitch);
+    const float cosYaw = std::cos(yaw);
+    const float sinYaw = std::sin(yaw);
 
     const glm::vec3 forward = NormalizeDirection(glm::vec3(
         -sinYaw * cosPitch,

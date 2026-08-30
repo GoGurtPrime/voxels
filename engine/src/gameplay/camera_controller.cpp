@@ -10,6 +10,8 @@
 
 #include <cmath>
 
+#include <glm/gtc/constants.hpp>
+
 #include "voxels/gameplay/physics.hpp"
 
 namespace voxels::gameplay {
@@ -17,22 +19,29 @@ namespace voxels::gameplay {
 void CameraController::Update(Player& player, const InputState& input, const GamePreferences& preferences,
                               float deltaTime) const {
     const float sensitivity = preferences.mouseSensitivity > 0.0f ? preferences.mouseSensitivity : 1.0f;
-    const float yawDelta = input.mouseX * 0.0025f * sensitivity;
-    const float pitchDelta = input.mouseY * 0.0025f * sensitivity * (preferences.invertY ? -1.0f : 1.0f);
+    const float yawDelta = -input.mouseX * 0.003f * sensitivity;
+    const float pitchDelta = input.mouseY * 0.003f * sensitivity * (preferences.invertY ? 1.0f : -1.0f);
 
     player.state.yaw += yawDelta;
-    player.state.pitch = std::clamp(player.state.pitch + pitchDelta, -1.57f, 1.57f);
+    if (player.state.yaw > glm::pi<float>()) {
+        player.state.yaw -= glm::two_pi<float>();
+    } else if (player.state.yaw <= -glm::pi<float>()) {
+        player.state.yaw += glm::two_pi<float>();
+    }
+    player.state.pitch = std::clamp(player.state.pitch + pitchDelta, -1.55f, 1.55f);
 
-    const float moveX = static_cast<float>(input.moveRight) - static_cast<float>(input.moveLeft);
-    const float moveZ = static_cast<float>(input.moveForward) - static_cast<float>(input.moveBackward);
-    const float len = std::sqrt(moveX * moveX + moveZ * moveZ);
-    if (len > 0.0f) {
-        const float x = (moveX / len) * 3.5f;
-        const float z = (moveZ / len) * 3.5f;
-        const float cosYaw = std::cos(-player.state.yaw);
-        const float sinYaw = std::sin(-player.state.yaw);
-        player.state.velocity.x = x * cosYaw - z * sinYaw;
-        player.state.velocity.z = x * sinYaw + z * cosYaw;
+    const float inputRight = static_cast<float>(input.moveRight) - static_cast<float>(input.moveLeft);
+    const float inputForward = static_cast<float>(input.moveForward) - static_cast<float>(input.moveBackward);
+    const float lenSq = inputRight * inputRight + inputForward * inputForward;
+    if (lenSq > 0.0f) {
+        const float invLen = 1.0f / std::sqrt(lenSq);
+        const float normRight = inputRight * invLen;
+        const float normForward = inputForward * invLen;
+        const float speed = input.sprint ? 7.0f : 4.3f;
+        const float sinYaw = std::sin(player.state.yaw);
+        const float cosYaw = std::cos(player.state.yaw);
+        player.state.velocity.x = (normRight * cosYaw - normForward * sinYaw) * speed;
+        player.state.velocity.z = (-normRight * sinYaw - normForward * cosYaw) * speed;
     } else {
         player.state.velocity.x = 0.0f;
         player.state.velocity.z = 0.0f;

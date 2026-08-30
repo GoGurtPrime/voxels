@@ -14,72 +14,20 @@
 namespace voxels::gameplay {
 namespace {
 
-struct AABB {
-    float minX = 0.0f;
-    float minY = 0.0f;
-    float minZ = 0.0f;
-    float maxX = 0.0f;
-    float maxY = 0.0f;
-    float maxZ = 0.0f;
-};
-
-AABB PlayerAABB(const Player& player) {
-    const float hx = Physics::kPlayerHalfWidth;
-    const float hy = Physics::kPlayerHalfHeight;
-    return {player.state.position.x - hx, player.state.position.y - hy, player.state.position.z - hx,
-            player.state.position.x + hx, player.state.position.y + hy, player.state.position.z + hx};
-}
-
-bool BoxIntersectsBlock(const AABB& box, const Vec3I& blockPos) {
-    const float minX = static_cast<float>(blockPos.x);
-    const float maxX = static_cast<float>(blockPos.x + 1);
-    const float minY = static_cast<float>(blockPos.y);
-    const float maxY = static_cast<float>(blockPos.y + 1);
-    const float minZ = static_cast<float>(blockPos.z);
-    const float maxZ = static_cast<float>(blockPos.z + 1);
-
-    return box.minX < maxX && box.maxX > minX && box.minY < maxY && box.maxY > minY &&
-           box.minZ < maxZ && box.maxZ > minZ;
-}
-
-bool IntersectsAnySolid(const World& world, const AABB& box) {
-    const int minX = static_cast<int>(std::floor(box.minX));
-    const int maxX = static_cast<int>(std::floor(box.maxX));
-    const int minY = static_cast<int>(std::floor(box.minY));
-    const int maxY = static_cast<int>(std::floor(box.maxY));
-    const int minZ = static_cast<int>(std::floor(box.minZ));
-    const int maxZ = static_cast<int>(std::floor(box.maxZ));
-
-    for (int x = minX; x <= maxX; ++x) {
-        for (int y = minY; y <= maxY; ++y) {
-            for (int z = minZ; z <= maxZ; ++z) {
-                const Vec3I pos{x, y, z};
-                if (Physics::IsSolidBlock(world.GetBlock(pos)) && BoxIntersectsBlock(box, pos)) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
-}
-
 bool HasGroundBelow(const World& world, const Player& player) {
     const float bottom = player.state.position.y - Physics::kPlayerHalfHeight;
-    const float probeMinY = bottom - 0.05f;
-    const float probeMaxY = bottom + 0.05f;
-    const float minX = player.state.position.x - Physics::kPlayerHalfWidth;
-    const float maxX = player.state.position.x + Physics::kPlayerHalfWidth;
-    const float minZ = player.state.position.z - Physics::kPlayerHalfWidth;
-    const float maxZ = player.state.position.z + Physics::kPlayerHalfWidth;
+    const float probeMinY = bottom - 0.08f;
+    const float probeMaxY = bottom + 0.01f;
+    const float minX = player.state.position.x - Physics::kPlayerHalfWidth + 0.02f;
+    const float maxX = player.state.position.x + Physics::kPlayerHalfWidth - 0.02f;
+    const float minZ = player.state.position.z - Physics::kPlayerHalfWidth + 0.02f;
+    const float maxZ = player.state.position.z + Physics::kPlayerHalfWidth - 0.02f;
 
     for (int x = static_cast<int>(std::floor(minX)); x <= static_cast<int>(std::floor(maxX)); ++x) {
         for (int z = static_cast<int>(std::floor(minZ)); z <= static_cast<int>(std::floor(maxZ)); ++z) {
             for (int y = static_cast<int>(std::floor(probeMinY)); y <= static_cast<int>(std::floor(probeMaxY)); ++y) {
                 if (Physics::IsSolidBlock(world.GetBlock(Vec3I{x, y, z}))) {
-                    const AABB probe{minX, probeMinY, minZ, maxX, probeMaxY, maxZ};
-                    if (BoxIntersectsBlock(probe, Vec3I{x, y, z})) {
-                        return true;
-                    }
+                    return true;
                 }
             }
         }
@@ -107,59 +55,126 @@ void Physics::Jump(Player& player) {
 
 void Physics::ResolveAxis(const World& world, Player& player, int axis, float delta, float& axisPosition,
                          bool& grounded) {
+    if (std::abs(delta) < 1.0e-6f) {
+        return;
+    }
+
     const float old = axisPosition;
     const float next = old + delta;
     axisPosition = next;
 
-    if (axis == 0 || axis == 2) {
+    if (axis == 0) {
         const float minCoord = std::min(old, next) - kPlayerHalfWidth;
         const float maxCoord = std::max(old, next) + kPlayerHalfWidth;
         const int minCell = static_cast<int>(std::floor(minCoord));
         const int maxCell = static_cast<int>(std::ceil(maxCoord));
-        float resolvedBoundary = old;
+        float resolved = next;
         bool collided = false;
 
-        for (int cell = minCell; cell <= maxCell; ++cell) {
-            Vec3I probe;
-            if (axis == 0) {
-                probe = Vec3I{cell, static_cast<int>(std::floor(player.state.position.y)),
-                              static_cast<int>(std::floor(player.state.position.z))};
-            } else {
-                probe = Vec3I{static_cast<int>(std::floor(player.state.position.x)),
-                              static_cast<int>(std::floor(player.state.position.y)), cell};
-            }
+        const int startY = static_cast<int>(std::floor(player.state.position.y - kPlayerHalfHeight + 0.02f));
+        const int endY = static_cast<int>(std::floor(player.state.position.y + kPlayerHalfHeight - 0.02f));
+        const int startZ = static_cast<int>(std::floor(player.state.position.z - kPlayerHalfWidth + 0.02f));
+        const int endZ = static_cast<int>(std::floor(player.state.position.z + kPlayerHalfWidth - 0.02f));
 
-            if (!Physics::IsSolidBlock(world.GetBlock(probe))) {
+        for (int cell = minCell; cell <= maxCell; ++cell) {
+            if ((delta > 0.0f && static_cast<float>(cell) < old + kPlayerHalfWidth) ||
+                (delta < 0.0f && static_cast<float>(cell + 1) > old - kPlayerHalfWidth)) {
                 continue;
             }
-
-            const float blockMin = static_cast<float>(cell);
-            const float blockMax = blockMin + 1.0f;
-            if (delta > 0.0f) {
-                resolvedBoundary = std::min(resolvedBoundary, blockMin - kPlayerHalfWidth);
-            } else {
-                resolvedBoundary = std::max(resolvedBoundary, blockMax + kPlayerHalfWidth);
+            for (int y = startY; y <= endY; ++y) {
+                for (int z = startZ; z <= endZ; ++z) {
+                    if (Physics::IsSolidBlock(world.GetBlock(Vec3I{cell, y, z}))) {
+                        const float blockMin = static_cast<float>(cell);
+                        const float blockMax = blockMin + 1.0f;
+                        if (delta > 0.0f) {
+                            resolved = std::min(resolved, blockMin - kPlayerHalfWidth);
+                        } else {
+                            resolved = std::max(resolved, blockMax + kPlayerHalfWidth);
+                        }
+                        collided = true;
+                    }
+                }
             }
-            collided = true;
         }
-
         if (collided) {
-            axisPosition = resolvedBoundary;
-            player.state.velocity[axis] = 0.0f;
+            axisPosition = resolved;
+            player.state.velocity.x = 0.0f;
         }
-        return;
-    }
+    } else if (axis == 1) {
+        const float minCoord = std::min(old, next) - kPlayerHalfHeight;
+        const float maxCoord = std::max(old, next) + kPlayerHalfHeight;
+        const int minCell = static_cast<int>(std::floor(minCoord));
+        const int maxCell = static_cast<int>(std::ceil(maxCoord));
+        float resolved = next;
+        bool collided = false;
 
-    AABB box = PlayerAABB(player);
-    box.minY = axisPosition - kPlayerHalfHeight;
-    box.maxY = axisPosition + kPlayerHalfHeight;
+        const int startX = static_cast<int>(std::floor(player.state.position.x - kPlayerHalfWidth + 0.02f));
+        const int endX = static_cast<int>(std::floor(player.state.position.x + kPlayerHalfWidth - 0.02f));
+        const int startZ = static_cast<int>(std::floor(player.state.position.z - kPlayerHalfWidth + 0.02f));
+        const int endZ = static_cast<int>(std::floor(player.state.position.z + kPlayerHalfWidth - 0.02f));
 
-    if (IntersectsAnySolid(world, box)) {
-        if (delta > 0.0f) {
-            grounded = true;
+        for (int cell = minCell; cell <= maxCell; ++cell) {
+            if ((delta > 0.0f && static_cast<float>(cell) < old + kPlayerHalfHeight) ||
+                (delta < 0.0f && static_cast<float>(cell + 1) > old - kPlayerHalfHeight)) {
+                continue;
+            }
+            for (int x = startX; x <= endX; ++x) {
+                for (int z = startZ; z <= endZ; ++z) {
+                    if (Physics::IsSolidBlock(world.GetBlock(Vec3I{x, cell, z}))) {
+                        const float blockMin = static_cast<float>(cell);
+                        const float blockMax = blockMin + 1.0f;
+                        if (delta > 0.0f) {
+                            resolved = std::min(resolved, blockMin - kPlayerHalfHeight);
+                        } else {
+                            resolved = std::max(resolved, blockMax + kPlayerHalfHeight);
+                            grounded = true;
+                        }
+                        collided = true;
+                    }
+                }
+            }
         }
-        player.state.velocity.y = 0.0f;
-        axisPosition = old;
+        if (collided) {
+            axisPosition = resolved;
+            player.state.velocity.y = 0.0f;
+        }
+    } else if (axis == 2) {
+        const float minCoord = std::min(old, next) - kPlayerHalfWidth;
+        const float maxCoord = std::max(old, next) + kPlayerHalfWidth;
+        const int minCell = static_cast<int>(std::floor(minCoord));
+        const int maxCell = static_cast<int>(std::ceil(maxCoord));
+        float resolved = next;
+        bool collided = false;
+
+        const int startX = static_cast<int>(std::floor(player.state.position.x - kPlayerHalfWidth + 0.02f));
+        const int endX = static_cast<int>(std::floor(player.state.position.x + kPlayerHalfWidth - 0.02f));
+        const int startY = static_cast<int>(std::floor(player.state.position.y - kPlayerHalfHeight + 0.02f));
+        const int endY = static_cast<int>(std::floor(player.state.position.y + kPlayerHalfHeight - 0.02f));
+
+        for (int cell = minCell; cell <= maxCell; ++cell) {
+            if ((delta > 0.0f && static_cast<float>(cell) < old + kPlayerHalfWidth) ||
+                (delta < 0.0f && static_cast<float>(cell + 1) > old - kPlayerHalfWidth)) {
+                continue;
+            }
+            for (int x = startX; x <= endX; ++x) {
+                for (int y = startY; y <= endY; ++y) {
+                    if (Physics::IsSolidBlock(world.GetBlock(Vec3I{x, y, cell}))) {
+                        const float blockMin = static_cast<float>(cell);
+                        const float blockMax = blockMin + 1.0f;
+                        if (delta > 0.0f) {
+                            resolved = std::min(resolved, blockMin - kPlayerHalfWidth);
+                        } else {
+                            resolved = std::max(resolved, blockMax + kPlayerHalfWidth);
+                        }
+                        collided = true;
+                    }
+                }
+            }
+        }
+        if (collided) {
+            axisPosition = resolved;
+            player.state.velocity.z = 0.0f;
+        }
     }
 }
 
