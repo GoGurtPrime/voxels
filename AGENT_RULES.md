@@ -10,6 +10,8 @@
 
 The previous ruleset produced thirteen "completed" work items and a black window. The failure was not laziness — it was that the rules **rewarded isolated, mock-backed, unit-tested subsystems** and never forced a pixel onto the screen. `MainMenuState` was an empty class. Every graphics backend inherited from `MockRenderer`. `sdl_platform.cpp` compiled only if SDL2 happened to be installed, and otherwise the game silently ran headless and exited after 200 ticks.
 
+A repeated operator failure mode was also agent-level: validation ran in `--headless` mode or via wrapper shells that exited immediately, which created the illusion of a successful smoke test while never exercising the real desktop runtime. The shipping path must be run without `--headless`, and the human operator closes the app once they have inspected it.
+
 The rules below exist specifically to make that outcome impossible to repeat. Where a rule seems strict, it is deliberate.
 
 ---
@@ -96,9 +98,10 @@ Tests exist to protect behavior the player experiences. They are necessary and *
 5. **Verification loop (repeat until green):**
    1. `cmake --build build`
    2. `ctest --test-dir build --output-on-failure`
-   3. Launch `voxels_app` and exercise the feature.
+   3. Launch `voxels_app` without `--headless` and exercise the feature in the real desktop runtime. Leave the window open for the human operator to inspect and close it.
    4. On any failure, diagnose the **root cause** and fix it. Never weaken an assertion, disable a test, or add a special case to make a test pass. If a test is wrong, explain why in the commit message before changing it.
-6. **Headless is for CI only.** Tests may use `HeadlessPlatform`/`MockRenderer`. The app's default path may not.
+6. **Headless is for CI only.** Tests may use `HeadlessPlatform`/`MockRenderer`. The app's default path may not. Never use `--headless` for the human-observable smoke run; that path is a test-only escape hatch and is not the shipping runtime.
+7. **Operator-close requirement:** if the app remains open after launch, the human operator closes it. Do not use shell wrappers, short-lived automation loops, or hidden background invocations to claim a successful desktop smoke test.
 
 ---
 

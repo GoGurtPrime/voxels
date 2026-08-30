@@ -89,10 +89,12 @@ ctest --test-dir build --output-on-failure
 ### Running
 
 ```bash
-./build/app/voxels_app                    # the game
+./build/app/voxels_app                    # the real desktop game; leave it open for the human operator to close
 ./build/app/voxels_app --server           # dedicated server
 ./build/editor/voxels_editor              # the content editor
 ```
+
+Important: do not run the desktop smoke test in `--headless` mode. The real windowed app is the verification target, and if it stays open the operator closes it manually. `--headless` is a CI/test-only flag and must not be used to claim the shipping runtime works.
 
 Useful flags: `--fullscreen=<true|false>`, `--resolution=<WxH>`, `--vsync=<true|false>`, `--world=<name>`, `--headless` (tests/CI only), `--dev` (asset hot-reload).
 
