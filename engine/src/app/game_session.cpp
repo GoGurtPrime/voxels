@@ -218,7 +218,7 @@ void GameSession::Update(float deltaSeconds) {
                                      {static_cast<int>(std::floor(m_player.state.position.x)), static_cast<int>(std::floor(m_player.state.position.y)), static_cast<int>(std::floor(m_player.state.position.z))}});
         }
         const float fallVelocity = m_player.state.velocity.y;
-        gameplay::Physics::Step(*m_world, m_player, deltaSeconds);
+        gameplay::Physics::Step(*m_world, m_player, deltaSeconds, m_registry);
         const Vec3I playerBlock{static_cast<int>(std::floor(m_player.state.position.x)),
                                 static_cast<int>(std::floor(m_player.state.position.y)),
                                 static_cast<int>(std::floor(m_player.state.position.z))};
@@ -307,7 +307,7 @@ void GameSession::Update(float deltaSeconds) {
         }
         m_input->Update();
     } else {
-        gameplay::Physics::Step(*m_world, m_player, deltaSeconds);
+        gameplay::Physics::Step(*m_world, m_player, deltaSeconds, m_registry);
         m_breakProgress = 0.0f;
         m_hasBreakTarget = false;
     }

@@ -318,6 +318,23 @@ void BlockRegistry::LoadFromJsonString(std::string_view jsonContent, std::string
             def.modelId = blockJson["model_id"].get<std::string>();
         }
 
+        if (blockJson.contains("collision_bounds") && blockJson["collision_bounds"].is_object()) {
+            const auto& bounds = blockJson["collision_bounds"];
+            const auto& minimum = bounds.at("min");
+            const auto& maximum = bounds.at("max");
+            if (!minimum.is_array() || !maximum.is_array() || minimum.size() != 3 || maximum.size() != 3) {
+                throw std::runtime_error("BlockRegistry error in " + std::string(sourceName) + " for block '" + idStr + "': collision_bounds must contain min/max triples.");
+            }
+            for (std::size_t axis = 0; axis < 3; ++axis) {
+                def.collisionBounds.min[axis] = minimum.at(axis).get<float>();
+                def.collisionBounds.max[axis] = maximum.at(axis).get<float>();
+                if (def.collisionBounds.min[axis] < 0.0f || def.collisionBounds.max[axis] > 1.0f ||
+                    def.collisionBounds.min[axis] >= def.collisionBounds.max[axis]) {
+                    throw std::runtime_error("BlockRegistry error in " + std::string(sourceName) + " for block '" + idStr + "': collision_bounds must be ordered within [0,1].");
+                }
+            }
+        }
+
         if (blockJson.contains("textures") && blockJson["textures"].is_object()) {
             const auto& tex = blockJson["textures"];
             def.textures.all = tex.value("all", "");

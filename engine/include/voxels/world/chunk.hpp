@@ -75,6 +75,9 @@ public:
 
     [[nodiscard]] BlockId GetBlock(int x, int y, int z) const noexcept;
     bool SetBlock(int x, int y, int z, BlockId block) noexcept;
+    [[nodiscard]] std::uint8_t GetBlockState(int x, int y, int z) const noexcept;
+    bool SetBlockState(int x, int y, int z, std::uint8_t state) noexcept;
+    bool SetBlockAndState(int x, int y, int z, BlockId block, std::uint8_t state) noexcept;
 
     [[nodiscard]] std::uint8_t GetBlockLight(int x, int y, int z) const noexcept;
     bool SetBlockLight(int x, int y, int z, std::uint8_t level) noexcept;
@@ -112,6 +115,7 @@ private:
     std::uint32_t m_height;
     std::uint32_t m_depth;
     std::vector<BlockId> m_blocks;
+    std::vector<std::uint8_t> m_blockStates;
     std::vector<std::uint8_t> m_blockLight;
     std::vector<std::uint8_t> m_skyLight;
     bool m_dirty = false;

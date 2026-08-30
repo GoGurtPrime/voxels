@@ -18,11 +18,11 @@
 TEST_CASE("BlockRegistry.LoadsAllLaunchBlocksWithExpectedFlags", "[world][block]") {
     const voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
 
-    REQUIRE(registry.Count() == 14);
+    REQUIRE(registry.Count() == 16);
 
     const std::vector<std::string> expectedLaunchBlocks = {
         "air", "stone", "dirt", "grass", "sand", "gravel", "water",
-        "coal_ore", "iron_ore", "wood_log", "leaves", "planks", "glass", "bedrock"
+        "coal_ore", "iron_ore", "wood_log", "leaves", "planks", "glass", "bedrock", "stairs", "slab"
     };
 
     std::set<voxels::BlockId> numericIds;
@@ -33,7 +33,7 @@ TEST_CASE("BlockRegistry.LoadsAllLaunchBlocksWithExpectedFlags", "[world][block]
         REQUIRE(def->name == name);
         numericIds.insert(def->id);
     }
-    REQUIRE(numericIds.size() == 14);
+    REQUIRE(numericIds.size() == 16);
     REQUIRE(registry.ValidateDenseNumericIds());
 
     // Spot-check physical flags and metadata

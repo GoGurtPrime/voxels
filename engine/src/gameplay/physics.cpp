@@ -14,9 +14,9 @@
 namespace voxels::gameplay {
 namespace {
 
-bool HasGroundBelow(const World& world, const Player& player) {
+bool HasGroundBelow(const World& world, const Player& player, const BlockRegistry* registry) {
     const float bottom = player.state.position.y - Physics::kPlayerHalfHeight;
-    const float probeMinY = bottom - 0.08f;
+    const float probeMinY = bottom - 0.01f;
     const float probeMaxY = bottom + 0.01f;
     const float minX = player.state.position.x - Physics::kPlayerHalfWidth + 0.02f;
     const float maxX = player.state.position.x + Physics::kPlayerHalfWidth - 0.02f;
@@ -26,7 +26,10 @@ bool HasGroundBelow(const World& world, const Player& player) {
     for (int x = static_cast<int>(std::floor(minX)); x <= static_cast<int>(std::floor(maxX)); ++x) {
         for (int z = static_cast<int>(std::floor(minZ)); z <= static_cast<int>(std::floor(maxZ)); ++z) {
             for (int y = static_cast<int>(std::floor(probeMinY)); y <= static_cast<int>(std::floor(probeMaxY)); ++y) {
-                if (Physics::IsSolidBlock(world.GetBlock(Vec3I{x, y, z}))) {
+                const BlockId block = world.GetBlock(Vec3I{x, y, z});
+                const BlockDefinition* definition = registry == nullptr ? nullptr : registry->GetDefinition(block);
+                const float top = static_cast<float>(y) + (definition == nullptr ? 1.0f : definition->collisionBounds.max[1]);
+                if (Physics::IsSolidBlock(block, registry) && top >= probeMinY && top <= probeMaxY) {
                     return true;
                 }
             }
@@ -37,12 +40,16 @@ bool HasGroundBelow(const World& world, const Player& player) {
 
 } // namespace
 
-bool Physics::IsSolidBlock(BlockId block) noexcept {
+bool Physics::IsSolidBlock(BlockId block, const BlockRegistry* registry) noexcept {
+    if (registry != nullptr) {
+        const BlockDefinition* definition = registry->GetDefinition(block);
+        return definition != nullptr && definition->isSolid;
+    }
     return block != static_cast<BlockId>(BlockType::Air) && block != static_cast<BlockId>(BlockType::Water);
 }
 
-bool Physics::IsGrounded(const World& world, const Player& player) {
-    return HasGroundBelow(world, player);
+bool Physics::IsGrounded(const World& world, const Player& player, const BlockRegistry* registry) {
+    return HasGroundBelow(world, player, registry);
 }
 
 void Physics::Jump(Player& player) {
@@ -54,7 +61,7 @@ void Physics::Jump(Player& player) {
 }
 
 void Physics::ResolveAxis(const World& world, Player& player, int axis, float delta, float& axisPosition,
-                         bool& grounded) {
+                         bool& grounded, const BlockRegistry* registry) {
     if (std::abs(delta) < 1.0e-6f) {
         return;
     }
@@ -77,17 +84,15 @@ void Physics::ResolveAxis(const World& world, Player& player, int axis, float de
         const int endZ = static_cast<int>(std::floor(player.state.position.z + kPlayerHalfWidth - 0.02f));
 
         for (int cell = minCell; cell <= maxCell; ++cell) {
-            if ((delta > 0.0f && (static_cast<float>(cell) < old + kPlayerHalfWidth ||
-                                  static_cast<float>(cell) > next + kPlayerHalfWidth)) ||
-                (delta < 0.0f && (static_cast<float>(cell + 1) > old - kPlayerHalfWidth ||
-                                  static_cast<float>(cell + 1) < next - kPlayerHalfWidth))) {
-                continue;
-            }
             for (int y = startY; y <= endY; ++y) {
                 for (int z = startZ; z <= endZ; ++z) {
-                    if (Physics::IsSolidBlock(world.GetBlock(Vec3I{cell, y, z}))) {
-                        const float blockMin = static_cast<float>(cell);
-                        const float blockMax = blockMin + 1.0f;
+                    const BlockId block = world.GetBlock(Vec3I{cell, y, z});
+                    const BlockDefinition* definition = registry == nullptr ? nullptr : registry->GetDefinition(block);
+                    if (Physics::IsSolidBlock(block, registry)) {
+                        const float blockMin = static_cast<float>(cell) + (definition == nullptr ? 0.0f : definition->collisionBounds.min[0]);
+                        const float blockMax = static_cast<float>(cell) + (definition == nullptr ? 1.0f : definition->collisionBounds.max[0]);
+                        if ((delta > 0.0f && (blockMin < old + kPlayerHalfWidth || blockMin > next + kPlayerHalfWidth)) ||
+                            (delta < 0.0f && (blockMax > old - kPlayerHalfWidth || blockMax < next - kPlayerHalfWidth))) continue;
                         if (delta > 0.0f) {
                             resolved = std::min(resolved, blockMin - kPlayerHalfWidth);
                         } else {
@@ -116,17 +121,15 @@ void Physics::ResolveAxis(const World& world, Player& player, int axis, float de
         const int endZ = static_cast<int>(std::floor(player.state.position.z + kPlayerHalfWidth - 0.02f));
 
         for (int cell = minCell; cell <= maxCell; ++cell) {
-            if ((delta > 0.0f && (static_cast<float>(cell) < old + kPlayerHalfHeight ||
-                                  static_cast<float>(cell) > next + kPlayerHalfHeight)) ||
-                (delta < 0.0f && (static_cast<float>(cell + 1) > old - kPlayerHalfHeight ||
-                                  static_cast<float>(cell + 1) < next - kPlayerHalfHeight))) {
-                continue;
-            }
             for (int x = startX; x <= endX; ++x) {
                 for (int z = startZ; z <= endZ; ++z) {
-                    if (Physics::IsSolidBlock(world.GetBlock(Vec3I{x, cell, z}))) {
-                        const float blockMin = static_cast<float>(cell);
-                        const float blockMax = blockMin + 1.0f;
+                    const BlockId block = world.GetBlock(Vec3I{x, cell, z});
+                    const BlockDefinition* definition = registry == nullptr ? nullptr : registry->GetDefinition(block);
+                    if (Physics::IsSolidBlock(block, registry)) {
+                        const float blockMin = static_cast<float>(cell) + (definition == nullptr ? 0.0f : definition->collisionBounds.min[1]);
+                        const float blockMax = static_cast<float>(cell) + (definition == nullptr ? 1.0f : definition->collisionBounds.max[1]);
+                        if ((delta > 0.0f && (blockMin < old + kPlayerHalfHeight || blockMin > next + kPlayerHalfHeight)) ||
+                            (delta < 0.0f && (blockMax > old - kPlayerHalfHeight || blockMax < next - kPlayerHalfHeight))) continue;
                         if (delta > 0.0f) {
                             resolved = std::min(resolved, blockMin - kPlayerHalfHeight);
                         } else {
@@ -156,17 +159,15 @@ void Physics::ResolveAxis(const World& world, Player& player, int axis, float de
         const int endY = static_cast<int>(std::floor(player.state.position.y + kPlayerHalfHeight - 0.02f));
 
         for (int cell = minCell; cell <= maxCell; ++cell) {
-            if ((delta > 0.0f && (static_cast<float>(cell) < old + kPlayerHalfWidth ||
-                                  static_cast<float>(cell) > next + kPlayerHalfWidth)) ||
-                (delta < 0.0f && (static_cast<float>(cell + 1) > old - kPlayerHalfWidth ||
-                                  static_cast<float>(cell + 1) < next - kPlayerHalfWidth))) {
-                continue;
-            }
             for (int x = startX; x <= endX; ++x) {
                 for (int y = startY; y <= endY; ++y) {
-                    if (Physics::IsSolidBlock(world.GetBlock(Vec3I{x, y, cell}))) {
-                        const float blockMin = static_cast<float>(cell);
-                        const float blockMax = blockMin + 1.0f;
+                    const BlockId block = world.GetBlock(Vec3I{x, y, cell});
+                    const BlockDefinition* definition = registry == nullptr ? nullptr : registry->GetDefinition(block);
+                    if (Physics::IsSolidBlock(block, registry)) {
+                        const float blockMin = static_cast<float>(cell) + (definition == nullptr ? 0.0f : definition->collisionBounds.min[2]);
+                        const float blockMax = static_cast<float>(cell) + (definition == nullptr ? 1.0f : definition->collisionBounds.max[2]);
+                        if ((delta > 0.0f && (blockMin < old + kPlayerHalfWidth || blockMin > next + kPlayerHalfWidth)) ||
+                            (delta < 0.0f && (blockMax > old - kPlayerHalfWidth || blockMax < next - kPlayerHalfWidth))) continue;
                         if (delta > 0.0f) {
                             resolved = std::min(resolved, blockMin - kPlayerHalfWidth);
                         } else {
@@ -184,7 +185,7 @@ void Physics::ResolveAxis(const World& world, Player& player, int axis, float de
     }
 }
 
-void Physics::Step(const World& world, Player& player, float deltaTime) {
+void Physics::Step(const World& world, Player& player, float deltaTime, const BlockRegistry* registry) {
     if (deltaTime <= 0.0f) {
         return;
     }
@@ -203,11 +204,11 @@ void Physics::Step(const World& world, Player& player, float deltaTime) {
     const float stepZ = player.state.velocity.z * deltaTime;
 
     bool grounded = false;
-    ResolveAxis(world, player, 0, stepX, player.state.position.x, grounded);
-    ResolveAxis(world, player, 1, stepY, player.state.position.y, grounded);
-    ResolveAxis(world, player, 2, stepZ, player.state.position.z, grounded);
+    ResolveAxis(world, player, 0, stepX, player.state.position.x, grounded, registry);
+    ResolveAxis(world, player, 1, stepY, player.state.position.y, grounded, registry);
+    ResolveAxis(world, player, 2, stepZ, player.state.position.z, grounded, registry);
 
-    player.state.onGround = grounded || IsGrounded(world, player);
+    player.state.onGround = grounded || IsGrounded(world, player, registry);
     if (player.state.onGround && player.state.velocity.y < 0.0f) {
         player.state.velocity.y = 0.0f;
     }

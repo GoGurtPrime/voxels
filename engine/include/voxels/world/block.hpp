@@ -113,6 +113,11 @@ struct BlockDrop {
     [[nodiscard]] bool operator==(const BlockDrop&) const noexcept = default;
 };
 
+struct BlockCollisionBounds {
+    std::array<float, 3> min = {0.0f, 0.0f, 0.0f};
+    std::array<float, 3> max = {1.0f, 1.0f, 1.0f};
+};
+
 struct BlockDefinition {
     BlockType type = BlockType::Air;
     BlockId id = 0;
@@ -126,6 +131,7 @@ struct BlockDefinition {
     std::uint8_t lightEmission = 0;
     std::string renderType = "cube"; // "cube" | "cross" | "liquid" | "model"
     std::optional<std::string> modelId = std::nullopt;
+    BlockCollisionBounds collisionBounds;
     BlockTextures textures;
     BlockSounds sounds;
     std::vector<BlockDrop> drops;

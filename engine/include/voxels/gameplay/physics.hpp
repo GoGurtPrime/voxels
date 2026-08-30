@@ -23,14 +23,14 @@ public:
     static constexpr float kPlayerHalfWidth = 0.3f;
     static constexpr float kPlayerHalfHeight = 0.9f;
 
-    static void Step(const World& world, Player& player, float deltaTime);
+    static void Step(const World& world, Player& player, float deltaTime, const BlockRegistry* registry = nullptr);
     static void Jump(Player& player);
-    static bool IsGrounded(const World& world, const Player& player);
-    static bool IsSolidBlock(BlockId block) noexcept;
+    static bool IsGrounded(const World& world, const Player& player, const BlockRegistry* registry = nullptr);
+    static bool IsSolidBlock(BlockId block, const BlockRegistry* registry = nullptr) noexcept;
 
 private:
     static void ResolveAxis(const World& world, Player& player, int axis, float delta, float& axisPosition,
-                            bool& grounded);
+                            bool& grounded, const BlockRegistry* registry);
 };
 
 } // namespace voxels::gameplay

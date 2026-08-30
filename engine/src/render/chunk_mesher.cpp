@@ -12,6 +12,26 @@ namespace voxels::graphics {
 
 namespace {
 
+void RotateModelVertex(ChunkVertex& vertex, std::uint8_t rotation) {
+    const std::uint16_t x = vertex.x;
+    const std::uint16_t z = vertex.z;
+    switch (rotation & 0x03U) {
+        case 1: vertex.x = static_cast<std::uint16_t>(16U - z); vertex.z = x; break;
+        case 2: vertex.x = static_cast<std::uint16_t>(16U - x); vertex.z = static_cast<std::uint16_t>(16U - z); break;
+        case 3: vertex.x = z; vertex.z = static_cast<std::uint16_t>(16U - x); break;
+        default: break;
+    }
+    if (rotation == 0) return;
+    constexpr std::array<Face, 4> kClockwiseFaces = {Face::PosX, Face::PosZ, Face::NegX, Face::NegZ};
+    const Face face = static_cast<Face>(vertex.faceIndex);
+    for (std::size_t index = 0; index < kClockwiseFaces.size(); ++index) {
+        if (face == kClockwiseFaces[index]) {
+            vertex.faceIndex = static_cast<std::uint8_t>(kClockwiseFaces[(index + rotation) & 0x03U]);
+            return;
+        }
+    }
+}
+
 using voxels::BlockDefinition;
 using voxels::BlockId;
 using voxels::BlockRegistry;
@@ -410,8 +430,10 @@ ChunkMeshData BuildChunkMesh(const Chunk& chunk, const ChunkNeighborhood& neighb
                     if (definition == nullptr || definition->renderType != "model" || !definition->modelId.has_value()) continue;
                     const BakedModelMesh* baked = models->FindMesh(*definition->modelId);
                     if (baked == nullptr) continue;
+                    const std::uint8_t rotation = chunk.GetBlockState(x, y, z);
                     const std::uint32_t baseIndex = static_cast<std::uint32_t>(opaqueVerts.size());
                     for (ChunkVertex vertex : baked->vertices) {
+                        RotateModelVertex(vertex, rotation);
                         vertex.x = static_cast<std::uint16_t>(vertex.x + x * static_cast<int>(kChunkVertexPositionScale));
                         vertex.y = static_cast<std::uint16_t>(vertex.y + y * static_cast<int>(kChunkVertexPositionScale));
                         vertex.z = static_cast<std::uint16_t>(vertex.z + z * static_cast<int>(kChunkVertexPositionScale));

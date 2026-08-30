@@ -19,6 +19,7 @@ Chunk::Chunk(ChunkCoordinate coordinate, std::uint32_t sizeX, std::uint32_t size
     , m_height(sizeY)
     , m_depth(sizeZ)
     , m_blocks(static_cast<std::size_t>(sizeX) * sizeY * sizeZ, static_cast<BlockId>(BlockType::Air))
+    , m_blockStates(m_blocks.size(), 0)
     , m_blockLight(m_blocks.size(), 0)
     , m_skyLight(m_blocks.size(), 0) {
 }
@@ -47,6 +48,27 @@ bool Chunk::SetBlock(int x, int y, int z, BlockId block) noexcept {
         return false;
     }
     m_blocks[Index(x, y, z)] = block;
+    m_blockStates[Index(x, y, z)] = 0;
+    m_dirty = true;
+    return true;
+}
+
+std::uint8_t Chunk::GetBlockState(int x, int y, int z) const noexcept {
+    return InBounds(x, y, z) ? m_blockStates[Index(x, y, z)] : 0;
+}
+
+bool Chunk::SetBlockState(int x, int y, int z, std::uint8_t state) noexcept {
+    if (!InBounds(x, y, z)) return false;
+    m_blockStates[Index(x, y, z)] = static_cast<std::uint8_t>(state & 0x03U);
+    m_dirty = true;
+    return true;
+}
+
+bool Chunk::SetBlockAndState(int x, int y, int z, BlockId block, std::uint8_t state) noexcept {
+    if (!InBounds(x, y, z)) return false;
+    const std::size_t index = Index(x, y, z);
+    m_blocks[index] = block;
+    m_blockStates[index] = static_cast<std::uint8_t>(state & 0x03U);
     m_dirty = true;
     return true;
 }
@@ -100,18 +122,22 @@ std::vector<std::uint8_t> Chunk::SerializeRLE() const {
     };
 
     BlockId runValue = m_blocks[0];
+    std::uint8_t runState = m_blockStates[0];
     std::uint32_t runLength = 1;
     for (std::size_t i = 1; i < m_blocks.size(); ++i) {
-        if (m_blocks[i] == runValue) {
+        if (m_blocks[i] == runValue && m_blockStates[i] == runState) {
             ++runLength;
         } else {
             appendU16(runValue);
+            buffer.push_back(runState);
             appendU32(runLength);
             runValue = m_blocks[i];
+            runState = m_blockStates[i];
             runLength = 1;
         }
     }
     appendU16(runValue);
+    buffer.push_back(runState);
     appendU32(runLength);
 
     return buffer;
@@ -125,17 +151,19 @@ Chunk Chunk::DeserializeRLE(const std::vector<std::uint8_t>& buffer, ChunkCoordi
     std::size_t voxelIndex = 0;
     std::size_t cursor = 0;
 
-    while (cursor + 6 <= buffer.size() && voxelIndex < totalVoxels) {
+    while (cursor + 7 <= buffer.size() && voxelIndex < totalVoxels) {
         const std::uint16_t value = static_cast<std::uint16_t>(
             static_cast<std::uint16_t>(buffer[cursor]) | (static_cast<std::uint16_t>(buffer[cursor + 1]) << 8));
-        const std::uint32_t length = static_cast<std::uint32_t>(buffer[cursor + 2]) |
-                                      (static_cast<std::uint32_t>(buffer[cursor + 3]) << 8) |
-                                      (static_cast<std::uint32_t>(buffer[cursor + 4]) << 16) |
-                                      (static_cast<std::uint32_t>(buffer[cursor + 5]) << 24);
-        cursor += 6;
+        const std::uint8_t state = static_cast<std::uint8_t>(buffer[cursor + 2] & 0x03U);
+        const std::uint32_t length = static_cast<std::uint32_t>(buffer[cursor + 3]) |
+                          (static_cast<std::uint32_t>(buffer[cursor + 4]) << 8) |
+                          (static_cast<std::uint32_t>(buffer[cursor + 5]) << 16) |
+                          (static_cast<std::uint32_t>(buffer[cursor + 6]) << 24);
+        cursor += 7;
 
         for (std::uint32_t i = 0; i < length && voxelIndex < totalVoxels; ++i, ++voxelIndex) {
             chunk.m_blocks[voxelIndex] = value;
+            chunk.m_blockStates[voxelIndex] = state;
         }
     }
 

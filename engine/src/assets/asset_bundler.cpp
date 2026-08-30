@@ -61,7 +61,8 @@ namespace {
             if (!TextureLoader::LoadFromFile(texturePath)) { error = "block " + blockId + " references invalid texture " + texturePath.generic_string(); return false; }
         }
         if (!block["model_id"].is_null()) {
-            const std::filesystem::path modelPath = root / "models" / (block["model_id"].get<std::string>() + ".vmdl");
+            std::filesystem::path modelPath = root / block["model_id"].get<std::string>();
+            if (modelPath.extension() != ".vmdl") modelPath += ".vmdl";
             try {
                 const auto bytes = ReadFile(modelPath);
                 const VoxelModel model = VmdlCodec::Load(std::span<const std::byte>(bytes));
@@ -86,6 +87,7 @@ bool AssetBundler::Bundle(const std::filesystem::path& inputDirectory, const std
     for (const auto& entry : std::filesystem::recursive_directory_iterator(inputDirectory, filesystemError)) {
         if (filesystemError) { error = "could not enumerate bundle input"; return false; }
         if (!entry.is_regular_file()) continue;
+        if (entry.path().extension() == ".vpk") continue;
         const auto relativePath = std::filesystem::relative(entry.path(), inputDirectory, filesystemError).generic_string();
         if (filesystemError) { error = "could not determine content path"; return false; }
         const auto payload = ReadFile(entry.path());

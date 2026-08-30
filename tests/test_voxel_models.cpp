@@ -97,11 +97,23 @@ void WriteSampleModels() {
     const std::array<std::string, 8> names = {"stairs", "slab", "fence", "door", "torch", "chest", "pickaxe", "player"};
     for (std::size_t modelIndex = 0; modelIndex < names.size(); ++modelIndex) {
         voxels::VoxelModel model = MakeStairModel();
+        model.palette = {{214, 147, 79, 255, 1, 0, 0}, {94, 74, 48, 255, 2, 0, 0}};
         if (modelIndex != 0) {
             model.voxels.assign(model.GridVoxelCount(), 0);
-            const std::uint32_t height = modelIndex == 1 ? 8U : 16U;
-            for (std::uint32_t z = 4; z < 12; ++z) for (std::uint32_t x = 4; x < 12; ++x) for (std::uint32_t y = 0; y < height; ++y) {
-                model.voxels[x + 16U * (y + 16U * z)] = 1;
+            const auto fill = [&model](std::uint32_t minX, std::uint32_t maxX, std::uint32_t minY, std::uint32_t maxY,
+                                       std::uint32_t minZ, std::uint32_t maxZ, std::uint16_t palette) {
+                for (std::uint32_t z = minZ; z < maxZ; ++z) for (std::uint32_t y = minY; y < maxY; ++y) for (std::uint32_t x = minX; x < maxX; ++x) {
+                    model.voxels[x + 16U * (y + 16U * z)] = palette;
+                }
+            };
+            switch (modelIndex) {
+                case 1: fill(0, 16, 0, 8, 0, 16, 1); break;
+                case 2: fill(6, 10, 0, 16, 6, 10, 2); fill(2, 14, 6, 10, 6, 10, 1); break;
+                case 3: fill(2, 14, 0, 16, 6, 10, 2); break;
+                case 4: fill(7, 9, 0, 12, 7, 9, 1); fill(5, 11, 12, 14, 5, 11, 1); break;
+                case 5: fill(2, 14, 0, 10, 2, 14, 2); fill(3, 13, 10, 13, 3, 13, 1); break;
+                case 6: fill(7, 9, 0, 14, 7, 9, 2); fill(8, 16, 11, 14, 7, 9, 1); break;
+                default: fill(4, 12, 0, 16, 4, 12, 1); fill(2, 14, 12, 16, 2, 14, 2); break;
             }
             model.ComputeBounds();
         }
@@ -124,4 +136,20 @@ TEST_CASE("Vmdl sample assets are real codec payloads", "[vmdl][assets]") {
         REQUIRE_FALSE(bytes.empty());
         REQUIRE(voxels::VmdlCodec::Save(voxels::VmdlCodec::Load(bytes)) == bytes);
     }
+}
+
+TEST_CASE("Model block state rotates baked geometry", "[vmdl][render]") {
+    voxels::BlockRegistry registry;
+    registry.LoadFromJsonString(R"({"blocks":[{"id":"air","numeric_id":0,"solid":false,"opaque":false},{"id":"stairs","numeric_id":1,"solid":true,"opaque":true,"render_type":"model","model_id":"models/stairs.vmdl"}]})");
+    voxels::graphics::ModelRegistry models;
+    models.Register("models/stairs.vmdl", MakeStairModel());
+    voxels::TextureAtlas atlas = MakeAtlas(registry);
+    voxels::Chunk unrotated({0, 0, 0}, 1, 1, 1);
+    voxels::Chunk rotated({0, 0, 0}, 1, 1, 1);
+    unrotated.SetBlockAndState(0, 0, 0, 1, 0);
+    rotated.SetBlockAndState(0, 0, 0, 1, 1);
+    const auto originalMesh = voxels::graphics::BuildChunkMesh(unrotated, {}, registry, atlas, &models);
+    const auto rotatedMesh = voxels::graphics::BuildChunkMesh(rotated, {}, registry, atlas, &models);
+    REQUIRE(originalMesh.vertices.size() == rotatedMesh.vertices.size());
+    REQUIRE((originalMesh.vertices[0].x != rotatedMesh.vertices[0].x || originalMesh.vertices[0].z != rotatedMesh.vertices[0].z));
 }

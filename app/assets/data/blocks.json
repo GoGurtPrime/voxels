@@ -219,6 +219,38 @@
       "model_id": null,
       "sounds": { "break": "sfx/break_stone", "step": "sfx/step_stone", "place": "sfx/place_stone" },
       "drops": []
+    },
+    {
+      "id": "stairs",
+      "numeric_id": 14,
+      "display_name": "Wood Stairs",
+      "solid": true,
+      "opaque": true,
+      "liquid": false,
+      "hardness": 1.5,
+      "light_emission": 0,
+      "textures": { "all": "blocks/planks" },
+      "render_type": "model",
+      "model_id": "models/stairs.vmdl",
+      "collision_bounds": { "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 1.0] },
+      "sounds": { "break": "sfx/break_wood", "step": "sfx/step_wood", "place": "sfx/place_wood" },
+      "drops": [{ "item": "stairs", "count": 1 }]
+    },
+    {
+      "id": "slab",
+      "numeric_id": 15,
+      "display_name": "Wood Slab",
+      "solid": true,
+      "opaque": true,
+      "liquid": false,
+      "hardness": 1.5,
+      "light_emission": 0,
+      "textures": { "all": "blocks/planks" },
+      "render_type": "model",
+      "model_id": "models/slab.vmdl",
+      "collision_bounds": { "min": [0.0, 0.0, 0.0], "max": [1.0, 0.5, 1.0] },
+      "sounds": { "break": "sfx/break_wood", "step": "sfx/step_wood", "place": "sfx/place_wood" },
+      "drops": [{ "item": "slab", "count": 1 }]
     }
   ]
 }

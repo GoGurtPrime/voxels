@@ -108,6 +108,23 @@ TEST_CASE("Physics.HorizontalCollisionStopsAtWall", "[gameplay][physics]") {
     REQUIRE(player.state.velocity.x == Catch::Approx(0.0f).margin(0.05f));
 }
 
+TEST_CASE("Physics.ModelBoundsLandOnSlabHeight", "[gameplay][physics]") {
+    voxels::BlockRegistry registry;
+    registry.LoadFromJsonString(R"({"blocks":[
+      {"id":"air","numeric_id":0,"solid":false,"opaque":false},
+      {"id":"slab","numeric_id":1,"solid":true,"opaque":true,"render_type":"model","collision_bounds":{"min":[0,0,0],"max":[1,0.5,1]}}
+    ]})");
+    voxels::World world;
+    world.SetBlock({0, 0, 0}, 1);
+    voxels::Player player;
+    player.state.position = {0.5f, 3.0f, 0.5f};
+    for (int step = 0; step < 120; ++step) {
+        voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f, &registry);
+    }
+    REQUIRE(player.state.onGround);
+    REQUIRE(player.state.position.y == Catch::Approx(1.4f).margin(0.05f));
+}
+
 TEST_CASE("BlockInteraction.BreakAndPlace", "[gameplay][block_interaction]") {
     voxels::World world;
     world.SetBlock(voxels::Vec3I{3, 2, -1}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
