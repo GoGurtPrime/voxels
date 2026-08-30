@@ -32,6 +32,7 @@ add_library(voxels_engine
     src/core/paths.cpp
     src/audio/audio_engine.cpp
     src/assets/asset_manager.cpp
+    src/assets/asset_bundler.cpp
     src/assets/texture_loader.cpp
     src/assets/vmdl_codec.cpp
     src/networking/packet.cpp

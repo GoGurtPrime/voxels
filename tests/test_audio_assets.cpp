@@ -10,6 +10,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <filesystem>
 #include <string>
@@ -94,9 +95,12 @@ TEST_CASE("AssetManager.PackingAndUnpacking", "[assets]") {
     REQUIRE(loaded.has_value());
     REQUIRE(loaded->size() == entries.size());
 
-    for (std::size_t i = 0; i < entries.size(); ++i) {
-        REQUIRE((*loaded)[i].name == entries[i].name);
-        REQUIRE((*loaded)[i].data == entries[i].data);
+    for (const voxels::AssetArchiveEntry& expected : entries) {
+        const auto found = std::find_if(loaded->begin(), loaded->end(), [&expected](const auto& actual) {
+            return actual.name == expected.name;
+        });
+        REQUIRE(found != loaded->end());
+        REQUIRE(found->data == expected.data);
     }
 
     std::filesystem::remove(archivePath);

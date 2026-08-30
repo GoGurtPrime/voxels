@@ -10,6 +10,7 @@ add_executable(voxels_tests
     test_world.cpp
     test_world_gen.cpp
     test_audio_assets.cpp
+    test_asset_pipeline.cpp
     test_audio_runtime.cpp
     test_app_lifecycle.cpp
     test_networking.cpp

@@ -2,7 +2,7 @@
 
 /**
  * @file asset_manager.hpp
- * @brief Asynchronous asset loading, resource handles, and packed archive (.vpk) I/O.
+ * @brief Validated VPK archive access and cached asset resolution.
  *
  * @details Declares `AssetManager`, which loads raw asset payloads (textures, shaders, sounds,
  *          models, fonts) either from loose files on disk or from a mounted single-file `.vpk`
@@ -38,7 +38,9 @@ enum class AssetType {
     Shader,
     Sound,
     Model,
-    Font
+    Font,
+    Json,
+    Unknown
 };
 
 /// Opaque handle to an asset payload managed by `AssetManager`. `id == 0` is invalid/unset.
@@ -54,10 +56,47 @@ struct AssetHandle {
 struct AssetArchiveEntry {
     std::string name;
     std::vector<std::byte> data;
+    AssetType type = AssetType::Unknown;
 };
 
-/// Reads/writes the engine's packed single-file asset archive format ("VPK1"):
-/// `[magic:4][entryCount:u32] { [nameLen:u32][name][dataLen:u64][data] }*`.
+struct VpkBuildReport {
+    std::size_t entryCount = 0;
+    std::size_t uniqueBlobCount = 0;
+    std::uint64_t sourceBytes = 0;
+    std::uint64_t packedBytes = 0;
+    std::uint32_t contentHash = 0;
+};
+
+/// Owns an indexed VPK v1 archive. All offsets and checksums are validated before payload access.
+class VpkArchive {
+public:
+    static constexpr std::uint16_t kFormatVersion = 1;
+
+    [[nodiscard]] static bool Write(const std::filesystem::path& archivePath,
+                                    std::vector<AssetArchiveEntry> entries,
+                                    VpkBuildReport* report = nullptr,
+                                    std::string* error = nullptr);
+    [[nodiscard]] static std::optional<VpkArchive> Open(const std::filesystem::path& archivePath,
+                                                         std::string* error = nullptr);
+    [[nodiscard]] std::optional<std::vector<std::byte>> ReadEntry(const std::string& path,
+                                                                    std::string* error = nullptr) const;
+    [[nodiscard]] bool Contains(const std::string& path) const noexcept;
+    [[nodiscard]] std::vector<std::string> Paths() const;
+
+private:
+    struct Entry {
+        AssetType type = AssetType::Unknown;
+        std::uint64_t offset = 0;
+        std::uint64_t storedSize = 0;
+        std::uint64_t originalSize = 0;
+        std::uint32_t crc32 = 0;
+    };
+
+    std::vector<std::byte> m_bytes;
+    std::unordered_map<std::string, Entry> m_entries;
+};
+
+/// Compatibility facade retained for callers that only require whole-archive round trips.
 class AssetArchive {
 public:
     [[nodiscard]] static bool WriteArchive(const std::filesystem::path& archivePath,
@@ -101,6 +140,9 @@ public:
     /// before falling back to loose files on disk. Returns false if the archive can't be read.
     bool MountArchive(const std::filesystem::path& archivePath);
 
+    /// Mounts every VPK in `packsDirectory` in lexical order. Later packs override earlier packs.
+    [[nodiscard]] bool MountArchives(const std::filesystem::path& packsDirectory, std::string* error = nullptr);
+
     /// Kicks off an asynchronous load of `relativePath` and returns a future resolving to the
     /// handle once the payload (or its procedural fallback) is cached. Never fails/throws for
     /// missing assets; the fallback path is used instead.
@@ -118,6 +160,7 @@ private:
     mutable std::mutex m_mutex;
     std::uint32_t m_nextHandleId = 1;
     std::unordered_map<std::uint32_t, std::vector<std::byte>> m_loadedAssets;
+    std::unordered_map<std::string, AssetHandle> m_cachedHandles;
 };
 
 } // namespace voxels
