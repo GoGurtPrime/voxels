@@ -93,9 +93,8 @@ void InGameState::OnEnter() {
     if (m_registry != nullptr && m_atlas != nullptr) {
         if (m_chunkRenderer == nullptr) {
             m_chunkRenderer = std::make_unique<graphics::ChunkRenderer>(*m_registry, *m_atlas, *m_jobSystem);
-            m_chunkRenderer->SetUploadBudget(16, 4.0);
-            const std::size_t workerCount = m_jobSystem->WorkerCount();
-            m_chunkRenderer->SetBackgroundMeshQueueLimit(workerCount > 1 ? workerCount - 1 : 1);
+            m_chunkRenderer->SetUploadBudget(2, 1.0);
+            m_chunkRenderer->SetBackgroundMeshQueueLimit(1);
         }
         if (m_hudRenderer == nullptr) m_hudRenderer = std::make_unique<graphics::GameplayHudRenderer>();
     }
@@ -121,6 +120,10 @@ void InGameState::OnEnter() {
 
     if (m_chunkRenderer) {
         auto& world = m_session.GetWorld();
+        for (const auto& [coordinate, chunk] : world.GetChunks()) {
+            (void)chunk;
+            m_chunkRenderer->OnChunkArrived(coordinate, world);
+        }
         const int chunkSize = static_cast<int>(world.GetChunkSize());
         for (const Vec3I& position : m_session.GetEditedBlocks()) {
             (void)world.RebuildSkyLightAround(position);
@@ -233,6 +236,12 @@ void InGameState::Update(double deltaSeconds) {
 
     if (m_chunkRenderer) {
         auto& world = m_session.GetWorld();
+        for (const ChunkCoordinate& coordinate : m_session.ConsumeRemovedChunks()) {
+            m_chunkRenderer->OnChunkRemoved(coordinate, world);
+        }
+        for (const ChunkCoordinate& coordinate : m_session.ConsumeArrivedChunks()) {
+            m_chunkRenderer->OnChunkArrived(coordinate, world);
+        }
         const int chunkSize = static_cast<int>(world.GetChunkSize());
         for (const Vec3I& position : m_session.GetEditedBlocks()) {
             const ChunkCoordinate coordinate{static_cast<int>(std::floor(static_cast<float>(position.x) / chunkSize)),
@@ -244,13 +253,6 @@ void InGameState::Update(double deltaSeconds) {
             m_chunkRenderer->MarkBlockEdited(coordinate, local, world.GetChunkSize());
         }
         m_session.ClearEditedBlocks();
-        for (const auto& [coordinate, chunk] : world.GetChunks()) {
-            (void)chunk;
-            if (!m_chunkRenderer->HasMesh(coordinate) && !m_chunkRenderer->IsDirty(coordinate) &&
-                !m_chunkRenderer->IsInFlight(coordinate)) {
-                m_chunkRenderer->MarkChunkDirty(coordinate);
-            }
-        }
         m_chunkRenderer->EnqueueDirtyMeshJobs(world, m_session.GetCamera().position);
         m_chunkRenderer->UploadCompletedMeshes();
     }

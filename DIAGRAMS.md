@@ -198,7 +198,7 @@ flowchart TD
     DEC --> CHECK
     CHECK -- no --> ALPHA["alpha = accumulator / (1/60)"]
 
-    ALPHA --> STREAM["ChunkStreamer: enqueue generate/load and unload<br/>around player, rate limited"]
+    ALPHA --> STREAM["ChunkStreamer: nearest-ring generate/load to configured radius;<br/>2 jobs max, unload clean chunks beyond radius + 2"]
     STREAM --> MESHQ["Drain completed mesh jobs → upload<br/>capped N chunks per frame"]
     MESHQ --> RENDER["Render pass chain — see diagram 6"]
     RENDER --> UIP["UI frame: state screen or HUD + debug overlay"]

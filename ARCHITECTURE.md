@@ -157,6 +157,7 @@ Every state receives an `AppContext&` holding non-owning references to the servi
 
 ### 6.3 Generation
 - `GenerationPipeline` samples **Shape → Caves → Ore → Vegetation → Lighting** from global coordinates and phase-derived seed domains. Detached chunk values may be built by workers, but insertion into `World` occurs on the main thread, preserving the no-worker-`Chunk`-mutation rule.
+- The loading screen keeps control until a $5\times5$ spawn neighborhood has generated terrain sections $Y=0\ldots127$ plus air caps at $Y=128$. During play, nearest-ring generation expands toward the configured render distance with a queue limit of two jobs and integrates at most one completed terrain chunk per frame. Generated chunks are clean until edited, so clean chunks outside the render distance plus two columns are evicted with their GPU meshes; completed meshes held beyond the upload budget are retained for a later frame rather than regenerated.
 - `SpawnCalculator` finds the highest non-water solid surface within a search radius and returns a position where the player AABB is unobstructed.
 
 ### 6.4 Gameplay

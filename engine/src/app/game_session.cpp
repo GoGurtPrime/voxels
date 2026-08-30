@@ -49,6 +49,18 @@ void GameSession::SetBlockRegistry(const BlockRegistry* registry) noexcept {
     m_registry = registry;
 }
 
+std::vector<ChunkCoordinate> GameSession::ConsumeArrivedChunks() {
+    std::vector<ChunkCoordinate> arrived;
+    arrived.swap(m_arrivedChunks);
+    return arrived;
+}
+
+std::vector<ChunkCoordinate> GameSession::ConsumeRemovedChunks() {
+    std::vector<ChunkCoordinate> removed;
+    removed.swap(m_removedChunks);
+    return removed;
+}
+
 void GameSession::SetPlayerSpawn(const Vec3& spawn) {
     m_spawnPosition = spawn;
     m_spawnExplicitlySet = true;
@@ -84,11 +96,11 @@ void GameSession::Initialize() {
         WorldGenerator generator(m_worldOptions);
         for (int cz = -1; cz <= 1; ++cz) {
             for (int cx = -1; cx <= 1; ++cx) {
-                for (int cy = 0; cy < 5; ++cy) {
+                for (int cy = 0; cy < kTerrainSectionCount; ++cy) {
                     const ChunkCoordinate coord{cx, cy, cz};
                     m_world->GetOrCreateChunk(coord) = generator.GenerateChunk(coord);
                 }
-                m_world->GetOrCreateChunk({cx, 5, cz});
+                m_world->GetOrCreateChunk({cx, kTerrainSectionCount, cz});
             }
         }
     }
@@ -138,11 +150,14 @@ void GameSession::EnsureChunkResidentAroundPlayer() {
     ApplyCompletedChunkJobs();
     const int cx = static_cast<int>(std::floor(m_player.state.position.x / 16.0f));
     const int cz = static_cast<int>(std::floor(m_player.state.position.z / 16.0f));
-    const std::size_t maxQueued = m_jobSystem == nullptr ? 0 : std::max<std::size_t>(1, m_jobSystem->WorkerCount() * 2);
-    for (int z = -1; z <= 1; ++z) {
-        for (int x = -1; x <= 1; ++x) {
-            for (int y = 0; y < 5; ++y) {
-                const ChunkCoordinate coord{cx + x, y, cz + z};
+    const std::size_t maxQueued = m_jobSystem == nullptr ? 0 : kMaxQueuedGenerationJobs;
+    const int loadRadius = std::max(1, m_worldOptions.renderDistanceChunks);
+    for (int ring = 0; ring <= loadRadius && m_pendingChunkJobs.size() < maxQueued; ++ring) {
+        for (int z = -ring; z <= ring && m_pendingChunkJobs.size() < maxQueued; ++z) {
+            for (int x = -ring; x <= ring && m_pendingChunkJobs.size() < maxQueued; ++x) {
+                if (std::max(std::abs(x), std::abs(z)) != ring) continue;
+                for (int y = 0; y < kTerrainSectionCount && m_pendingChunkJobs.size() < maxQueued; ++y) {
+                    const ChunkCoordinate coord{cx + x, y, cz + z};
                 const bool queued = std::any_of(m_pendingChunkJobs.begin(), m_pendingChunkJobs.end(), [&coord](const PendingChunkJob& pending) {
                     return pending.coordinate == coord;
                 });
@@ -151,32 +166,39 @@ void GameSession::EnsureChunkResidentAroundPlayer() {
                     m_pendingChunkJobs.push_back({coord, m_jobSystem->EnqueueWithResult([options, coord] {
                         return WorldGenerator(options).GenerateChunk(coord);
                     })});
-                } else if (!m_world->HasChunk(coord) && m_jobSystem == nullptr) {
-                    m_world->GetOrCreateChunk(coord) = WorldGenerator(m_worldOptions).GenerateChunk(coord);
                 }
             }
-            const ChunkCoordinate capCoord{cx + x, 5, cz + z};
-            if (!m_world->HasChunk(capCoord)) {
-                m_world->GetOrCreateChunk(capCoord);
             }
         }
     }
+    (void)m_world->UnloadCleanChunksOutsideRadius({cx, 0, cz}, loadRadius + kStreamingHysteresisChunks,
+                                                   &m_removedChunks);
 }
 
 void GameSession::ApplyCompletedChunkJobs() {
     if (m_world == nullptr) return;
+    std::size_t applied = 0;
     auto pending = m_pendingChunkJobs.begin();
-    while (pending != m_pendingChunkJobs.end()) {
+    while (pending != m_pendingChunkJobs.end() && applied < kMaxCompletedChunksPerFrame) {
         if (pending->result.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
             ++pending;
             continue;
         }
         if (!m_world->HasChunk(pending->coordinate)) {
-            m_world->GetOrCreateChunk(pending->coordinate) = pending->result.get();
+            Chunk generatedChunk = pending->result.get();
+            generatedChunk.ClearDirty();
+            m_world->GetOrCreateChunk(pending->coordinate) = std::move(generatedChunk);
+            m_arrivedChunks.push_back(pending->coordinate);
+            if (pending->coordinate.y == kTerrainSectionCount - 1) {
+                const ChunkCoordinate cap{pending->coordinate.x, kTerrainSectionCount, pending->coordinate.z};
+                m_world->GetOrCreateChunk(cap);
+                m_arrivedChunks.push_back(cap);
+            }
         } else {
             pending->result.get();
         }
         pending = m_pendingChunkJobs.erase(pending);
+        ++applied;
     }
 }
 

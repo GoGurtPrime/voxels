@@ -72,6 +72,24 @@ bool World::HasChunk(const ChunkCoordinate& coordinate) const {
     return m_chunks.find(coordinate) != m_chunks.end();
 }
 
+std::size_t World::UnloadCleanChunksOutsideRadius(const ChunkCoordinate& center, int radius,
+                                                  std::vector<ChunkCoordinate>* unloaded) {
+    std::size_t unloadedCount = 0;
+    for (auto chunk = m_chunks.begin(); chunk != m_chunks.end();) {
+        const ChunkCoordinate& coordinate = chunk->first;
+        const bool outsideRadius = std::abs(coordinate.x - center.x) > radius ||
+                                   std::abs(coordinate.z - center.z) > radius;
+        if (outsideRadius && !chunk->second->IsDirty()) {
+            if (unloaded != nullptr) unloaded->push_back(coordinate);
+            chunk = m_chunks.erase(chunk);
+            ++unloadedCount;
+        } else {
+            ++chunk;
+        }
+    }
+    return unloadedCount;
+}
+
 ChunkData World::GetChunk(const ChunkCoordinate& coordinate) const {
     const auto it = m_chunks.find(coordinate);
     if (it == m_chunks.end()) {

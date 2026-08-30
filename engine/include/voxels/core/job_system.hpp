@@ -13,6 +13,7 @@
 #include <condition_variable>
 #include <functional>
 #include <future>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -62,7 +63,7 @@ private:
 class FrameAccumulator {
 public:
     void Accumulate(double deltaSeconds) noexcept;
-    int Resolve(double fixedStepSeconds) noexcept;
+    int Resolve(double fixedStepSeconds, int maxSteps = std::numeric_limits<int>::max()) noexcept;
     [[nodiscard]] double GetRemainder() const noexcept { return m_accumulator; }
 
 private:

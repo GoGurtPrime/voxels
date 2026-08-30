@@ -87,6 +87,7 @@ private:
 };
 
 constexpr double kFixedStepSeconds = 1.0 / 60.0;
+constexpr int kMaxSimulationStepsPerFrame = 4;
 constexpr char kSaveFormatDirectory[] = "v1";
 
 void RemoveUnversionedSaves() {
@@ -398,7 +399,7 @@ int main(int argc, char** argv) {
         lastTime = now;
         frameAccumulator.Accumulate(deltaSeconds);
 
-        const int simTicks = frameAccumulator.Resolve(kFixedStepSeconds);
+        const int simTicks = frameAccumulator.Resolve(kFixedStepSeconds, kMaxSimulationStepsPerFrame);
         for (int i = 0; i < simTicks; ++i) {
             localServer.Tick();
             localClient.Tick();

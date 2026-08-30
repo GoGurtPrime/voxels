@@ -196,68 +196,74 @@ void ChunkRenderer::MarkBlockEdited(const voxels::ChunkCoordinate& coordinate, c
     if (localEditPos.z == size - 1) MarkChunkDirtyForEdit({coordinate.x, coordinate.y, coordinate.z + 1});
 }
 
+void ChunkRenderer::OnChunkArrived(const voxels::ChunkCoordinate& coordinate, const voxels::World& world) {
+    static constexpr std::array<voxels::ChunkCoordinate, 6> kOffsets = {
+        voxels::ChunkCoordinate{1, 0, 0}, voxels::ChunkCoordinate{-1, 0, 0},
+        voxels::ChunkCoordinate{0, 1, 0}, voxels::ChunkCoordinate{0, -1, 0},
+        voxels::ChunkCoordinate{0, 0, 1}, voxels::ChunkCoordinate{0, 0, -1}};
+    m_knownResidentChunks.insert(coordinate);
+    MarkChunkDirty(coordinate);
+    for (const ChunkCoordinate& offset : kOffsets) {
+        const ChunkCoordinate neighbor{coordinate.x + offset.x, coordinate.y + offset.y, coordinate.z + offset.z};
+        if (world.HasChunk(neighbor)) MarkChunkDirty(neighbor);
+    }
+}
+
+void ChunkRenderer::OnChunkRemoved(const voxels::ChunkCoordinate& coordinate, const voxels::World& world) {
+    static constexpr std::array<voxels::ChunkCoordinate, 6> kOffsets = {
+        voxels::ChunkCoordinate{1, 0, 0}, voxels::ChunkCoordinate{-1, 0, 0},
+        voxels::ChunkCoordinate{0, 1, 0}, voxels::ChunkCoordinate{0, -1, 0},
+        voxels::ChunkCoordinate{0, 0, 1}, voxels::ChunkCoordinate{0, 0, -1}};
+    m_knownResidentChunks.erase(coordinate);
+    if (const auto mesh = m_meshes.find(coordinate); mesh != m_meshes.end()) {
+        ReleaseMesh(mesh->second);
+        m_meshes.erase(mesh);
+    }
+    m_dirty.erase(coordinate);
+    m_editPriority.erase(coordinate);
+    m_editRequestedAt.erase(coordinate);
+    for (const ChunkCoordinate& offset : kOffsets) {
+        const ChunkCoordinate neighbor{coordinate.x + offset.x, coordinate.y + offset.y, coordinate.z + offset.z};
+        if (world.HasChunk(neighbor)) MarkChunkDirty(neighbor);
+    }
+}
+
 void ChunkRenderer::EnqueueDirtyMeshJobs(const voxels::World& world, const glm::vec3& cameraPosition) {
     m_chunkSize = world.GetChunkSize();
-
     static constexpr std::array<voxels::ChunkCoordinate, 6> kOffsets = {
         voxels::ChunkCoordinate{1, 0, 0}, voxels::ChunkCoordinate{-1, 0, 0},
         voxels::ChunkCoordinate{0, 1, 0}, voxels::ChunkCoordinate{0, -1, 0},
         voxels::ChunkCoordinate{0, 0, 1}, voxels::ChunkCoordinate{0, 0, -1}};
     const auto& chunks = world.GetChunks();
-    std::vector<voxels::ChunkCoordinate> newlyResident;
-    for (const auto& [coordinate, chunk] : chunks) {
-        (void)chunk;
-        if (m_knownResidentChunks.insert(coordinate).second) {
-            newlyResident.push_back(coordinate);
+    if (m_knownResidentChunks.empty()) {
+        for (const auto& [coordinate, chunk] : chunks) {
+            (void)chunk;
+            OnChunkArrived(coordinate, world);
         }
     }
-    for (const auto& coordinate : newlyResident) {
-        MarkChunkDirty(coordinate);
-        for (const auto& offset : kOffsets) {
-            const voxels::ChunkCoordinate neighbor{coordinate.x + offset.x, coordinate.y + offset.y,
-                                                    coordinate.z + offset.z};
-            if (chunks.contains(neighbor)) {
-                MarkChunkDirty(neighbor);
+    while (true) {
+        if (m_backgroundInFlight.size() >= m_backgroundMeshQueueLimit && m_editPriority.empty()) {
+            break;
+        }
+        auto selected = m_dirty.end();
+        for (auto candidate = m_dirty.begin(); candidate != m_dirty.end(); ++candidate) {
+            if (!chunks.contains(*candidate) || m_inFlight.contains(*candidate)) continue;
+            if (selected == m_dirty.end() ||
+                (m_editPriority.contains(*candidate) && !m_editPriority.contains(*selected)) ||
+                (m_editPriority.contains(*candidate) == m_editPriority.contains(*selected) &&
+                 DistanceSq(ChunkOrigin(*candidate, m_chunkSize), cameraPosition) <
+                     DistanceSq(ChunkOrigin(*selected, m_chunkSize), cameraPosition))) {
+                selected = candidate;
             }
         }
-    }
-    std::vector<voxels::ChunkCoordinate> removedResidents;
-    for (auto it = m_knownResidentChunks.begin(); it != m_knownResidentChunks.end();) {
-        if (!chunks.contains(*it)) {
-            removedResidents.push_back(*it);
-            it = m_knownResidentChunks.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    for (const auto& coordinate : removedResidents) {
-        for (const auto& offset : kOffsets) {
-            const voxels::ChunkCoordinate neighbor{coordinate.x + offset.x, coordinate.y + offset.y,
-                                                    coordinate.z + offset.z};
-            if (chunks.contains(neighbor)) {
-                MarkChunkDirty(neighbor);
-            }
-        }
-    }
-
-    std::vector<voxels::ChunkCoordinate> candidates(m_dirty.begin(), m_dirty.end());
-    std::sort(candidates.begin(), candidates.end(), [&](const auto& a, const auto& b) {
-        const bool aIsEdit = m_editPriority.contains(a);
-        const bool bIsEdit = m_editPriority.contains(b);
-        if (aIsEdit != bIsEdit) {
-            return aIsEdit;
-        }
-        return DistanceSq(ChunkOrigin(a, m_chunkSize), cameraPosition) <
-               DistanceSq(ChunkOrigin(b, m_chunkSize), cameraPosition);
-    });
-
-    for (const auto& coordinate : candidates) {
+        if (selected == m_dirty.end()) break;
+        const voxels::ChunkCoordinate coordinate = *selected;
         if (m_inFlight.contains(coordinate)) {
             continue;
         }
         const bool isEditPriority = m_editPriority.contains(coordinate);
         if (!isEditPriority && m_backgroundInFlight.size() >= m_backgroundMeshQueueLimit) {
-            continue;
+            break;
         }
         const auto ownerIt = chunks.find(coordinate);
         if (ownerIt == chunks.end()) {
@@ -408,11 +414,17 @@ void ChunkRenderer::UploadCompletedMeshes() {
         std::lock_guard<std::mutex> lock(m_completedMutex);
         batch.swap(m_completed);
     }
+    batch.insert(batch.end(), std::make_move_iterator(m_deferredUploads.begin()), std::make_move_iterator(m_deferredUploads.end()));
+    m_deferredUploads.clear();
 
     std::uint32_t uploaded = 0;
     for (std::size_t i = 0; i < batch.size(); ++i) {
         m_inFlight.erase(batch[i].coordinate);
         m_backgroundInFlight.erase(batch[i].coordinate);
+
+        if (!m_knownResidentChunks.contains(batch[i].coordinate)) {
+            continue;
+        }
 
         if (batch[i].revision != m_revisions[batch[i].coordinate]) {
             // A block edit happened while this job ran; preserve its dirty state and discard stale geometry.
@@ -426,10 +438,7 @@ void ChunkRenderer::UploadCompletedMeshes() {
         const bool overBudget = !isEditPriority &&
                     (uploaded >= m_uploadBudgetChunksPerFrame || elapsedMs >= m_uploadBudgetMilliseconds);
         if (overBudget) {
-            // Skipped this frame due to budget: its mesh data is discarded rather than cached,
-            // and the coordinate goes back on the dirty queue to be re-meshed next pass (keeps
-            // this simple and bounded - see Known Gaps in the work item 05 completion report).
-            m_dirty.insert(batch[i].coordinate);
+            m_deferredUploads.push_back(std::move(batch[i]));
             continue;
         }
 
@@ -452,7 +461,7 @@ void ChunkRenderer::UploadCompletedMeshes() {
     m_metrics.lastUploadMilliseconds =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     m_metrics.meshedChunks = m_meshes.size();
-    m_metrics.meshQueueDepth = m_dirty.size() + m_inFlight.size();
+    m_metrics.meshQueueDepth = m_dirty.size() + m_inFlight.size() + m_deferredUploads.size();
 }
 
 void ChunkRenderer::Render(const voxels::Camera& camera) {

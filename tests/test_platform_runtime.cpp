@@ -66,6 +66,14 @@ TEST_CASE("FrameLoop.LargeDeltaIsClamped", "[platform][runtime]") {
     REQUIRE(accumulator.GetRemainder() >= 0.0);
 }
 
+TEST_CASE("FrameLoop.CatchUpBudgetDropsStaleSimulationTime", "[platform][runtime]") {
+    voxels::FrameAccumulator accumulator;
+    accumulator.Accumulate(0.25);
+
+    REQUIRE(accumulator.Resolve(1.0 / 60.0, 4) == 4);
+    REQUIRE(accumulator.GetRemainder() < 1.0 / 60.0);
+}
+
 TEST_CASE("Platform.EventDispatchOrderRespectsListenerPriority", "[platform][runtime]") {
     voxels::HeadlessPlatform platform;
     REQUIRE(platform.Initialize({"Priority", 800, 600, false, true}));

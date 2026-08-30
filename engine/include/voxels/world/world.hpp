@@ -61,6 +61,9 @@ public:
     /// Returns the chunk at the given coordinate, creating and loading it (all-air) if absent.
     Chunk& GetOrCreateChunk(const ChunkCoordinate& coordinate);
     [[nodiscard]] bool HasChunk(const ChunkCoordinate& coordinate) const;
+    /// Evicts clean chunk columns outside the horizontal streaming radius and returns their count.
+    [[nodiscard]] std::size_t UnloadCleanChunksOutsideRadius(const ChunkCoordinate& center, int radius,
+                                                               std::vector<ChunkCoordinate>* unloaded = nullptr);
     [[nodiscard]] std::size_t LoadedChunkCount() const noexcept { return m_chunks.size(); }
     [[nodiscard]] std::uint32_t GetChunkSize() const noexcept { return m_chunkSize; }
     [[nodiscard]] const std::unordered_map<ChunkCoordinate, std::shared_ptr<Chunk>, ChunkCoordinateHash>&

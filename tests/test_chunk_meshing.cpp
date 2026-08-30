@@ -332,7 +332,12 @@ TEST_CASE("ChunkRenderer.UploadBudgetIsRespected", "[render][chunkrenderer]") {
 
     renderer.UploadCompletedMeshes();
     REQUIRE(renderer.GetResidentMeshCount() == static_cast<std::size_t>(kBudget));
-    REQUIRE(renderer.GetDirtyCount() == 100 - kBudget);
+    REQUIRE(renderer.GetDirtyCount() == 0);
+    REQUIRE(renderer.GetMetrics().meshQueueDepth == 100 - kBudget);
+
+    renderer.UploadCompletedMeshes();
+    REQUIRE(renderer.GetResidentMeshCount() == static_cast<std::size_t>(kBudget * 2));
+    REQUIRE(renderer.GetDirtyCount() == 0);
 }
 
 TEST_CASE("ChunkRenderer.EditMeshesBypassTheBackgroundUploadBudget", "[render][chunkrenderer][edit]") {

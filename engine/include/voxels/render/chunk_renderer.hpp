@@ -68,8 +68,11 @@ public:
     void MarkBlockEdited(const voxels::ChunkCoordinate& coordinate, const voxels::Vec3I& localEditPos,
                          std::uint32_t chunkSize);
 
-    /// Enqueues an async mesh job (via `JobSystem`) for every dirty chunk resident in `world`,
-    /// nearest to `cameraPosition` first.
+    /// Registers a chunk arrival or removal and invalidates only the affected chunk boundaries.
+    void OnChunkArrived(const voxels::ChunkCoordinate& coordinate, const voxels::World& world);
+    void OnChunkRemoved(const voxels::ChunkCoordinate& coordinate, const voxels::World& world);
+
+    /// Enqueues bounded async mesh work for dirty resident chunks nearest to `cameraPosition`.
     void EnqueueDirtyMeshJobs(const voxels::World& world, const glm::vec3& cameraPosition);
 
     /// Drains completed mesh jobs and uploads them to the GPU, respecting the upload budget.
@@ -146,6 +149,7 @@ private:
 
     std::mutex m_completedMutex;
     std::vector<PendingMeshResult> m_completed;
+    std::vector<PendingMeshResult> m_deferredUploads;
 
     std::uint32_t m_chunkSize = 16;
     std::uint32_t m_uploadBudgetChunksPerFrame = 4;

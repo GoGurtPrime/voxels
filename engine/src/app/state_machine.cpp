@@ -145,10 +145,15 @@ void LoadingScreenState::RunGeneration() {
     m_world = std::make_unique<World>();
     m_world->Initialize(m_options);
     m_generationQueue.clear();
-    for (int z = -1; z <= 1; ++z) {
-        for (int x = -1; x <= 1; ++x) {
-            for (int y = 0; y < 5; ++y) m_generationQueue.push_back({x, y, z});
-            m_generationQueue.push_back({x, 5, z});
+    constexpr int kInitialLoadRadius = 2;
+    constexpr int kTerrainSectionCount = 8;
+    const int initialLoadRadius = std::min(kInitialLoadRadius, std::max(1, m_options.renderDistanceChunks));
+    for (int ring = 0; ring <= initialLoadRadius; ++ring) {
+        for (int z = -ring; z <= ring; ++z) {
+            for (int x = -ring; x <= ring; ++x) {
+                if (std::max(std::abs(x), std::abs(z)) != ring) continue;
+                for (int y = 0; y < kTerrainSectionCount; ++y) m_generationQueue.push_back({x, y, z});
+            }
         }
     }
     m_generatedChunks = 0;
@@ -158,9 +163,9 @@ void LoadingScreenState::RunGeneration() {
         m_generationResults.reserve(m_generationQueue.size());
         for (const ChunkCoordinate coordinate : m_generationQueue) {
             const WorldOptions options = m_options;
-            m_generationResults.push_back(m_generationJobs->EnqueueWithResult([options, coordinate] {
-                return WorldGenerator(options).GenerateChunk(coordinate);
-            }));
+            m_generationResults.push_back({coordinate, m_generationJobs->EnqueueWithResult([options, coordinate] {
+                                              return WorldGenerator(options).GenerateChunk(coordinate);
+                                          })});
         }
     }
     m_phase = GenerationPhase::Shape;

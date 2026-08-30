@@ -1,7 +1,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <filesystem>
+#include <thread>
 
 #include "voxels/app/save_manager.hpp"
 #include "voxels/app/state_machine.hpp"
@@ -36,13 +38,13 @@ TEST_CASE("MVP.LoadingScreenGeneratesPlayableWorld", "[mvp]") {
 
     REQUIRE(loading.GetPhase() == voxels::GenerationPhase::Shape);
     REQUIRE(loading.GetWorld().LoadedChunkCount() == 0);
-    for (int index = 0; index < 54; ++index) loading.Update(0.0);
-    REQUIRE(loading.GetWorld().LoadedChunkCount() == 54);
+    for (int index = 0; index < 200; ++index) loading.Update(0.0);
+    REQUIRE(loading.GetWorld().LoadedChunkCount() == 225);
     loading.Update(0.0);
     REQUIRE(loading.GetPhase() == voxels::GenerationPhase::Complete);
     REQUIRE(loading.GetProgress() == Catch::Approx(1.0f).margin(0.001f));
-    REQUIRE(loading.GetWorld().HasChunk({-1, 0, -1}));
-    REQUIRE(loading.GetWorld().HasChunk({1, 5, 1}));
+    REQUIRE(loading.GetWorld().HasChunk({-2, 0, -2}));
+    REQUIRE(loading.GetWorld().HasChunk({2, 8, 2}));
 
     const auto spawn = loading.GetSpawnPosition();
     REQUIRE(spawn.y > 0);
@@ -55,6 +57,26 @@ TEST_CASE("MVP.LoadingScreenGeneratesPlayableWorld", "[mvp]") {
     REQUIRE(player.state.position.y >= 0.0f);
 
     std::filesystem::remove_all(root);
+}
+
+TEST_CASE("MVP.AsyncLoadingIntegratesAtMostTwoChunksPerFrame", "[mvp][generation][performance]") {
+    voxels::AppContext context{};
+    voxels::LoadingScreenState loading(&context);
+    loading.SetWorldOptions({.seed = 4815162342u});
+    loading.RunGeneration();
+
+    std::size_t previousChunkCount = 0;
+    for (int frame = 0; frame < 600 && loading.GetPhase() != voxels::GenerationPhase::Complete; ++frame) {
+        loading.Update(0.0);
+        const std::size_t chunkCount = loading.GetWorld().LoadedChunkCount();
+        REQUIRE(chunkCount - previousChunkCount <= 4);
+        previousChunkCount = chunkCount;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    REQUIRE(loading.GetPhase() == voxels::GenerationPhase::Complete);
+    REQUIRE(loading.GetWorld().LoadedChunkCount() == 225);
+    loading.OnExit();
 }
 
 TEST_CASE("MVP.LocalServerAcceptsSecondClient", "[mvp]") {

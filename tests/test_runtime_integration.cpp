@@ -76,7 +76,7 @@ TEST_CASE("GameLoop.RunsBoundedTicksHeadless", "[runtime][loop]") {
     platform.Shutdown();
 }
 
-TEST_CASE("ChunkStreaming.LoadsAroundPlayerAndUnloadsFar", "[runtime][streaming]") {
+TEST_CASE("ChunkStreaming.UnloadsOnlyCleanChunksBeyondHysteresis", "[runtime][streaming]") {
     voxels::World world(16);
     world.Initialize({.seed = 1u, .renderDistanceChunks = 2, .simulationDistanceChunks = 1});
 
@@ -99,4 +99,11 @@ TEST_CASE("ChunkStreaming.LoadsAroundPlayerAndUnloadsFar", "[runtime][streaming]
     world.GetOrCreateChunk(farChunk);
     REQUIRE(world.HasChunk(farChunk));
     REQUIRE(world.LoadedChunkCount() >= 3);
+
+    REQUIRE(world.UnloadCleanChunksOutsideRadius(chunkAtOrigin, 2) == 1);
+    REQUIRE_FALSE(world.HasChunk(farChunk));
+
+    world.GetOrCreateChunk(farChunk).SetBlock(0, 0, 0, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+    REQUIRE(world.UnloadCleanChunksOutsideRadius(chunkAtOrigin, 2) == 0);
+    REQUIRE(world.HasChunk(farChunk));
 }

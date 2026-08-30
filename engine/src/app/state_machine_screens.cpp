@@ -265,18 +265,26 @@ void LoadingScreenState::Update(double) {
         if (m_generationResults.empty()) {
             const ChunkCoordinate coordinate = m_generationQueue[m_generatedChunks];
             m_world->GetOrCreateChunk(coordinate) = WorldGenerator(m_options).GenerateChunk(coordinate);
+            if (coordinate.y == 7) m_world->GetOrCreateChunk({coordinate.x, 8, coordinate.z});
             ++m_generatedChunks;
         } else {
-            bool applied = false;
-            for (std::size_t index = 0; index < m_generationResults.size(); ++index) {
-                auto& result = m_generationResults[index];
-                if (!result.valid() || result.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
-                const ChunkCoordinate coordinate = m_generationQueue[index];
-                m_world->GetOrCreateChunk(coordinate) = result.get();
+            constexpr std::size_t kMaxChunksIntegratedPerFrame = 2;
+            std::size_t applied = 0;
+            auto result = m_generationResults.begin();
+            while (result != m_generationResults.end() && applied < kMaxChunksIntegratedPerFrame) {
+                if (result->result.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+                    ++result;
+                    continue;
+                }
+                m_world->GetOrCreateChunk(result->coordinate) = result->result.get();
+                if (result->coordinate.y == 7) {
+                    m_world->GetOrCreateChunk({result->coordinate.x, 8, result->coordinate.z});
+                }
                 ++m_generatedChunks;
-                applied = true;
+                ++applied;
+                result = m_generationResults.erase(result);
             }
-            if (!applied) return;
+            if (applied == 0) return;
         }
         const float fraction = static_cast<float>(m_generatedChunks) / static_cast<float>(m_generationQueue.size());
         m_phase = fraction < 0.33f ? GenerationPhase::Shape : fraction < 0.66f ? GenerationPhase::Caves : GenerationPhase::Vegetation;

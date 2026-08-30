@@ -160,6 +160,11 @@ public:
     [[nodiscard]] float GetProgress() const noexcept;
 
 private:
+    struct PendingGenerationJob {
+        ChunkCoordinate coordinate{};
+        std::future<Chunk> result;
+    };
+
     ISaveManager* m_saveManager = nullptr;
     std::string m_saveName;
     WorldOptions m_options{};
@@ -169,7 +174,7 @@ private:
     bool m_generationComplete = false;
     std::vector<ChunkCoordinate> m_generationQueue;
     std::unique_ptr<JobSystem> m_generationJobs;
-    std::vector<std::future<Chunk>> m_generationResults;
+    std::vector<PendingGenerationJob> m_generationResults;
     std::size_t m_generatedChunks = 0;
 };
 

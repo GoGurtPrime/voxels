@@ -61,11 +61,18 @@ public:
     void ClearParticleBursts() noexcept { m_particleBursts.clear(); }
     [[nodiscard]] const std::string& GetSelectedItemLabel() const noexcept { return m_selectedItemLabel; }
     [[nodiscard]] float GetSelectedItemLabelAge() const noexcept { return m_selectedItemLabelAge; }
+    [[nodiscard]] std::vector<ChunkCoordinate> ConsumeArrivedChunks();
+    [[nodiscard]] std::vector<ChunkCoordinate> ConsumeRemovedChunks();
     void SetPreferences(const GamePreferences& preferences) noexcept { m_preferences = preferences; }
 
 private:
     void EnsureChunkResidentAroundPlayer();
     void ApplyCompletedChunkJobs();
+
+    static constexpr std::size_t kMaxQueuedGenerationJobs = 2;
+    static constexpr std::size_t kMaxCompletedChunksPerFrame = 1;
+    static constexpr int kTerrainSectionCount = 8;
+    static constexpr int kStreamingHysteresisChunks = 2;
 
     struct PendingChunkJob {
         ChunkCoordinate coordinate{};
@@ -101,6 +108,8 @@ private:
     std::string m_selectedItemLabel;
     float m_selectedItemLabelAge = 0.0f;
     std::vector<PendingChunkJob> m_pendingChunkJobs;
+    std::vector<ChunkCoordinate> m_arrivedChunks;
+    std::vector<ChunkCoordinate> m_removedChunks;
 };
 
 } // namespace voxels

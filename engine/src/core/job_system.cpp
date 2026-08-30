@@ -83,12 +83,15 @@ void FrameAccumulator::Accumulate(double deltaSeconds) noexcept {
     m_accumulator += clamped;
 }
 
-int FrameAccumulator::Resolve(double fixedStepSeconds) noexcept {
-    if (fixedStepSeconds <= 0.0) {
+int FrameAccumulator::Resolve(double fixedStepSeconds, int maxSteps) noexcept {
+    if (fixedStepSeconds <= 0.0 || maxSteps <= 0) {
         return 0;
     }
-    const int steps = static_cast<int>(m_accumulator / fixedStepSeconds);
+    const int steps = std::min(static_cast<int>(m_accumulator / fixedStepSeconds), maxSteps);
     m_accumulator -= static_cast<double>(steps) * fixedStepSeconds;
+    if (steps == maxSteps && m_accumulator >= fixedStepSeconds) {
+        m_accumulator = std::fmod(m_accumulator, fixedStepSeconds);
+    }
     return steps;
 }
 
