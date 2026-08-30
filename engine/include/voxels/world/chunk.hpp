@@ -88,6 +88,8 @@ public:
     [[nodiscard]] std::uint32_t GetWidth() const noexcept { return m_width; }
     [[nodiscard]] std::uint32_t GetHeight() const noexcept { return m_height; }
     [[nodiscard]] std::uint32_t GetDepth() const noexcept { return m_depth; }
+    [[nodiscard]] bool IsDirty() const noexcept { return m_dirty; }
+    void ClearDirty() noexcept { m_dirty = false; }
 
     /// Compresses the block array with run-length encoding into a compact byte buffer.
     [[nodiscard]] std::vector<std::uint8_t> SerializeRLE() const;
@@ -112,6 +114,7 @@ private:
     std::vector<BlockId> m_blocks;
     std::vector<std::uint8_t> m_blockLight;
     std::vector<std::uint8_t> m_skyLight;
+    bool m_dirty = false;
 };
 
 } // namespace voxels

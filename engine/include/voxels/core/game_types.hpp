@@ -73,8 +73,22 @@ struct GameSave {
     std::string saveName;
     std::string worldName;
     std::string playerName;
+    std::string createdUtc;
     std::string lastPlayedAt;
     WorldSeed seed = 0;
+    std::uint32_t schemaVersion = 1;
+    std::uint64_t playTimeSeconds = 0;
+    float spawnX = 0.0f;
+    float spawnY = 0.0f;
+    float spawnZ = 0.0f;
+    std::uint32_t generatorVersion = 1;
+    std::string engineVersion = "0.1.0";
+    bool peaceful = false;
+    bool permadeath = false;
+    bool alwaysSunny = true;
+    bool sandboxMode = false;
+    int renderDistanceChunks = 8;
+    int simulationDistanceChunks = 4;
     bool publicVisibility = true;
 };
 

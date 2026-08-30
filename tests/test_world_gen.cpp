@@ -9,6 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "voxels/world/generation_pipeline.hpp"
+#include "voxels/world/spawn_calculator.hpp"
 #include "voxels/world/world.hpp"
 
 TEST_CASE("WorldGen.Determinism", "[world][generation]") {
@@ -126,6 +127,20 @@ TEST_CASE("WorldGen.SafeSpawnFinding", "[world][generation]") {
     REQUIRE(chunk.GetBlock(spawn.x, spawn.y, spawn.z) == static_cast<voxels::BlockId>(voxels::BlockType::Air));
     REQUIRE(chunk.GetBlock(spawn.x, spawn.y - 1, spawn.z) != static_cast<voxels::BlockId>(voxels::BlockType::Air));
     REQUIRE(chunk.GetBlock(spawn.x, spawn.y - 1, spawn.z) != static_cast<voxels::BlockId>(voxels::BlockType::Water));
+}
+
+TEST_CASE("WorldGen.SpawnIsDeterministicAndUsesChunkOrigin", "[world][generation]") {
+    voxels::WorldGenerator generator({.seed = 981723u});
+    const voxels::Chunk first = generator.GenerateChunk({3, 1, -2});
+    const voxels::Chunk second = generator.GenerateChunk({3, 1, -2});
+
+    const voxels::Vec3I spawnA = voxels::FindSafeSpawn(first, 48, -32);
+    const voxels::Vec3I spawnB = voxels::FindSafeSpawn(second, 48, -32);
+    REQUIRE(spawnA == spawnB);
+    REQUIRE(spawnA.x >= 48);
+    REQUIRE(spawnA.x < 64);
+    REQUIRE(spawnA.z >= -32);
+    REQUIRE(spawnA.z < -16);
 }
 
 TEST_CASE("WorldGen.InitialPlayableCapIsNotFlooded", "[world][generation][water]") {

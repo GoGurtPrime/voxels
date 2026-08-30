@@ -22,6 +22,7 @@ add_executable(voxels_tests
     test_chunk_meshing.cpp
     test_block_catalogue.cpp
     test_ui_framework.cpp
+    test_persistence.cpp
 )
 
 target_link_libraries(voxels_tests

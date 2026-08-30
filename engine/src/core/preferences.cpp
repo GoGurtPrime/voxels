@@ -15,6 +15,12 @@
 #include <sstream>
 #include <stdexcept>
 
+#include <nlohmann/json.hpp>
+
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 namespace voxels {
 
 namespace {
@@ -354,12 +360,31 @@ void PreferencesManager::Save(const GamePreferences& preferences) {
     if (m_configPath.has_parent_path()) {
         std::filesystem::create_directories(m_configPath.parent_path());
     }
-    std::ofstream file(m_configPath, std::ios::out | std::ios::trunc);
+    nlohmann::json preserved = nlohmann::json::object();
+    if (std::ifstream existing(m_configPath); existing.is_open()) {
+        try { existing >> preserved; } catch (const nlohmann::json::parse_error&) { preserved = nlohmann::json::object(); }
+    }
+    const nlohmann::json current = nlohmann::json::parse(ToJson(constrained));
+    for (const auto& [key, value] : current.items()) preserved[key] = value;
+    const std::filesystem::path temporary = m_configPath.string() + ".tmp";
+    std::ofstream file(temporary, std::ios::out | std::ios::trunc);
     if (!file.is_open()) {
         throw std::runtime_error("Failed to open preferences file for writing: " +
-                                  m_configPath.string());
+                                  temporary.string());
     }
-    file << ToJson(constrained);
+    file << preserved.dump(2) << '\n';
+    file.flush();
+    if (!file) throw std::runtime_error("Failed to write preferences file: " + temporary.string());
+    file.close();
+    std::error_code error;
+#if defined(_WIN32)
+    if (!MoveFileExW(temporary.c_str(), m_configPath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        throw std::runtime_error("Failed to replace preferences file: " + m_configPath.string());
+    }
+#else
+    std::filesystem::rename(temporary, m_configPath, error);
+    if (error) throw std::runtime_error("Failed to replace preferences file: " + m_configPath.string());
+#endif
 }
 
 } // namespace voxels

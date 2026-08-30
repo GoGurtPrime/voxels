@@ -109,7 +109,7 @@ TEST_CASE("SaveManager.CreateAndListSaves", "[app][save]") {
 
     REQUIRE(manager.Save(save));
     REQUIRE(std::filesystem::exists(root / "TestWorld"));
-    REQUIRE(std::filesystem::exists(root / "TestWorld" / "save.meta"));
+    REQUIRE(std::filesystem::exists(root / "TestWorld" / "level.json"));
 
     const std::vector<voxels::SaveSlot> slots = manager.ListSaves();
     REQUIRE(slots.size() == 1);

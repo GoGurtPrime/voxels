@@ -34,6 +34,8 @@ public:
     bool LoadPlayerState(const std::string& saveName,
                          const std::string& playerId,
                          PlayerState& outState) const;
+    bool SaveWorldState(const std::string& saveName, const World& world) const;
+    bool LoadWorldState(const std::string& saveName, World& world) const;
     [[nodiscard]] std::filesystem::path GetSaveDirectory(const std::string& saveName) const;
 
     [[nodiscard]] static std::string ToMetaText(const GameSave& save);

@@ -5,9 +5,6 @@
 namespace voxels {
 
 Vec3I FindSafeSpawn(const Chunk& chunk, int chunkOriginX, int chunkOriginZ) {
-    (void)chunkOriginX;
-    (void)chunkOriginZ;
-
     const int width = static_cast<int>(chunk.GetWidth());
     const int depth = static_cast<int>(chunk.GetDepth());
     const int height = static_cast<int>(chunk.GetHeight());
@@ -50,7 +47,7 @@ Vec3I FindSafeSpawn(const Chunk& chunk, int chunkOriginX, int chunkOriginZ) {
         return Vec3I{0, 1, 0};
     }
 
-    return Vec3I{bestX, bestY, bestZ};
+    return Vec3I{chunkOriginX + bestX, bestY, chunkOriginZ + bestZ};
 }
 
 } // namespace voxels

@@ -12,10 +12,47 @@
 #include <fstream>
 #include <sstream>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 namespace voxels {
 
 namespace {
-constexpr const char* kMetaFileName = "save.meta";
+constexpr const char* kMetaFileName = "level.json";
+
+bool IsSafeFolderName(const std::string& name) {
+    return !name.empty() && name != "." && name != ".." && name.find_first_of("\\/:*?\"<>|") == std::string::npos;
+}
+
+bool AtomicWriteText(const std::filesystem::path& target, const std::string& text) {
+    const std::filesystem::path temporary = target.string() + ".tmp";
+    std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+    if (!output.is_open()) return false;
+    output << text;
+    output.flush();
+    if (!output) return false;
+    output.close();
+#if defined(_WIN32)
+    return MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+    std::error_code error;
+    std::filesystem::rename(temporary, target, error);
+    return !error;
+#endif
+}
+
+std::string JsonString(const std::string& value) { return "\"" + value + "\""; }
+
+std::string ReadValue(const std::string& text, const std::string& key) {
+    const std::string marker = "\"" + key + "\":";
+    const std::size_t begin = text.find(marker);
+    if (begin == std::string::npos) return {};
+    std::size_t cursor = begin + marker.size();
+    while (cursor < text.size() && (text[cursor] == ' ' || text[cursor] == '\"')) ++cursor;
+    const std::size_t end = text.find_first_of(",}\n\"", cursor);
+    return end == std::string::npos ? text.substr(cursor) : text.substr(cursor, end - cursor);
+}
 } // namespace
 
 SaveManager::SaveManager(std::filesystem::path saveRootPath) : m_saveRoot(std::move(saveRootPath)) {
@@ -24,43 +61,44 @@ SaveManager::SaveManager(std::filesystem::path saveRootPath) : m_saveRoot(std::m
 }
 
 std::filesystem::path SaveManager::GetSaveDirectory(const std::string& saveName) const {
-    return m_saveRoot / saveName;
+    return IsSafeFolderName(saveName) ? m_saveRoot / saveName : std::filesystem::path{};
 }
 
 std::string SaveManager::ToMetaText(const GameSave& save) {
     std::ostringstream out;
-    out << "saveName=" << save.saveName << '\n';
-    out << "worldName=" << save.worldName << '\n';
-    out << "playerName=" << save.playerName << '\n';
-    out << "lastPlayedAt=" << save.lastPlayedAt << '\n';
-    out << "seed=" << save.seed << '\n';
-    out << "publicVisibility=" << (save.publicVisibility ? 1 : 0) << '\n';
+    out << "{\n";
+    out << "\"schemaVersion\":" << save.schemaVersion << ",\n";
+    out << "\"displayName\":" << JsonString(save.worldName) << ",\n";
+    out << "\"saveName\":" << JsonString(save.saveName) << ",\n";
+    out << "\"playerName\":" << JsonString(save.playerName) << ",\n";
+    out << "\"seed\":" << save.seed << ",\n";
+    out << "\"createdUtc\":" << JsonString(save.createdUtc) << ",\n";
+    out << "\"lastPlayedUtc\":" << JsonString(save.lastPlayedAt) << ",\n";
+    out << "\"playTimeSeconds\":" << save.playTimeSeconds << ",\n";
+    out << "\"spawnX\":" << save.spawnX << ",\"spawnY\":" << save.spawnY << ",\"spawnZ\":" << save.spawnZ << ",\n";
+    out << "\"generatorVersion\":" << save.generatorVersion << ",\"engineVersion\":" << JsonString(save.engineVersion) << ",\n";
+    out << "\"peaceful\":" << save.peaceful << ",\"permadeath\":" << save.permadeath << ",\"alwaysSunny\":" << save.alwaysSunny << ",\"sandboxMode\":" << save.sandboxMode << ",\n";
+    out << "\"renderDistanceChunks\":" << save.renderDistanceChunks << ",\"simulationDistanceChunks\":" << save.simulationDistanceChunks << ",\"publicVisibility\":" << save.publicVisibility << "\n}";
     return out.str();
 }
 
 GameSave SaveManager::FromMetaText(const std::string& text) {
     GameSave save{};
-    std::istringstream in(text);
-    std::string line;
-    while (std::getline(in, line)) {
-        const auto eq = line.find('=');
-        if (eq == std::string::npos) {
-            continue;
-        }
-        const std::string key = line.substr(0, eq);
-        const std::string value = line.substr(eq + 1);
-        if (key == "saveName") save.saveName = value;
-        else if (key == "worldName") save.worldName = value;
-        else if (key == "playerName") save.playerName = value;
-        else if (key == "lastPlayedAt") save.lastPlayedAt = value;
-        else if (key == "seed") save.seed = static_cast<WorldSeed>(std::stoul(value));
-        else if (key == "publicVisibility") save.publicVisibility = (value == "1");
-    }
+    try {
+        save.schemaVersion = static_cast<std::uint32_t>(std::stoul(ReadValue(text, "schemaVersion")));
+        if (save.schemaVersion > 1) return {};
+        save.saveName = ReadValue(text, "saveName"); save.worldName = ReadValue(text, "displayName"); save.playerName = ReadValue(text, "playerName");
+        save.createdUtc = ReadValue(text, "createdUtc"); save.lastPlayedAt = ReadValue(text, "lastPlayedUtc"); save.seed = static_cast<WorldSeed>(std::stoul(ReadValue(text, "seed")));
+        save.playTimeSeconds = std::stoull(ReadValue(text, "playTimeSeconds")); save.spawnX = std::stof(ReadValue(text, "spawnX")); save.spawnY = std::stof(ReadValue(text, "spawnY")); save.spawnZ = std::stof(ReadValue(text, "spawnZ"));
+        save.generatorVersion = static_cast<std::uint32_t>(std::stoul(ReadValue(text, "generatorVersion"))); save.engineVersion = ReadValue(text, "engineVersion");
+        save.peaceful = ReadValue(text, "peaceful") == "1"; save.permadeath = ReadValue(text, "permadeath") == "1"; save.alwaysSunny = ReadValue(text, "alwaysSunny") != "0"; save.sandboxMode = ReadValue(text, "sandboxMode") == "1";
+        save.renderDistanceChunks = std::stoi(ReadValue(text, "renderDistanceChunks")); save.simulationDistanceChunks = std::stoi(ReadValue(text, "simulationDistanceChunks")); save.publicVisibility = ReadValue(text, "publicVisibility") != "0";
+    } catch (const std::exception&) { return {}; }
     return save;
 }
 
 bool SaveManager::Save(const GameSave& save) {
-    if (save.saveName.empty()) {
+    if (!IsSafeFolderName(save.saveName)) {
         return false;
     }
     const std::filesystem::path dir = GetSaveDirectory(save.saveName);
@@ -69,12 +107,7 @@ bool SaveManager::Save(const GameSave& save) {
     if (ec) {
         return false;
     }
-    std::ofstream file(dir / kMetaFileName, std::ios::trunc);
-    if (!file.is_open()) {
-        return false;
-    }
-    file << ToMetaText(save);
-    return static_cast<bool>(file);
+    return AtomicWriteText(dir / kMetaFileName, ToMetaText(save));
 }
 
 bool SaveManager::Load(const std::string& saveName, GameSave& outSave) {
@@ -86,7 +119,7 @@ bool SaveManager::Load(const std::string& saveName, GameSave& outSave) {
     std::ostringstream buffer;
     buffer << file.rdbuf();
     outSave = FromMetaText(buffer.str());
-    return true;
+    return !outSave.saveName.empty();
 }
 
 std::vector<SaveSlot> SaveManager::ListSaves() const {
@@ -109,12 +142,14 @@ std::vector<SaveSlot> SaveManager::ListSaves() const {
         SaveSlot slot{};
         slot.slotName = entry.path().filename().string();
         slot.save = FromMetaText(buffer.str());
+        if (slot.save.saveName.empty()) continue;
         slots.push_back(std::move(slot));
     }
     return slots;
 }
 
 bool SaveManager::DeleteSave(const std::string& saveName) {
+    if (!IsSafeFolderName(saveName)) return false;
     std::error_code ec;
     const auto removed = std::filesystem::remove_all(GetSaveDirectory(saveName), ec);
     return !ec && removed > 0;
@@ -123,15 +158,29 @@ bool SaveManager::DeleteSave(const std::string& saveName) {
 bool SaveManager::SavePlayerState(const std::string& saveName,
                                  const std::string& playerId,
                                  const PlayerState& state) const {
-    const auto playerPath = GetSaveDirectory(saveName) / "players" / (playerId + ".player");
+    (void)playerId;
+    const auto playerPath = GetSaveDirectory(saveName) / "player.dat";
+    if (playerPath.empty()) return false;
     return voxels::SavePlayerState(playerPath, state);
 }
 
 bool SaveManager::LoadPlayerState(const std::string& saveName,
                                  const std::string& playerId,
                                  PlayerState& outState) const {
-    const auto playerPath = GetSaveDirectory(saveName) / "players" / (playerId + ".player");
+    (void)playerId;
+    const auto playerPath = GetSaveDirectory(saveName) / "player.dat";
+    if (playerPath.empty()) return false;
     return voxels::LoadPlayerState(playerPath, outState);
+}
+
+bool SaveManager::SaveWorldState(const std::string& saveName, const World& world) const {
+    const auto directory = GetSaveDirectory(saveName);
+    return !directory.empty() && voxels::SaveWorld(world, directory);
+}
+
+bool SaveManager::LoadWorldState(const std::string& saveName, World& world) const {
+    const auto directory = GetSaveDirectory(saveName);
+    return !directory.empty() && voxels::LoadWorld(world, directory);
 }
 
 } // namespace voxels
