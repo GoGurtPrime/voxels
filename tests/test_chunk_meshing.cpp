@@ -23,6 +23,7 @@
 #include "voxels/graphics/gl_renderer.hpp"
 #include "voxels/render/chunk_mesher.hpp"
 #include "voxels/render/chunk_renderer.hpp"
+#include "voxels/render/gameplay_hud.hpp"
 #include "voxels/render/texture_atlas.hpp"
 #include "voxels/world/block.hpp"
 #include "voxels/world/chunk.hpp"
@@ -368,6 +369,14 @@ TEST_CASE("ChunkRenderer.RendersGeneratedChunkToOffscreenTarget", "[render][chun
     const std::array<float, 4> skyColor = {0.58f, 0.72f, 0.88f, 1.0f};
     REQUIRE(glRenderer.BeginFrame(skyColor, fbWidth, fbHeight));
     chunkRenderer.Render(camera);
+    voxels::graphics::GameplayHudRenderer hudRenderer;
+    voxels::gameplay::Inventory inventory;
+    hudRenderer.Render(camera, {}, 0.0f, inventory, "", 0.0f, {});
+    REQUIRE(glRenderer.EndFrame());
+
+    // The HUD is a later render pass. It must not leak GL state into the next terrain frame.
+    REQUIRE(glRenderer.BeginFrame(skyColor, fbWidth, fbHeight));
+    chunkRenderer.Render(camera);
     REQUIRE(glRenderer.EndFrame());
 
     std::vector<std::uint8_t> pixels(static_cast<std::size_t>(fbWidth * fbHeight * 4), 0);
@@ -402,6 +411,7 @@ TEST_CASE("ChunkRenderer.RendersGeneratedChunkToOffscreenTarget", "[render][chun
     const bool dumped = voxels::TextureLoader::WritePngToFile("build/test_chunk_render.png", fbWidth, fbHeight, 4, flipped.data());
     REQUIRE(dumped);
 
+    hudRenderer.Shutdown();
     chunkRenderer.Shutdown();
     glRenderer.Shutdown();
     atlas.Shutdown();

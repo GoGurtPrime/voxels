@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "voxels/gameplay/physics.hpp"
 
@@ -48,16 +49,38 @@ BlockInteraction::BlockInteraction(float reachDistance) : m_reachDistance(reachD
 RaycastHit BlockInteraction::Target(const World& world, const Player& player, const BlockRegistry& registry,
                                     bool targetLiquids) const {
     const Vec3 dir = ForwardVector(player.state.yaw, player.state.pitch);
-    const Vec3 eye{player.state.position.x, player.state.position.y + 0.72f, player.state.position.z};
-    RaycastHit hit = world.Raycast(eye, dir, m_reachDistance);
+    Vec3 origin{player.state.position.x, player.state.position.y + 0.72f, player.state.position.z};
+    float remainingDistance = m_reachDistance;
+    float totalDistance = 0.0f;
+    RaycastHit hit = world.Raycast(origin, dir, remainingDistance);
     while (hit.hit && !targetLiquids) {
         const BlockDefinition* definition = registry.GetDefinition(world.GetBlock(hit.blockPosition));
-        if (definition == nullptr || !definition->isLiquid) return hit;
-        const float nextDistance = hit.distance + 0.001f;
-        if (nextDistance >= m_reachDistance) return {};
-        const Vec3 nextOrigin{eye.x + dir.x * nextDistance, eye.y + dir.y * nextDistance, eye.z + dir.z * nextDistance};
-        hit = world.Raycast(nextOrigin, dir, m_reachDistance - nextDistance);
-        hit.distance += nextDistance;
+        if (definition == nullptr || !definition->isLiquid) {
+            hit.distance += totalDistance;
+            return hit;
+        }
+
+        const Vec3 entry{origin.x + dir.x * hit.distance, origin.y + dir.y * hit.distance,
+                         origin.z + dir.z * hit.distance};
+        constexpr float kEpsilon = 0.0001f;
+        float distanceToExit = std::numeric_limits<float>::infinity();
+        const auto considerAxis = [&](float point, float direction, int cell) {
+            if (std::abs(direction) <= kEpsilon) return;
+            const float boundary = static_cast<float>(direction > 0.0f ? cell + 1 : cell);
+            const float candidate = (boundary - point) / direction;
+            if (candidate > kEpsilon) distanceToExit = std::min(distanceToExit, candidate);
+        };
+        considerAxis(entry.x, dir.x, hit.blockPosition.x);
+        considerAxis(entry.y, dir.y, hit.blockPosition.y);
+        considerAxis(entry.z, dir.z, hit.blockPosition.z);
+        if (!std::isfinite(distanceToExit)) return {};
+
+        const float advance = hit.distance + distanceToExit + kEpsilon;
+        if (advance >= remainingDistance) return {};
+        origin = {origin.x + dir.x * advance, origin.y + dir.y * advance, origin.z + dir.z * advance};
+        remainingDistance -= advance;
+        totalDistance += advance;
+        hit = world.Raycast(origin, dir, remainingDistance);
     }
     return hit;
 }

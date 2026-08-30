@@ -165,6 +165,12 @@ void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target,
         glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(textVertices.size() * sizeof(TextVertex)), textVertices.data(), GL_DYNAMIC_DRAW);
         glDisable(GL_DEPTH_TEST); glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(textVertices.size())); glEnable(GL_DEPTH_TEST);
     }
+    glUseProgram(0);
+    glBindVertexArray(0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
 }
 
 void GameplayHudRenderer::Shutdown() {
