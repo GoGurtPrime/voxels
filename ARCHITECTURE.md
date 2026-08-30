@@ -37,21 +37,22 @@ Anything less than the above is an unfinished product, regardless of unit test c
 
 | Layer | State | Notes |
 | :--- | :--- | :--- |
-| Core (logger, prefs, math) | Real | Usable as-is. |
-| World storage (chunk, RLE serialization, raycast) | Real | 16³ chunk sections in a sparse map. |
+| Core (logger, prefs, math, paths) | Real | Usable as-is. |
+| World storage (chunk, RLE serialization, raycast, block registry) | Real | 16³ chunk sections in a sparse map; data-driven catalogue (`blocks.json`) with 14 launch blocks. |
 | World generation (Perlin 2D/3D, shape → caves → vegetation) | Real | Deterministic, seeded, phase-pluggable. |
+| Textures & Atlas | Real | STB decoders, `TextureLoader`, `TextureForge`, `TextureAtlas` (GL_TEXTURE_2D_ARRAY), `--dump-atlas`. |
 | Greedy mesher (`world/geometry.cpp`) | Real (CPU) | Produces merged quads; **never reaches the GPU**. |
 | Physics / block interaction / camera math | Real | **Never called from the running game loop.** |
 | Input manager | Real | **Not bound to the player or the UI.** |
 | Networking (Asio UDP client/server) | Real | Ticks in `main.cpp` but carries no gameplay traffic. |
 | Audio | Partial | Generates PCM; **no output device, nothing is audible**. |
-| Asset manager / `.vpk` | Partial | Archive I/O + procedural placeholders; no real decoders. |
-| Platform / SDL2 | Broken by default | `sdl_platform.cpp` compiles **only if** CMake finds SDL2, otherwise the app silently runs headless. |
-| **Renderer** | **Absent** | Every backend (Vulkan/DX12/Metal/Dreamcast) is an empty subclass of `MockRenderer`. `Renderer` is a no-op stub. **This is why the screen is black.** |
+| Asset manager / `.vpk` | Partial | Archive I/O + procedural placeholders; image decoders active. |
+| Platform / SDL2 | Real | Desktop build with real SDL2 window and GL 3.3 Core context. |
+| **Renderer** | Real | GL 3.3 Core renderer with textured block rendering via 2D array texture atlas. |
 | **UI** | **Absent** | `UIManager` computes a DPI scale and nothing else. Dear ImGui is not a dependency of this project. |
-| **App states** | **Empty shells** | `MainMenuState`, `InGameState`, `PauseMenuState` are classes whose only member returns an enum. |
+| **App states** | Partial | `BootState`, `MainMenuState`, `InGameState` render real 3D block-textured viewport. |
 | Editor | Stub | Prints one line and exits. |
-| App assets | Two JSON files | No textures, audio, fonts, shaders, or models. |
+| App assets | Real | 15 launch block textures (16×16 PNG), `blocks.json`, server/default configs, shaders. |
 
 **Root cause diagnosis:** the project optimized for *testable isolation* and treated "mock/procedural fallback" as an acceptable terminal state. Every subsystem got a `Mock*`/`Headless*`/procedural implementation that satisfied its unit tests, so no work item was ever forced to produce pixels, sound, or interaction. The remediation is structural, not cosmetic: **mock implementations become test-only fixtures, and the shipped desktop configuration must use real backends or fail the build.**
 

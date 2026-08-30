@@ -39,7 +39,21 @@ Agents add rows here as they introduce filler. Each row is a standing invitation
 
 | ID | Asset Path | Required Format | Current Placeholder | What Improves When Replaced | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| _(none yet — populated from work item 04 onward)_ | | | | | |
+| **TEX-001** | `app/assets/textures/blocks/stone.png` | 16×16 RGBA8 PNG | Procedural value-noise granite | Hand-authored stone tile art | QUALITY |
+| **TEX-002** | `app/assets/textures/blocks/dirt.png` | 16×16 RGBA8 PNG | Procedural speckled earth | Hand-authored rich dirt texture | QUALITY |
+| **TEX-003** | `app/assets/textures/blocks/grass_top.png` | 16×16 RGBA8 PNG | Procedural grass blades | Hand-authored grass canopy texture | QUALITY |
+| **TEX-004** | `app/assets/textures/blocks/grass_side.png` | 16×16 RGBA8 PNG | Procedural grass-fringe dirt | Hand-authored side grass transition | QUALITY |
+| **TEX-005** | `app/assets/textures/blocks/sand.png` | 16×16 RGBA8 PNG | Procedural ripple sand | Hand-authored fine desert sand texture | QUALITY |
+| **TEX-006** | `app/assets/textures/blocks/gravel.png` | 16×16 RGBA8 PNG | Procedural pebble noise | Hand-authored gravel pebble texture | QUALITY |
+| **TEX-007** | `app/assets/textures/blocks/water.png` | 16×16 RGBA8 PNG (alpha: ~200) | Procedural translucent wave | Hand-authored water surface texture | QUALITY |
+| **TEX-008** | `app/assets/textures/blocks/coal_ore.png` | 16×16 RGBA8 PNG | Procedural coal flecks in stone | Hand-authored coal ore deposit texture | QUALITY |
+| **TEX-009** | `app/assets/textures/blocks/iron_ore.png` | 16×16 RGBA8 PNG | Procedural iron flecks in stone | Hand-authored iron ore deposit texture | QUALITY |
+| **TEX-010** | `app/assets/textures/blocks/wood_log_top.png` | 16×16 RGBA8 PNG | Procedural concentric tree rings | Hand-authored log cross-section texture | QUALITY |
+| **TEX-011** | `app/assets/textures/blocks/wood_log_side.png` | 16×16 RGBA8 PNG | Procedural bark vertical grain | Hand-authored tree trunk bark texture | QUALITY |
+| **TEX-012** | `app/assets/textures/blocks/leaves.png` | 16×16 RGBA8 PNG (alpha cutout) | Procedural foliage with alpha | Hand-authored lush leaf canopy | QUALITY |
+| **TEX-013** | `app/assets/textures/blocks/planks.png` | 16×16 RGBA8 PNG | Procedural oak planks with seams | Hand-authored wooden plank tiles | QUALITY |
+| **TEX-014** | `app/assets/textures/blocks/glass.png` | 16×16 RGBA8 PNG (alpha: 35/255) | Procedural border + glint | Hand-authored clean glass panel texture | QUALITY |
+| **TEX-015** | `app/assets/textures/blocks/bedrock.png` | 16×16 RGBA8 PNG | Procedural dark charcoal mottling | Hand-authored unbreakable bedrock art | QUALITY |
 
 **Expected entries as the roadmap progresses** (agents will fill in exact rows when the corresponding work item lands):
 
