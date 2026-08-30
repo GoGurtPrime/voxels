@@ -19,11 +19,14 @@
 #include "voxels/app/cli_parser.hpp"
 #include "voxels/app/state_machine.hpp"
 #include "voxels/core/job_system.hpp"
+#include "voxels/core/paths.hpp"
 #include "voxels/engine.hpp"
 #include "voxels/graphics/gl_renderer.hpp"
 #include "voxels/networking/client.hpp"
 #include "voxels/networking/server.hpp"
 #include "voxels/platform/platform.hpp"
+#include "voxels/render/texture_atlas.hpp"
+#include "voxels/world/block.hpp"
 
 namespace {
 
@@ -73,6 +76,24 @@ int main(int argc, char** argv) {
             return 1;
         }
 
+        voxels::BlockRegistry blockRegistry = voxels::CreateDefaultBlockRegistry();
+        voxels::TextureAtlas textureAtlas(16, 16);
+        textureAtlas.PopulateFromBlockRegistry(blockRegistry, voxels::Paths::AssetsDir() / "textures");
+
+        if (options.dumpAtlas) {
+            std::filesystem::path dumpPath = options.dumpAtlasPath.empty()
+                ? (voxels::Paths::LogsDir() / "atlas_dump.png")
+                : std::filesystem::path(options.dumpAtlasPath);
+            std::error_code ec;
+            if (dumpPath.has_parent_path()) {
+                std::filesystem::create_directories(dumpPath.parent_path(), ec);
+            }
+            if (textureAtlas.DumpAtlasToPng(dumpPath)) {
+                std::cout << "Texture atlas successfully dumped to " << dumpPath.string()
+                          << " (" << textureAtlas.GetLayerCount() << " layers).\n";
+            }
+        }
+
         const int maxFrames = options.maxFrames > 0 ? options.maxFrames : 2;
         for (int frame = 0; frame < maxFrames; ++frame) {
             auto* platform = engine.getPlatform();
@@ -107,7 +128,31 @@ int main(int argc, char** argv) {
         }
     }
 
+    voxels::BlockRegistry blockRegistry = voxels::CreateDefaultBlockRegistry();
+    std::cout << "Voxels block catalogue loaded with " << blockRegistry.Count() << " registered block definitions.\n";
+
+    voxels::TextureAtlas textureAtlas(16, 16);
+    textureAtlas.PopulateFromBlockRegistry(blockRegistry, voxels::Paths::AssetsDir() / "textures");
+    textureAtlas.BuildGLTexture();
+
+    if (options.dumpAtlas) {
+        std::filesystem::path dumpPath = options.dumpAtlasPath.empty()
+            ? (voxels::Paths::LogsDir() / "atlas_dump.png")
+            : std::filesystem::path(options.dumpAtlasPath);
+        std::error_code ec;
+        if (dumpPath.has_parent_path()) {
+            std::filesystem::create_directories(dumpPath.parent_path(), ec);
+        }
+        if (textureAtlas.DumpAtlasToPng(dumpPath)) {
+            std::cout << "Texture atlas successfully dumped to " << dumpPath.string()
+                      << " (" << textureAtlas.GetLayerCount() << " layers).\n";
+        } else {
+            std::cerr << "Failed to dump texture atlas to " << dumpPath.string() << "\n";
+        }
+    }
+
     voxels::graphics::GLRenderer renderer;
+    renderer.SetTextureAtlas(&textureAtlas);
     if (!renderer.Initialize()) {
         std::cerr << "Voxels GL renderer failed to initialize." << std::endl;
         engine.shutdown();

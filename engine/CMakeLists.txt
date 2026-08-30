@@ -7,6 +7,8 @@ add_library(voxels_engine
     src/platform/platform_factory.cpp
     src/rendering.cpp
     src/render/camera.cpp
+    src/render/texture_forge.cpp
+    src/render/texture_atlas.cpp
     src/graphics/gl_renderer.cpp
     src/graphics/mock_renderer.cpp
     src/app/state_machine_render.cpp
@@ -25,6 +27,7 @@ add_library(voxels_engine
     src/core/paths.cpp
     src/audio/audio_engine.cpp
     src/assets/asset_manager.cpp
+    src/assets/texture_loader.cpp
     src/networking/packet.cpp
     src/networking/server.cpp
     src/networking/client.cpp
@@ -42,6 +45,8 @@ target_include_directories(voxels_engine
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_BINARY_DIR}/glad_gl_core_33/include
+    SYSTEM PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 
 target_compile_features(voxels_engine PUBLIC cxx_std_20)

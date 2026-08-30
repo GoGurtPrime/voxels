@@ -108,6 +108,11 @@ AppCommandLineOptions CliParser::Parse(const std::vector<std::string>& args) con
             if (ParseIntValue(value, maxFrames) && maxFrames > 0) {
                 options.maxFrames = maxFrames;
             }
+        } else if (key == "dump-atlas") {
+            options.dumpAtlas = true;
+            if (!value.empty()) {
+                options.dumpAtlasPath = std::string(value);
+            }
         }
     }
 

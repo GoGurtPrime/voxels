@@ -98,6 +98,8 @@ struct AppCommandLineOptions {
     bool maxTicksOverride = false;
     int maxTicks = 0;
     int maxFrames = 0;
+    bool dumpAtlas = false;
+    std::string dumpAtlasPath;
 };
 
 } // namespace voxels
