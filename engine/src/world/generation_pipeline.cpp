@@ -29,6 +29,8 @@ constexpr BlockId kIron = static_cast<BlockId>(BlockType::Iron);
 constexpr BlockId kWood = static_cast<BlockId>(BlockType::Wood);
 constexpr BlockId kLeaf = static_cast<BlockId>(BlockType::Leaf);
 constexpr BlockId kBedrock = static_cast<BlockId>(BlockType::Bedrock);
+constexpr int kTreeCellSize = 7;
+constexpr int kMaxTreeSurfaceY = 56;
 
 [[nodiscard]] std::uint64_t Mix(std::uint64_t value) noexcept {
     value ^= value >> 30U;
@@ -45,6 +47,12 @@ constexpr BlockId kBedrock = static_cast<BlockId>(BlockType::Bedrock);
 [[nodiscard]] double SmoothStep(double edge0, double edge1, double value) noexcept {
     const double normalized = std::clamp((value - edge0) / (edge1 - edge0), 0.0, 1.0);
     return normalized * normalized * (3.0 - 2.0 * normalized);
+}
+
+[[nodiscard]] int FloorDiv(int value, int divisor) noexcept {
+    int quotient = value / divisor;
+    if (value % divisor < 0) --quotient;
+    return quotient;
 }
 
 [[nodiscard]] bool IsSolidTerrain(BlockId block) noexcept {
@@ -104,23 +112,52 @@ constexpr BlockId kBedrock = static_cast<BlockId>(BlockType::Bedrock);
 
 void PlaceTree(Chunk& chunk, int worldX, int worldZ, const TerrainColumn& column, std::uint64_t seed) {
     if (column.biome != Biome::Forest && column.biome != Biome::Plains && column.biome != Biome::Hills) return;
-    const Noise placement(PhaseSeed(seed, 9));
-    const double density = column.biome == Biome::Forest ? 0.71 : column.biome == Biome::Hills ? 0.82 : 0.89;
-    if (placement.Cellular2D(worldX * 0.12, worldZ * 0.12) < density) return;
-    const int height = 4 + static_cast<int>(Mix(static_cast<std::uint64_t>(worldX) ^ (static_cast<std::uint64_t>(worldZ) << 32U) ^ seed) % 3U);
-    const ChunkCoordinate coordinate = chunk.GetCoordinate();
-    for (int dz = -2; dz <= 2; ++dz) for (int dx = -2; dx <= 2; ++dx) for (int dy = -1; dy <= 2; ++dy) {
-        if (dx * dx + dz * dz + dy * dy > 6) continue;
-        const int localX = worldX + dx - coordinate.x * kChunkSize;
-        const int localY = column.surfaceY + height + dy - coordinate.y * kChunkSize;
-        const int localZ = worldZ + dz - coordinate.z * kChunkSize;
-        if (chunk.InBounds(localX, localY, localZ) && chunk.GetBlock(localX, localY, localZ) == kAir) chunk.SetBlock(localX, localY, localZ, kLeaf);
+    if (column.surfaceY <= kSeaLevel || column.surfaceY > kMaxTreeSurfaceY) return;
+    const int cellX = FloorDiv(worldX, kTreeCellSize);
+    const int cellZ = FloorDiv(worldZ, kTreeCellSize);
+    const std::uint64_t treeHash = Mix(PhaseSeed(seed, 9) ^ (static_cast<std::uint64_t>(cellX) << 32U) ^ static_cast<std::uint32_t>(cellZ));
+    const int candidateX = cellX * kTreeCellSize + static_cast<int>(treeHash % kTreeCellSize);
+    const int candidateZ = cellZ * kTreeCellSize + static_cast<int>((treeHash >> 8U) % kTreeCellSize);
+    if (worldX != candidateX || worldZ != candidateZ) return;
+    for (int neighborZ = cellZ - 1; neighborZ <= cellZ + 1; ++neighborZ) {
+        for (int neighborX = cellX - 1; neighborX <= cellX + 1; ++neighborX) {
+            if (neighborX == cellX && neighborZ == cellZ) continue;
+            const std::uint64_t neighborHash = Mix(PhaseSeed(seed, 9) ^ (static_cast<std::uint64_t>(neighborX) << 32U) ^ static_cast<std::uint32_t>(neighborZ));
+            const int neighborCandidateX = neighborX * kTreeCellSize + static_cast<int>(neighborHash % kTreeCellSize);
+            const int neighborCandidateZ = neighborZ * kTreeCellSize + static_cast<int>((neighborHash >> 8U) % kTreeCellSize);
+            if (std::max(std::abs(neighborCandidateX - worldX), std::abs(neighborCandidateZ - worldZ)) <= 4 &&
+                neighborHash < treeHash) return;
+        }
     }
+    const int chance = column.biome == Biome::Forest ? 38 : column.biome == Biome::Hills ? 16 : 8;
+    if (static_cast<int>((treeHash >> 16U) % 100U) >= chance) return;
+    for (int offsetZ = -1; offsetZ <= 1; ++offsetZ) {
+        for (int offsetX = -1; offsetX <= 1; ++offsetX) {
+            if (std::abs(SampleColumnForSeed(seed, worldX + offsetX, worldZ + offsetZ).surfaceY - column.surfaceY) > 1) return;
+        }
+    }
+    const int height = 4 + static_cast<int>((treeHash >> 24U) % 2U);
+    const ChunkCoordinate coordinate = chunk.GetCoordinate();
     const int localX = worldX - coordinate.x * kChunkSize;
     const int localZ = worldZ - coordinate.z * kChunkSize;
     for (int y = 1; y <= height; ++y) {
         const int localY = column.surfaceY + y - coordinate.y * kChunkSize;
         if (chunk.InBounds(localX, localY, localZ) && chunk.GetBlock(localX, localY, localZ) == kAir) chunk.SetBlock(localX, localY, localZ, kWood);
+    }
+    for (int canopyY = height - 1; canopyY <= height + 2; ++canopyY) {
+        const int radius = canopyY == height + 2 ? 1 : 2;
+        for (int dz = -radius; dz <= radius; ++dz) {
+            for (int dx = -radius; dx <= radius; ++dx) {
+                if (std::abs(dx) + std::abs(dz) > radius + (canopyY == height ? 1 : 0)) continue;
+                const int localCanopyX = worldX + dx - coordinate.x * kChunkSize;
+                const int localCanopyY = column.surfaceY + canopyY - coordinate.y * kChunkSize;
+                const int localCanopyZ = worldZ + dz - coordinate.z * kChunkSize;
+                if (chunk.InBounds(localCanopyX, localCanopyY, localCanopyZ) &&
+                    chunk.GetBlock(localCanopyX, localCanopyY, localCanopyZ) == kAir) {
+                    chunk.SetBlock(localCanopyX, localCanopyY, localCanopyZ, kLeaf);
+                }
+            }
+        }
     }
 }
 } // namespace
