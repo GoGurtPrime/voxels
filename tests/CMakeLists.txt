@@ -23,6 +23,7 @@ add_executable(voxels_tests
     test_render_backend.cpp
     test_chunk_meshing.cpp
     test_voxel_models.cpp
+    test_editor.cpp
     test_block_catalogue.cpp
     test_ui_framework.cpp
     test_persistence.cpp
@@ -31,6 +32,7 @@ add_executable(voxels_tests
 target_link_libraries(voxels_tests
     PRIVATE
         voxels_engine
+    voxels_editor_core
         Catch2::Catch2
 )
 
