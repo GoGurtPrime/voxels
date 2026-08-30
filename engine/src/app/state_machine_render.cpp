@@ -12,6 +12,7 @@
 
 #include "voxels/core/logger.hpp"
 #include "voxels/graphics/gl_renderer.hpp"
+#include "voxels/platform/platform.hpp"
 #include "voxels/render/chunk_renderer.hpp"
 #include "voxels/world/spawn_calculator.hpp"
 
@@ -52,13 +53,53 @@ void MainMenuState::Render() {
 }
 
 void InGameState::OnEnter() {
-    GenerateInitialWorld();
+    m_session.SetWorldOptions(m_options);
+    m_session.SetInputManager(m_inputManager);
+    m_session.Initialize();
+
+    if (m_platform != nullptr) {
+        m_platform->SetRelativeMouseMode(true);
+    }
+
+    if (m_registry != nullptr && m_atlas != nullptr) {
+        if (m_jobSystem == nullptr) {
+            m_jobSystem = std::make_unique<JobSystem>(2);
+        }
+        if (m_chunkRenderer == nullptr) {
+            m_chunkRenderer = std::make_unique<graphics::ChunkRenderer>(*m_registry, *m_atlas, *m_jobSystem);
+            m_chunkRenderer->SetUploadBudget(16, 4.0);
+        }
+    }
+
+    if (m_inputManager != nullptr) {
+        m_inputManager->BindAction("MoveForward", InputBinding{"MoveForward", static_cast<int>('w'), static_cast<int>('W'), InputDeviceType::Keyboard});
+        m_inputManager->BindAction("MoveBackward", InputBinding{"MoveBackward", static_cast<int>('s'), static_cast<int>('S'), InputDeviceType::Keyboard});
+        m_inputManager->BindAction("MoveLeft", InputBinding{"MoveLeft", static_cast<int>('a'), static_cast<int>('A'), InputDeviceType::Keyboard});
+        m_inputManager->BindAction("MoveRight", InputBinding{"MoveRight", static_cast<int>('d'), static_cast<int>('D'), InputDeviceType::Keyboard});
+        m_inputManager->BindAction("Jump", InputBinding{"Jump", static_cast<int>(' '), 0, InputDeviceType::Keyboard});
+        m_inputManager->BindAction("Sprint", InputBinding{"Sprint", 1073742049, 0, InputDeviceType::Keyboard});
+    }
+    if (m_cameraOverride != nullptr) {
+        *m_cameraOverride = m_session.GetCamera();
+    }
+
+    if (m_chunkRenderer) {
+        auto& world = m_session.GetWorld();
+        for (const auto& [coordinate, chunk] : world.GetChunks()) {
+            (void)chunk;
+            m_chunkRenderer->MarkChunkDirty(coordinate);
+        }
+        m_chunkRenderer->EnqueueDirtyMeshJobs(world, m_session.GetCamera().position);
+        m_chunkRenderer->UploadCompletedMeshes();
+    }
+    m_worldGenerated = true;
 }
 
 void InGameState::OnExit() {
+    if (m_platform != nullptr) {
+        m_platform->SetRelativeMouseMode(false);
+    }
     if (m_jobSystem) {
-        // Blocks until every queued/in-flight mesh job (which may capture `this`) has finished,
-        // so it is always safe to destroy the chunk renderer immediately afterwards.
         m_jobSystem->Shutdown();
     }
     if (m_chunkRenderer) {
@@ -66,71 +107,36 @@ void InGameState::OnExit() {
     }
     m_chunkRenderer.reset();
     m_jobSystem.reset();
+    m_session.Shutdown();
     m_worldGenerated = false;
 }
 
 void InGameState::GenerateInitialWorld() {
-    if (m_worldGenerated || m_registry == nullptr || m_atlas == nullptr) {
+    if (m_worldGenerated) {
         return;
     }
-
-    WorldGenerator generator(m_options);
-    // Vertical sections 0-2 cover the full terrain height range (worldgen surface tops out
-    // around y=46); section 3 is an explicit all-air "cap" chunk so the true topmost surface
-    // faces have a known (empty) neighbour above them instead of being suppressed as provisional.
-    constexpr int kVerticalSections = 3;
-    for (int cz = -kInitialGenerationRadiusChunks; cz <= kInitialGenerationRadiusChunks; ++cz) {
-        for (int cx = -kInitialGenerationRadiusChunks; cx <= kInitialGenerationRadiusChunks; ++cx) {
-            for (int cy = 0; cy < kVerticalSections; ++cy) {
-                const ChunkCoordinate coordinate{cx, cy, cz};
-                m_world.GetOrCreateChunk(coordinate) = generator.GenerateChunk(coordinate);
-            }
-            m_world.GetOrCreateChunk({cx, kVerticalSections, cz}); // all-air cap chunk
-        }
-    }
-
-    m_jobSystem = std::make_unique<JobSystem>();
-    m_chunkRenderer = std::make_unique<graphics::ChunkRenderer>(*m_registry, *m_atlas, *m_jobSystem);
-    m_chunkRenderer->SetUploadBudget(4, 2.0);
-    for (const auto& [coordinate, chunk] : m_world.GetChunks()) {
-        (void)chunk;
-        m_chunkRenderer->MarkChunkDirty(coordinate);
-    }
-
-    const Chunk* originChunk = &m_world.GetOrCreateChunk({0, 0, 0});
-    const Vec3I spawn = FindSafeSpawn(*originChunk, 0, 0);
-    m_camera.position = glm::vec3(static_cast<float>(spawn.x) + 8.0f, static_cast<float>(spawn.y) + 42.0f,
-                                   static_cast<float>(spawn.z) + 70.0f);
-    m_camera.fovY = glm::radians(60.0f);
-    m_camera.aspect = 1280.0f / 720.0f;
-    m_camera.nearPlane = 0.1f;
-    m_camera.farPlane = 400.0f;
-
-    voxels::Logger logger;
-    logger.Info("InGameState generated " + std::to_string(m_world.LoadedChunkCount()) +
-                " chunks around spawn (" + std::to_string(spawn.x) + ", " + std::to_string(spawn.y) + ", " +
-                std::to_string(spawn.z) + ").");
-
+    m_session.SetWorldOptions(m_options);
+    m_session.Initialize();
     m_worldGenerated = true;
 }
 
 void InGameState::Update(double deltaSeconds) {
     m_elapsedSeconds += static_cast<float>(deltaSeconds);
 
-    // Slow automatic flythrough so the generated world is directly observable without a player
-    // controller (work item 06 replaces this with real WASD + mouse-look input).
-    const float radius = 60.0f;
-    const float speed = 0.08f;
-    const float angle = m_elapsedSeconds * speed;
-    const glm::vec3 target(8.0f, 40.0f, 8.0f);
-    m_camera.position = target + glm::vec3(std::sin(angle) * radius, 30.0f + 8.0f * std::sin(angle * 0.5f),
-                                            std::cos(angle) * radius);
-    const glm::vec3 dir = glm::normalize(target - m_camera.position);
-    m_camera.pitch = std::asin(dir.y);
-    m_camera.yaw = std::atan2(-dir.x, -dir.z);
+    m_session.Update(static_cast<float>(deltaSeconds));
+    if (m_cameraOverride != nullptr) {
+        *m_cameraOverride = m_session.GetCamera();
+    }
 
     if (m_chunkRenderer) {
-        m_chunkRenderer->EnqueueDirtyMeshJobs(m_world, m_camera.position);
+        auto& world = m_session.GetWorld();
+        for (const auto& [coordinate, chunk] : world.GetChunks()) {
+            (void)chunk;
+            if (!m_chunkRenderer->HasMesh(coordinate) && !m_chunkRenderer->IsDirty(coordinate)) {
+                m_chunkRenderer->MarkChunkDirty(coordinate);
+            }
+        }
+        m_chunkRenderer->EnqueueDirtyMeshJobs(world, m_session.GetCamera().position);
         m_chunkRenderer->UploadCompletedMeshes();
     }
 }
@@ -139,10 +145,11 @@ void InGameState::Render() {
     if (g_renderer == nullptr) {
         return;
     }
-    g_renderer->SetCamera(m_camera);
+    const Camera camera = m_cameraOverride != nullptr ? *m_cameraOverride : m_session.GetCamera();
+    g_renderer->SetCamera(camera);
     g_renderer->BeginFrame({0.58f, 0.72f, 0.88f, 1.0f});
     if (m_chunkRenderer) {
-        m_chunkRenderer->Render(m_camera);
+        m_chunkRenderer->Render(camera);
     }
     g_renderer->EndFrame();
 }

@@ -16,10 +16,12 @@
 #include <string_view>
 #include <vector>
 
+#include "voxels/app/game_session.hpp"
 #include "voxels/app/menus.hpp"
 #include "voxels/app/save_manager.hpp"
 #include "voxels/core/job_system.hpp"
 #include "voxels/graphics/gl_renderer.hpp"
+#include "voxels/input/input_manager.hpp"
 #include "voxels/render/chunk_renderer.hpp"
 #include "voxels/world/generation_pipeline.hpp"
 #include "voxels/world/world.hpp"
@@ -40,6 +42,7 @@ enum class AppStateId {
 class WorldCreationController;
 class PauseMenuController;
 class LoadingScreenModel;
+class IPlatform;
 
 [[nodiscard]] std::string_view ToString(AppStateId id) noexcept;
 
@@ -115,13 +118,16 @@ public:
     void SetBlockRegistry(BlockRegistry* registry) noexcept { m_registry = registry; }
     void SetTextureAtlas(TextureAtlas* atlas) noexcept { m_atlas = atlas; }
     void SetWorldOptions(WorldOptions options) noexcept { m_options = options; }
+    void SetInputManager(InputManager* inputManager) noexcept { m_inputManager = inputManager; }
+    void SetPlayerCamera(Camera* camera) noexcept { m_cameraOverride = camera; }
+    void SetPlatform(IPlatform* platform) noexcept { m_platform = platform; }
 
     void OnEnter() override;
     void OnExit() override;
     void Update(double deltaSeconds) override;
     void Render() override;
 
-    [[nodiscard]] const World& GetWorld() const noexcept { return m_world; }
+    [[nodiscard]] const World& GetWorld() const noexcept { return m_session.GetWorld(); }
     [[nodiscard]] graphics::ChunkRenderer* GetChunkRenderer() const noexcept { return m_chunkRenderer.get(); }
 
 private:
@@ -129,14 +135,15 @@ private:
 
     BlockRegistry* m_registry = nullptr;
     TextureAtlas* m_atlas = nullptr;
+    InputManager* m_inputManager = nullptr;
+    Camera* m_cameraOverride = nullptr;
+    IPlatform* m_platform = nullptr;
     WorldOptions m_options{};
 
-    World m_world;
+    GameSession m_session;
     std::unique_ptr<JobSystem> m_jobSystem;
     std::unique_ptr<graphics::ChunkRenderer> m_chunkRenderer;
-
     float m_elapsedSeconds = 0.0f;
-    Camera m_camera{};
     bool m_worldGenerated = false;
 };
 
