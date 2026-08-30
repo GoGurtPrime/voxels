@@ -16,9 +16,9 @@ Read these before writing any code, in this order:
   2. ARCHITECTURE.md       — system design, ADRs, current honest state of the codebase
   3. DIAGRAMS.md           — process, state machine, render, and pipeline flows
   4. work_items/README.md  — the roadmap and where this item sits in it
-  5. work_items/<FILENAME> — the active work item, which is your entire scope
+  5. work_items/02_sdl2_platform_and_window_runtime.md — the active work item, which is your entire scope
 
-Implement work item <NN> completely.
+Implement work item 02 completely.
 
 Non-negotiable rules for this session:
   - The Anti-Shell Rule (AGENT_RULES.md §2) is in force. No empty state classes, no no-op
@@ -35,6 +35,9 @@ Non-negotiable rules for this session:
   - Delete scaffolding you supersede. Backward compatibility with a stub is not a value.
   - Before re-deriving a design decision, search the git history:
     git log --oneline -- <path> / git log -p -- <path> / git blame <path>.
+  - Please commit your work in properly broken up commits, opt to break your work up when it
+    makes sense into multiple commits. Development is performed directly off the trunk of
+    main/master.
 
 Asset and tooling requirements:
   - Generate real filler content and commit it (procedural PNG textures, synthesized WAV/OGG

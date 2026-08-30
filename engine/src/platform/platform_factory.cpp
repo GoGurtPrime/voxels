@@ -17,7 +17,10 @@
 
 namespace voxels {
 
-std::unique_ptr<IPlatform> CreateDefaultPlatform() {
+std::unique_ptr<IPlatform> CreateDefaultPlatform(bool headless) {
+    if (headless) {
+        return std::make_unique<HeadlessPlatform>();
+    }
 #if defined(VOXELS_ENABLE_DREAMCAST)
     return std::make_unique<DreamcastPlatform>();
 #elif defined(VOXELS_HAS_SDL2)

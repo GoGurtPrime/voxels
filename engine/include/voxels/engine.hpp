@@ -36,7 +36,7 @@ public:
     Engine(Engine&&) noexcept;
     Engine& operator=(Engine&&) noexcept;
 
-    bool initialize();
+    bool initialize(bool headless = false);
     void shutdown();
     [[nodiscard]] bool isInitialized() const noexcept;
     [[nodiscard]] EngineStatus getStatus() const noexcept;

@@ -75,6 +75,11 @@ AppCommandLineOptions CliParser::Parse(const std::vector<std::string>& args) con
                 options.resolutionWidth = width;
                 options.resolutionHeight = height;
             }
+        } else if (key == "vsync") {
+            options.vsyncOverride = true;
+            options.vsyncValue = ParseBoolValue(value, options.vsyncValue);
+        } else if (key == "headless") {
+            options.headless = true;
         } else if (key == "server") {
             options.serverMode = true;
         } else if (key == "world") {
@@ -97,6 +102,11 @@ AppCommandLineOptions CliParser::Parse(const std::vector<std::string>& args) con
             if (ParseIntValue(value, maxTicks) && maxTicks > 0) {
                 options.maxTicksOverride = true;
                 options.maxTicks = maxTicks;
+            }
+        } else if (key == "max-frames") {
+            int maxFrames = 0;
+            if (ParseIntValue(value, maxFrames) && maxFrames > 0) {
+                options.maxFrames = maxFrames;
             }
         }
     }

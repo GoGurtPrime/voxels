@@ -5,6 +5,7 @@
 
 #include "voxels/platform/headless_platform.hpp"
 
+#include <algorithm>
 #include <chrono>
 
 namespace voxels {
@@ -20,6 +21,8 @@ bool HeadlessPlatform::Initialize(const WindowConfig& config) {
     m_width = config.width;
     m_height = config.height;
     m_fullscreen = config.fullscreen;
+    m_cursorVisible = true;
+    m_relativeMouseMode = false;
     m_eventQueue.clear();
     m_initialized = true;
     return true;
@@ -27,15 +30,33 @@ bool HeadlessPlatform::Initialize(const WindowConfig& config) {
 
 void HeadlessPlatform::Shutdown() {
     m_eventQueue.clear();
+    m_listeners.clear();
+    m_defaultListener = nullptr;
     m_initialized = false;
 }
 
 void HeadlessPlatform::PollEvents(IPlatformEventListener* listener) {
+    if (listener != nullptr) {
+        m_defaultListener = listener;
+        m_defaultListenerPriority = 0;
+    }
+
     while (!m_eventQueue.empty()) {
         const PlatformEvent event = m_eventQueue.front();
         m_eventQueue.pop_front();
-        if (listener != nullptr) {
-            listener->OnPlatformEvent(event);
+
+        std::vector<ListenerEntry> ordered = m_listeners;
+        if (m_defaultListener != nullptr) {
+            ordered.push_back({m_defaultListener, m_defaultListenerPriority});
+        }
+        std::sort(ordered.begin(), ordered.end(), [](const ListenerEntry& lhs, const ListenerEntry& rhs) {
+            return lhs.priority > rhs.priority;
+        });
+
+        for (const auto& entry : ordered) {
+            if (entry.listener != nullptr) {
+                entry.listener->OnPlatformEvent(event);
+            }
         }
     }
 }
@@ -55,9 +76,53 @@ void HeadlessPlatform::SetWindowResolution(int width, int height) {
     SimulateEvent(PlatformEvent{PlatformEventType::WindowResized, width, height});
 }
 
+void HeadlessPlatform::SetWindowTitle(const std::string&) {}
+
+void HeadlessPlatform::SetRelativeMouseMode(bool enabled) {
+    m_relativeMouseMode = enabled;
+    if (!enabled) {
+        m_cursorVisible = true;
+    }
+}
+
+void HeadlessPlatform::SetCursorVisible(bool visible) {
+    m_cursorVisible = visible;
+}
+
+void HeadlessPlatform::SetVSync(bool enabled) {
+    (void)enabled;
+}
+
+std::pair<int, int> HeadlessPlatform::GetDrawableSize() const {
+    return {m_width, m_height};
+}
+
 double HeadlessPlatform::GetHighResTimeSeconds() const {
     using namespace std::chrono;
     return duration<double>(steady_clock::now().time_since_epoch()).count();
+}
+
+void HeadlessPlatform::RegisterEventListener(IPlatformEventListener* listener, int priority) {
+    if (listener == nullptr) {
+        return;
+    }
+    auto it = std::find_if(m_listeners.begin(), m_listeners.end(), [listener](const ListenerEntry& entry) {
+        return entry.listener == listener;
+    });
+    if (it != m_listeners.end()) {
+        it->priority = priority;
+        return;
+    }
+    m_listeners.push_back({listener, priority});
+}
+
+void HeadlessPlatform::UnregisterEventListener(IPlatformEventListener* listener) {
+    m_listeners.erase(std::remove_if(m_listeners.begin(), m_listeners.end(), [listener](const ListenerEntry& entry) {
+        return entry.listener == listener;
+    }), m_listeners.end());
+    if (m_defaultListener == listener) {
+        m_defaultListener = nullptr;
+    }
 }
 
 void HeadlessPlatform::SimulateEvent(const PlatformEvent& event) {

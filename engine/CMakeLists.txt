@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 add_library(voxels_engine
     src/engine.cpp
+    src/core/job_system.cpp
     src/platform/headless_platform.cpp
     src/platform/platform_factory.cpp
     src/rendering.cpp
@@ -37,6 +38,7 @@ add_library(voxels_engine
 target_include_directories(voxels_engine
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_BINARY_DIR}/glad_gl_core_33/include
 )
 
 target_compile_features(voxels_engine PUBLIC cxx_std_20)

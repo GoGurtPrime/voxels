@@ -9,6 +9,7 @@
  */
 
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -17,6 +18,7 @@
 
 #include "voxels/app/cli_parser.hpp"
 #include "voxels/app/state_machine.hpp"
+#include "voxels/core/job_system.hpp"
 #include "voxels/engine.hpp"
 #include "voxels/networking/client.hpp"
 #include "voxels/networking/server.hpp"
@@ -24,13 +26,13 @@
 
 namespace {
 
-/// Bridges platform window-close notifications into the app's main-loop exit condition.
 class QuitOnWindowClosedListener final : public voxels::IPlatformEventListener {
 public:
     explicit QuitOnWindowClosedListener(bool& runningFlag) : m_running(runningFlag) {}
 
     void OnPlatformEvent(const voxels::PlatformEvent& event) override {
-        if (event.type == voxels::PlatformEventType::WindowClosed) {
+        if (event.type == voxels::PlatformEventType::WindowClosed ||
+            event.type == voxels::PlatformEventType::QuitRequested) {
             m_running = false;
         }
     }
@@ -38,6 +40,8 @@ public:
 private:
     bool& m_running;
 };
+
+constexpr double kFixedStepSeconds = 1.0 / 60.0;
 
 } // namespace
 
@@ -61,10 +65,50 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    if (options.headless) {
+        voxels::Engine engine;
+        if (!engine.initialize(true)) {
+            std::cerr << "Voxels engine failed to initialize in headless mode." << std::endl;
+            return 1;
+        }
+
+        const int maxFrames = options.maxFrames > 0 ? options.maxFrames : 2;
+        for (int frame = 0; frame < maxFrames; ++frame) {
+            auto* platform = engine.getPlatform();
+            if (platform != nullptr) {
+                platform->PollEvents(nullptr);
+                platform->SwapBuffers();
+            }
+        }
+
+        engine.shutdown();
+        std::cout << "Voxels headless smoke test completed after " << maxFrames << " frames.\n";
+        return 0;
+    }
+
     voxels::Engine engine;
-    if (!engine.initialize()) {
+    if (!engine.initialize(false)) {
         std::cerr << "Voxels engine failed to initialize." << std::endl;
         return 1;
+    }
+
+    auto* platform = engine.getPlatform();
+    if (platform != nullptr) {
+        voxels::WindowConfig config{};
+        config.title = "Voxels Engine";
+        config.width = options.resolutionOverride ? options.resolutionWidth : 1280;
+        config.height = options.resolutionOverride ? options.resolutionHeight : 720;
+        config.fullscreen = options.fullscreenOverride ? options.fullscreenValue : false;
+        config.resizable = true;
+        platform->Shutdown();
+        if (!platform->Initialize(config)) {
+            std::cerr << "Voxels platform failed to initialize with the configured window settings." << std::endl;
+            return 1;
+        }
+        platform->SetWindowTitle("Voxels Engine");
+        if (options.vsyncOverride) {
+            platform->SetVSync(options.vsyncValue);
+        }
     }
 
     voxels::AppStateMachine stateMachine;
@@ -81,46 +125,43 @@ int main(int argc, char** argv) {
 
     bool running = true;
     QuitOnWindowClosedListener windowCloseListener(running);
+    if (platform != nullptr) {
+        platform->RegisterEventListener(&windowCloseListener, 100);
+    }
 
-    // Platforms without a real window (e.g. HeadlessPlatform in CI/tooling) never deliver a
-    // WindowClosed event, so fall back to a bounded tick count unless the caller overrode it.
-    const bool hasRealWindow =
-        engine.getPlatform() != nullptr && engine.getPlatform()->GetContext().name == "SDL2";
-    const int maxTicks = options.maxTicksOverride  ? options.maxTicks
-                          : hasRealWindow           ? std::numeric_limits<int>::max()
-                                                     : 200;
-    int tickCount = 0;
-    constexpr double kTargetFrameSeconds = 1.0 / 60.0;
+    voxels::FrameAccumulator frameAccumulator;
     auto lastTime = std::chrono::steady_clock::now();
+    int frameCount = 0;
+    const int maxFrames = options.maxFrames > 0 ? options.maxFrames : std::numeric_limits<int>::max();
 
-    while (running && tickCount < maxTicks) {
-        if (engine.getPlatform() != nullptr) {
-            engine.getPlatform()->PollEvents(&windowCloseListener);
+    while (running && frameCount < maxFrames) {
+        if (platform != nullptr) {
+            platform->PollEvents(&windowCloseListener);
         }
 
         const auto now = std::chrono::steady_clock::now();
         const double deltaSeconds = std::chrono::duration<double>(now - lastTime).count();
         lastTime = now;
+        frameAccumulator.Accumulate(deltaSeconds);
 
-        localServer.Tick();
-        localClient.Tick();
-        stateMachine.Update(deltaSeconds);
-        stateMachine.Render();
-        ++tickCount;
-
-        if (hasRealWindow) {
-            const auto frameEnd = std::chrono::steady_clock::now();
-            const double elapsed = std::chrono::duration<double>(frameEnd - now).count();
-            const double remaining = kTargetFrameSeconds - elapsed;
-            if (remaining > 0.0) {
-                std::this_thread::sleep_for(std::chrono::duration<double>(remaining));
-            }
+        const int simTicks = frameAccumulator.Resolve(kFixedStepSeconds);
+        for (int i = 0; i < simTicks; ++i) {
+            localServer.Tick();
+            localClient.Tick();
+            stateMachine.Update(kFixedStepSeconds);
         }
+
+        stateMachine.Render();
+        if (platform != nullptr) {
+            platform->SwapBuffers();
+        }
+
+        ++frameCount;
     }
 
     localClient.Disconnect();
     localServer.Stop();
-    std::cout << "Voxels app loop exited after " << tickCount << " ticks.\n";
+    std::cout << "Voxels app loop exited after " << frameCount << " frames.\n";
     engine.shutdown();
     return 0;
 }

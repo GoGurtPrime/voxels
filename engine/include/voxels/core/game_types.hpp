@@ -83,6 +83,9 @@ struct AppCommandLineOptions {
     bool resolutionOverride = false;
     int resolutionWidth = 1280;
     int resolutionHeight = 720;
+    bool vsyncOverride = false;
+    bool vsyncValue = true;
+    bool headless = false;
     bool serverMode = false;
     std::string configPath;
     std::string saveSlot;
@@ -94,6 +97,7 @@ struct AppCommandLineOptions {
     int renderDistance = 8;
     bool maxTicksOverride = false;
     int maxTicks = 0;
+    int maxFrames = 0;
 };
 
 } // namespace voxels

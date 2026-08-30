@@ -37,8 +37,8 @@ Engine& Engine::operator=(Engine&& other) noexcept {
     return *this;
 }
 
-bool Engine::initialize() {
-    m_platform = CreateDefaultPlatform();
+bool Engine::initialize(bool headless) {
+    m_platform = CreateDefaultPlatform(headless);
     if (!m_platform->Initialize(WindowConfig{})) {
         m_platform.reset();
         m_status = EngineStatus::Error;
