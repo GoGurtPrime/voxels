@@ -9,6 +9,8 @@ add_library(voxels_engine
     src/render/camera.cpp
     src/render/texture_forge.cpp
     src/render/texture_atlas.cpp
+    src/render/chunk_mesher.cpp
+    src/render/chunk_renderer.cpp
     src/graphics/gl_renderer.cpp
     src/graphics/mock_renderer.cpp
     src/app/state_machine_render.cpp
