@@ -201,9 +201,16 @@ void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target,
     }
     const auto& held = inventory.GetSelectedStack();
     if (!held.IsEmpty()) AddRect(screenLines, 0.66f, -0.82f, 0.91f, -0.45f, {0.45f,0.85f,0.38f,1.0f});
+    glUseProgram(m_program);
+    glBindVertexArray(m_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
     glUniform1i(glGetUniformLocation(m_program, "screen"), GL_TRUE);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(screenLines.size() * sizeof(Vertex)), screenLines.data(), GL_DYNAMIC_DRAW);
-    glDisable(GL_DEPTH_TEST); glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(screenLines.size())); glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(screenLines.size()));
 
     constexpr float kLabelHoldSeconds = 2.0f;
     constexpr float kLabelFadeSeconds = 1.2f;

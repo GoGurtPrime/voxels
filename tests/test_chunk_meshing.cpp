@@ -471,3 +471,69 @@ TEST_CASE("ChunkRenderer.RendersGeneratedChunkToOffscreenTarget", "[render][chun
     SDL_DestroyWindow(window);
     SDL_Quit();
 }
+
+TEST_CASE("GameplayHud.HotbarAndLabelRemainVisibleDuringMining", "[render][hud][gpu]") {
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO) == 0);
+
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+
+    constexpr int kFramebufferWidth = 320;
+    constexpr int kFramebufferHeight = 180;
+    SDL_Window* window = SDL_CreateWindow("Voxels Gameplay HUD Test", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                           kFramebufferWidth, kFramebufferHeight, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    REQUIRE(window != nullptr);
+    SDL_GLContext context = SDL_GL_CreateContext(window);
+    REQUIRE(context != nullptr);
+    REQUIRE(gladLoadGLLoader(static_cast<GLADloadproc>(SDL_GL_GetProcAddress)));
+
+    glViewport(0, 0, kFramebufferWidth, kFramebufferHeight);
+    glClearColor(0.12f, 0.25f, 0.39f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    voxels::graphics::GameplayHudRenderer hudRenderer;
+    voxels::Camera camera;
+    camera.position = {0.5f, 0.5f, 2.5f};
+    camera.aspect = static_cast<float>(kFramebufferWidth) / static_cast<float>(kFramebufferHeight);
+    const voxels::RaycastHit target{true, {0, 0, 0}, voxels::Face::PosZ, 2.0f};
+    voxels::gameplay::Inventory inventory;
+    hudRenderer.Render(camera, target, 0.5f, inventory, "Stone", 0.0f, {});
+
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(kFramebufferWidth * kFramebufferHeight * 4), 0);
+    glReadPixels(0, 0, kFramebufferWidth, kFramebufferHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+    int hotbarPixelCount = 0;
+    int labelGoldPixelCount = 0;
+    for (int y = 0; y < kFramebufferHeight; ++y) {
+        for (int x = 0; x < kFramebufferWidth; ++x) {
+            const std::size_t index = (static_cast<std::size_t>(y) * kFramebufferWidth + x) * 4U;
+            const int red = pixels[index + 0];
+            const int green = pixels[index + 1];
+            const int blue = pixels[index + 2];
+            const bool isBackground = std::abs(red - 31) <= 2 && std::abs(green - 64) <= 2 && std::abs(blue - 99) <= 2;
+            if (x >= 75 && x <= 245 && y >= 10 && y <= 42 && !isBackground) {
+                ++hotbarPixelCount;
+            }
+            if (x >= 110 && x <= 210 && y >= 0 && y <= 18 && red > 180 && green > 120 && green < 235 && blue < 100) {
+                ++labelGoldPixelCount;
+            }
+        }
+    }
+
+    // The mining overlay binds its own program and VAO; HUD primitives must reclaim theirs.
+    REQUIRE(hotbarPixelCount > 150);
+    // Alpha blending must preserve gaps in the glyph atlas rather than writing filled quads.
+    REQUIRE(labelGoldPixelCount > 20);
+    REQUIRE(labelGoldPixelCount < 900);
+
+    hudRenderer.Shutdown();
+    SDL_GL_DeleteContext(context);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+}
