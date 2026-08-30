@@ -399,7 +399,7 @@ flowchart LR
         S1["Audio import: WAV/OGG"] --> B0
     end
 
-    B0["Bundler stage<br/>validate → deduplicate → deterministic order → CRC32"] --> VPK["core.vpk<br/>TOC + blobs + manifest.json"]
+    B0["Bundler stage<br/>validate → deduplicate → deterministic order → CRC32"] --> VPK["core.vpk<br/>validated VPK1 TOC + blobs + manifest.json"]
 
     VPK --> APPDIR["app/assets/packs/core.vpk"]
 
