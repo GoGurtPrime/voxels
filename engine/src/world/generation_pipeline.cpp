@@ -22,6 +22,7 @@ public:
         const int height = static_cast<int>(chunk.GetHeight());
         const int chunkX = chunk.GetCoordinate().x * kChunkSize;
         const int chunkZ = chunk.GetCoordinate().z * kChunkSize;
+        const int chunkYOrigin = chunk.GetCoordinate().y * height;
 
         for (int z = 0; z < depth; ++z) {
             for (int x = 0; x < width; ++x) {
@@ -29,17 +30,26 @@ public:
                 const double nz = static_cast<double>(chunkZ + z) * 0.12;
                 const double terrain = m_noise.Fractal2D(nx, nz, 5, 0.55, 2.0);
                 const int baseHeight = static_cast<int>(std::round(terrain * 18.0 + 28.0));
+                const bool surfaceIsUnderwater = baseHeight <= kWaterLevel;
 
                 for (int y = 0; y < height; ++y) {
-                    if (y <= 2) {
+                    const int worldY = chunkYOrigin + y;
+                    if (worldY <= 2) {
                         chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Stone));
-                    } else if (y <= baseHeight) {
-                        if (y > baseHeight - 3) {
-                            chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Dirt));
+                    } else if (worldY <= baseHeight) {
+                        if (worldY > baseHeight - 3) {
+                            const bool isTopLayer = worldY == baseHeight;
+                            if (isTopLayer && surfaceIsUnderwater) {
+                                chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Sand));
+                            } else if (isTopLayer) {
+                                chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Grass));
+                            } else {
+                                chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Dirt));
+                            }
                         } else {
                             chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Stone));
                         }
-                    } else if (y <= kWaterLevel) {
+                    } else if (worldY <= kWaterLevel) {
                         chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Water));
                     } else {
                         chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Air));
@@ -96,7 +106,8 @@ public:
                 while (surface > 0 && chunk.GetBlock(x, surface, z) == static_cast<BlockId>(BlockType::Air)) {
                     --surface;
                 }
-                if (surface <= 0 || chunk.GetBlock(x, surface, z) != static_cast<BlockId>(BlockType::Dirt)) {
+                if (surface <= 0 || (chunk.GetBlock(x, surface, z) != static_cast<BlockId>(BlockType::Dirt) &&
+                                     chunk.GetBlock(x, surface, z) != static_cast<BlockId>(BlockType::Grass))) {
                     continue;
                 }
 
@@ -135,6 +146,36 @@ public:
 private:
     Noise m_noise;
 };
+
+/// Simple chunk-local top-down skylight fill: each column is lit at full brightness from the
+/// chunk's top down to (and including) the first opaque block; everything below stays dark.
+/// This is a deliberately cheap approximation - it does not propagate sky light across chunk
+/// boundaries (e.g. an underground chunk sitting below a solid chunk above it) - full multi-chunk
+/// light propagation is out of scope for work item 05 and belongs to work item 12.
+class SkylightPhase : public IGenerationPhase {
+public:
+    void Execute(Chunk& chunk) override {
+        const int width = static_cast<int>(chunk.GetWidth());
+        const int depth = static_cast<int>(chunk.GetDepth());
+        const int height = static_cast<int>(chunk.GetHeight());
+
+        for (int z = 0; z < depth; ++z) {
+            for (int x = 0; x < width; ++x) {
+                bool lit = true;
+                for (int y = height - 1; y >= 0; --y) {
+                    const BlockId block = chunk.GetBlock(x, y, z);
+                    if (lit) {
+                        chunk.SetSkyLight(x, y, z, 15);
+                        if (block != static_cast<BlockId>(BlockType::Air) &&
+                            block != static_cast<BlockId>(BlockType::Water)) {
+                            lit = false; // this block itself is lit; everything strictly below is not
+                        }
+                    }
+                }
+            }
+        }
+    }
+};
 } // namespace
 
 WorldGenerator::WorldGenerator() : WorldGenerator(WorldOptions{}) {}
@@ -171,6 +212,9 @@ Chunk WorldGenerator::GenerateChunk(const ChunkCoordinate& coordinate) const {
         VegetationPhase vegetationPhase(Noise(m_options.seed + 51u));
         vegetationPhase.Execute(chunk);
     }
+
+    SkylightPhase skylightPhase;
+    skylightPhase.Execute(chunk);
 
     return chunk;
 }
