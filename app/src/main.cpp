@@ -10,7 +10,9 @@
 
 #include <chrono>
 #include <iostream>
+#include <limits>
 #include <memory>
+#include <thread>
 #include <vector>
 
 #include "voxels/app/cli_parser.hpp"
@@ -19,6 +21,25 @@
 #include "voxels/networking/client.hpp"
 #include "voxels/networking/server.hpp"
 #include "voxels/platform/platform.hpp"
+
+namespace {
+
+/// Bridges platform window-close notifications into the app's main-loop exit condition.
+class QuitOnWindowClosedListener final : public voxels::IPlatformEventListener {
+public:
+    explicit QuitOnWindowClosedListener(bool& runningFlag) : m_running(runningFlag) {}
+
+    void OnPlatformEvent(const voxels::PlatformEvent& event) override {
+        if (event.type == voxels::PlatformEventType::WindowClosed) {
+            m_running = false;
+        }
+    }
+
+private:
+    bool& m_running;
+};
+
+} // namespace
 
 int main(int argc, char** argv) {
     const std::vector<std::string> args(argv + 1, argv + argc);
@@ -59,21 +80,42 @@ int main(int argc, char** argv) {
     }
 
     bool running = true;
-    int maxTicks = options.maxTicks > 0 ? options.maxTicks : 200;
+    QuitOnWindowClosedListener windowCloseListener(running);
+
+    // Platforms without a real window (e.g. HeadlessPlatform in CI/tooling) never deliver a
+    // WindowClosed event, so fall back to a bounded tick count unless the caller overrode it.
+    const bool hasRealWindow =
+        engine.getPlatform() != nullptr && engine.getPlatform()->GetContext().name == "SDL2";
+    const int maxTicks = options.maxTicksOverride  ? options.maxTicks
+                          : hasRealWindow           ? std::numeric_limits<int>::max()
+                                                     : 200;
     int tickCount = 0;
-    const auto lastTime = std::chrono::steady_clock::now();
-    (void)lastTime;
+    constexpr double kTargetFrameSeconds = 1.0 / 60.0;
+    auto lastTime = std::chrono::steady_clock::now();
 
     while (running && tickCount < maxTicks) {
         if (engine.getPlatform() != nullptr) {
-            engine.getPlatform()->PollEvents(nullptr);
+            engine.getPlatform()->PollEvents(&windowCloseListener);
         }
+
+        const auto now = std::chrono::steady_clock::now();
+        const double deltaSeconds = std::chrono::duration<double>(now - lastTime).count();
+        lastTime = now;
 
         localServer.Tick();
         localClient.Tick();
-        stateMachine.Update(1.0 / 60.0);
+        stateMachine.Update(deltaSeconds);
         stateMachine.Render();
         ++tickCount;
+
+        if (hasRealWindow) {
+            const auto frameEnd = std::chrono::steady_clock::now();
+            const double elapsed = std::chrono::duration<double>(frameEnd - now).count();
+            const double remaining = kTargetFrameSeconds - elapsed;
+            if (remaining > 0.0) {
+                std::this_thread::sleep_for(std::chrono::duration<double>(remaining));
+            }
+        }
     }
 
     localClient.Disconnect();
