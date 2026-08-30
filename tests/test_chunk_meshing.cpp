@@ -353,6 +353,47 @@ TEST_CASE("ChunkRenderer.EditMeshesBypassTheBackgroundUploadBudget", "[render][c
 
     REQUIRE_FALSE(renderer.HasMesh({0, 0, 0}));
     REQUIRE(renderer.HasMesh({1, 0, 0}));
+    REQUIRE(renderer.GetMetrics().completedEditMeshes == 1);
+    REQUIRE(renderer.GetMetrics().lastEditMeshingMilliseconds >= 0.0);
+    REQUIRE(renderer.GetMetrics().lastEditLatencyMilliseconds >= renderer.GetMetrics().lastEditMeshingMilliseconds);
+}
+
+TEST_CASE("ChunkRenderer.ReservesBackgroundCapacityForEditMeshes", "[render][chunkrenderer][edit]") {
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::TextureAtlas atlas = MakeAtlas(registry);
+    voxels::JobSystem jobSystem(1);
+    voxels::World world;
+    world.GetOrCreateChunk({0, 0, 0});
+    world.GetOrCreateChunk({1, 0, 0});
+
+    voxels::graphics::ChunkRenderer renderer(registry, atlas, jobSystem);
+    renderer.SetBackgroundMeshQueueLimit(0);
+    renderer.MarkChunkDirty({0, 0, 0});
+    renderer.MarkBlockEdited({1, 0, 0}, {8, 8, 8}, 16);
+    renderer.EnqueueDirtyMeshJobs(world, glm::vec3(0.0f));
+    jobSystem.Shutdown();
+    renderer.UploadCompletedMeshes();
+
+    REQUIRE_FALSE(renderer.HasMesh({0, 0, 0}));
+    REQUIRE(renderer.HasMesh({1, 0, 0}));
+    REQUIRE(renderer.GetMetrics().completedEditMeshes == 1);
+}
+
+TEST_CASE("ChunkRenderer.ProvisionalMeshesWaitForNeighborArrival", "[render][chunkrenderer]") {
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::TextureAtlas atlas = MakeAtlas(registry);
+    voxels::JobSystem jobSystem(1);
+    voxels::World world;
+    world.SetBlock({15, 1, 1}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+
+    voxels::graphics::ChunkRenderer renderer(registry, atlas, jobSystem);
+    renderer.MarkChunkDirty({0, 0, 0});
+    renderer.EnqueueDirtyMeshJobs(world, glm::vec3(0.0f));
+    jobSystem.Shutdown();
+    renderer.UploadCompletedMeshes();
+
+    REQUIRE(renderer.HasMesh({0, 0, 0}));
+    REQUIRE(renderer.GetDirtyCount() == 0);
 }
 
 TEST_CASE("ChunkRenderer.RendersGeneratedChunkToOffscreenTarget", "[render][chunkrenderer][gpu]") {
@@ -376,6 +417,13 @@ TEST_CASE("ChunkRenderer.RendersGeneratedChunkToOffscreenTarget", "[render][chun
     voxels::TextureAtlas atlas(16, 16);
     atlas.PopulateFromBlockRegistry(registry, "app/assets/textures");
     REQUIRE(atlas.BuildGLTexture());
+    GLint wrapS = 0;
+    GLint wrapT = 0;
+    glBindTexture(GL_TEXTURE_2D_ARRAY, atlas.GetTextureHandle());
+    glGetTexParameteriv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, &wrapS);
+    glGetTexParameteriv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, &wrapT);
+    REQUIRE(wrapS == GL_REPEAT);
+    REQUIRE(wrapT == GL_REPEAT);
 
     voxels::graphics::GLRenderer glRenderer;
     glRenderer.SetTextureAtlas(&atlas);

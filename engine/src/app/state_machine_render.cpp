@@ -14,6 +14,7 @@
 #include "voxels/graphics/gl_renderer.hpp"
 #include "voxels/platform/platform.hpp"
 #include "voxels/render/chunk_renderer.hpp"
+#include "voxels/ui/imgui_ui_manager.hpp"
 #include "voxels/world/spawn_calculator.hpp"
 
 namespace voxels {
@@ -42,6 +43,7 @@ void MainMenuState::Update(double deltaSeconds) {
 }
 
 void InGameState::OnEnter() {
+    if (m_preparedWorld != nullptr) m_session.AdoptWorld(std::move(m_preparedWorld));
     m_session.SetWorldOptions(m_options);
     m_session.SetInputManager(m_inputManager);
     m_session.SetBlockRegistry(m_registry);
@@ -49,9 +51,8 @@ void InGameState::OnEnter() {
     if (m_context != nullptr) m_context->activeGame = this;
     m_session.Initialize();
 
-    if (m_platform != nullptr) {
-        m_platform->SetRelativeMouseMode(true);
-    }
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Gameplay);
+    else if (m_platform != nullptr) m_platform->SetRelativeMouseMode(true);
 
     if (m_registry != nullptr && m_atlas != nullptr) {
         if (m_jobSystem == nullptr) m_jobSystem = std::make_unique<JobSystem>();

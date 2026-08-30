@@ -6,7 +6,9 @@
  *
  * @details Owns the `chunkCoord -> GpuChunkMesh` cache described in ARCHITECTURE.md §6.2. Dirty
  *          chunks are meshed off the main thread via `JobSystem` (ADR-008); only GPU buffer
+#include <chrono>
  *          creation/upload and drawing happen on the render thread. Reference
+#include <limits>
  *          work_items/05_chunk_mesh_pipeline_and_world_rendering.md.
  */
 
@@ -37,6 +39,9 @@ struct ChunkRenderMetrics {
     std::size_t triangles = 0;
     std::size_t meshQueueDepth = 0;
     double lastUploadMilliseconds = 0.0;
+    double lastEditMeshingMilliseconds = 0.0;
+    double lastEditLatencyMilliseconds = 0.0;
+    std::size_t completedEditMeshes = 0;
 };
 
 class ChunkRenderer {
@@ -50,6 +55,10 @@ public:
     /// Caps GPU upload work per frame: at most `maxChunksPerFrame` uploads, and stops early once
     /// `maxMilliseconds` of upload time has been spent this call (ADR-008, §8 performance budget).
     void SetUploadBudget(std::uint32_t maxChunksPerFrame, double maxMilliseconds) noexcept;
+
+    /// Limits queued/background mesh work so interactive edits can take an idle worker promptly.
+    /// The default is unlimited for tools and tests; the desktop runtime reserves worker capacity.
+    void SetBackgroundMeshQueueLimit(std::size_t maxJobs) noexcept;
 
     /// Marks a single chunk coordinate dirty (queued for re-mesh).
     void MarkChunkDirty(const voxels::ChunkCoordinate& coordinate);
@@ -103,6 +112,8 @@ private:
         voxels::ChunkCoordinate coordinate;
         ChunkMeshData data;
         std::uint64_t revision = 0;
+        bool editPriority = false;
+        double meshingMilliseconds = 0.0;
     };
 
     void MarkChunkDirtyForEdit(const voxels::ChunkCoordinate& coordinate);
@@ -126,8 +137,12 @@ private:
     std::unordered_map<voxels::ChunkCoordinate, GpuChunkMesh, voxels::ChunkCoordinateHash> m_meshes;
     std::unordered_set<voxels::ChunkCoordinate, voxels::ChunkCoordinateHash> m_dirty;
     std::unordered_set<voxels::ChunkCoordinate, voxels::ChunkCoordinateHash> m_editPriority;
+    std::unordered_set<voxels::ChunkCoordinate, voxels::ChunkCoordinateHash> m_backgroundInFlight;
+    std::unordered_set<voxels::ChunkCoordinate, voxels::ChunkCoordinateHash> m_knownResidentChunks;
     std::unordered_set<voxels::ChunkCoordinate, voxels::ChunkCoordinateHash> m_inFlight;
     std::unordered_map<voxels::ChunkCoordinate, std::uint64_t, voxels::ChunkCoordinateHash> m_revisions;
+    std::unordered_map<voxels::ChunkCoordinate, std::chrono::steady_clock::time_point,
+                       voxels::ChunkCoordinateHash> m_editRequestedAt;
 
     std::mutex m_completedMutex;
     std::vector<PendingMeshResult> m_completed;
@@ -135,6 +150,7 @@ private:
     std::uint32_t m_chunkSize = 16;
     std::uint32_t m_uploadBudgetChunksPerFrame = 4;
     double m_uploadBudgetMilliseconds = 2.0;
+    std::size_t m_backgroundMeshQueueLimit = std::numeric_limits<std::size_t>::max();
 
     ChunkRenderMetrics m_metrics;
 };

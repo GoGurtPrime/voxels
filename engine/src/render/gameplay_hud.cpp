@@ -45,7 +45,7 @@ void AddRect(std::vector<Vertex>& vertices, float left, float bottom, float righ
     AddLine(vertices, {left, top, 0.0f}, {left, bottom, 0.0f}, color);
 }
 
-std::array<CrackVertex, 6> MakeCrackQuad(const RaycastHit& target) {
+std::array<CrackVertex, 36> MakeCrackBox(const RaycastHit& target) {
     constexpr float kBias = 0.005f;
     const float minX = static_cast<float>(target.blockPosition.x);
     const float minY = static_cast<float>(target.blockPosition.y);
@@ -53,17 +53,25 @@ std::array<CrackVertex, 6> MakeCrackQuad(const RaycastHit& target) {
     const float maxX = minX + 1.0f;
     const float maxY = minY + 1.0f;
     const float maxZ = minZ + 1.0f;
-    std::array<glm::vec3, 4> points{};
-    switch (target.face) {
-        case Face::PosX: points = {{{maxX + kBias, minY, minZ}, {maxX + kBias, maxY, minZ}, {maxX + kBias, maxY, maxZ}, {maxX + kBias, minY, maxZ}}}; break;
-        case Face::NegX: points = {{{minX - kBias, minY, minZ}, {minX - kBias, minY, maxZ}, {minX - kBias, maxY, maxZ}, {minX - kBias, maxY, minZ}}}; break;
-        case Face::PosY: points = {{{minX, maxY + kBias, minZ}, {minX, maxY + kBias, maxZ}, {maxX, maxY + kBias, maxZ}, {maxX, maxY + kBias, minZ}}}; break;
-        case Face::NegY: points = {{{minX, minY - kBias, minZ}, {maxX, minY - kBias, minZ}, {maxX, minY - kBias, maxZ}, {minX, minY - kBias, maxZ}}}; break;
-        case Face::PosZ: points = {{{minX, minY, maxZ + kBias}, {maxX, minY, maxZ + kBias}, {maxX, maxY, maxZ + kBias}, {minX, maxY, maxZ + kBias}}}; break;
-        case Face::NegZ: points = {{{minX, minY, minZ - kBias}, {minX, maxY, minZ - kBias}, {maxX, maxY, minZ - kBias}, {maxX, minY, minZ - kBias}}}; break;
+    const std::array<std::array<glm::vec3, 4>, 6> faces = {{
+        {{{maxX + kBias, minY, minZ}, {maxX + kBias, maxY, minZ}, {maxX + kBias, maxY, maxZ}, {maxX + kBias, minY, maxZ}}},
+        {{{minX - kBias, minY, minZ}, {minX - kBias, minY, maxZ}, {minX - kBias, maxY, maxZ}, {minX - kBias, maxY, minZ}}},
+        {{{minX, maxY + kBias, minZ}, {minX, maxY + kBias, maxZ}, {maxX, maxY + kBias, maxZ}, {maxX, maxY + kBias, minZ}}},
+        {{{minX, minY - kBias, minZ}, {maxX, minY - kBias, minZ}, {maxX, minY - kBias, maxZ}, {minX, minY - kBias, maxZ}}},
+        {{{minX, minY, maxZ + kBias}, {maxX, minY, maxZ + kBias}, {maxX, maxY, maxZ + kBias}, {minX, maxY, maxZ + kBias}}},
+        {{{minX, minY, minZ - kBias}, {minX, maxY, minZ - kBias}, {maxX, maxY, minZ - kBias}, {maxX, minY, minZ - kBias}}},
+    }};
+    std::array<CrackVertex, 36> vertices{};
+    std::size_t vertexIndex = 0;
+    for (const auto& points : faces) {
+        vertices[vertexIndex++] = {points[0], {0.0f, 0.0f}};
+        vertices[vertexIndex++] = {points[1], {1.0f, 0.0f}};
+        vertices[vertexIndex++] = {points[2], {1.0f, 1.0f}};
+        vertices[vertexIndex++] = {points[0], {0.0f, 0.0f}};
+        vertices[vertexIndex++] = {points[2], {1.0f, 1.0f}};
+        vertices[vertexIndex++] = {points[3], {0.0f, 1.0f}};
     }
-    return {{{points[0], {0.0f, 0.0f}}, {points[1], {1.0f, 0.0f}}, {points[2], {1.0f, 1.0f}},
-             {points[0], {0.0f, 0.0f}}, {points[2], {1.0f, 1.0f}}, {points[3], {0.0f, 1.0f}}}};
+    return vertices;
 }
 } // namespace
 
@@ -104,7 +112,7 @@ void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target,
         glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(TextVertex), reinterpret_cast<void*>(sizeof(glm::vec2)));
 
         constexpr const char* crackVertexSource = "#version 330 core\nlayout(location=0) in vec3 p; layout(location=1) in vec2 uv; uniform mat4 vp; out vec2 t; void main(){gl_Position=vp*vec4(p,1);t=uv;}";
-        constexpr const char* crackFragmentSource = "#version 330 core\nin vec2 t; uniform sampler2D crack; out vec4 outColor; void main(){float alpha=texture(crack,t).a;outColor=vec4(0.09,0.025,0.015,alpha);}";
+        constexpr const char* crackFragmentSource = "#version 330 core\nin vec2 t; uniform sampler2D crack; out vec4 outColor; void main(){float alpha=texture(crack,t).a;if(alpha<0.05)discard;outColor=vec4(0.09,0.025,0.015,alpha);}";
         const GLuint crackVertex = Compile(GL_VERTEX_SHADER, crackVertexSource);
         const GLuint crackFragment = Compile(GL_FRAGMENT_SHADER, crackFragmentSource);
         if (crackVertex != 0 && crackFragment != 0) {
@@ -172,7 +180,7 @@ void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target,
     if (target.hit && breakProgress > 0.0f && m_crackProgram != 0) {
         const std::size_t stage = std::min<std::size_t>(m_crackTextures.size() - 1,
                                                         static_cast<std::size_t>(breakProgress * m_crackTextures.size()));
-        const auto crackVertices = MakeCrackQuad(target);
+        const auto crackVertices = MakeCrackBox(target);
         glUseProgram(m_crackProgram);
         glUniformMatrix4fv(glGetUniformLocation(m_crackProgram, "vp"), 1, GL_FALSE, glm::value_ptr(viewProjection));
         glActiveTexture(GL_TEXTURE0);
@@ -181,11 +189,14 @@ void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target,
         glBindVertexArray(m_crackVao);
         glBindBuffer(GL_ARRAY_BUFFER, m_crackVbo);
         glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(crackVertices.size() * sizeof(CrackVertex)), crackVertices.data(), GL_DYNAMIC_DRAW);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(GL_FALSE);
         glDisable(GL_CULL_FACE);
         glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(crackVertices.size()));
         glEnable(GL_CULL_FACE);
         glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
     }
 
     std::vector<Vertex> screenLines;
@@ -245,7 +256,7 @@ void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target,
         glUniform1i(glGetUniformLocation(m_textProgram, "atlas"), 0); glUniform4f(glGetUniformLocation(m_textProgram, "color"), 1.0f, 0.78f, 0.16f, alpha);
         glBindVertexArray(m_textVao); glBindBuffer(GL_ARRAY_BUFFER, m_textVbo);
         glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(textVertices.size() * sizeof(TextVertex)), textVertices.data(), GL_DYNAMIC_DRAW);
-        glDisable(GL_DEPTH_TEST); glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(textVertices.size())); glEnable(GL_DEPTH_TEST);
+        glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(textVertices.size()));
     }
     glUseProgram(0);
     glBindVertexArray(0);

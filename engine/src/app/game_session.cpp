@@ -30,6 +30,12 @@ void GameSession::SetWorld(World* world) noexcept {
     }
 }
 
+void GameSession::AdoptWorld(std::unique_ptr<World> world) noexcept {
+    m_ownedWorld = std::move(world);
+    if (m_ownedWorld == nullptr) m_ownedWorld = std::make_unique<World>();
+    m_world = m_ownedWorld.get();
+}
+
 void GameSession::SetWorldOptions(const WorldOptions& options) noexcept {
     m_worldOptions = options;
 }

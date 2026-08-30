@@ -28,6 +28,7 @@ public:
     explicit GameSession(World* world);
 
     void SetWorld(World* world) noexcept;
+    void AdoptWorld(std::unique_ptr<World> world) noexcept;
     void SetWorldOptions(const WorldOptions& options) noexcept;
     void SetInputManager(InputManager* inputManager) noexcept;
     void SetBlockRegistry(const BlockRegistry* registry) noexcept;

@@ -22,6 +22,8 @@
 
 namespace voxels {
 
+enum class JobPriority { Normal, High };
+
 class JobSystem {
 public:
     explicit JobSystem(std::size_t workerCount = 0);
@@ -32,7 +34,7 @@ public:
     JobSystem(JobSystem&&) = delete;
     JobSystem& operator=(JobSystem&&) = delete;
 
-    void Enqueue(std::function<void()> job);
+    void Enqueue(std::function<void()> job, JobPriority priority = JobPriority::Normal);
     template <typename F>
     auto EnqueueWithResult(F&& function) -> std::future<decltype(function())> {
         using ResultType = decltype(function());
@@ -51,7 +53,8 @@ private:
 
     std::mutex m_mutex;
     std::condition_variable m_cv;
-    std::queue<std::function<void()>> m_jobs;
+    std::queue<std::function<void()>> m_highPriorityJobs;
+    std::queue<std::function<void()>> m_normalJobs;
     std::vector<std::thread> m_workers;
     std::atomic<bool> m_running{true};
 };

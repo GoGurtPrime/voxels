@@ -81,7 +81,9 @@ uniform vec3 uFoliageTint;
 out vec4 FragColor;
 
 void main() {
-    vec4 texColor = texture(uTextureAtlas, vec3(vUV, vLayer));
+    // Greedy quads use whole-tile UVs. Explicit wrapping keeps per-tile sampling stable even
+    // if external GL code changes the atlas sampler state.
+    vec4 texColor = texture(uTextureAtlas, vec3(fract(vUV), vLayer));
     if (texColor.a < 0.05) {
         discard;
     }
@@ -166,6 +168,10 @@ void ChunkRenderer::SetUploadBudget(std::uint32_t maxChunksPerFrame, double maxM
     m_uploadBudgetMilliseconds = maxMilliseconds;
 }
 
+void ChunkRenderer::SetBackgroundMeshQueueLimit(std::size_t maxJobs) noexcept {
+    m_backgroundMeshQueueLimit = maxJobs;
+}
+
 void ChunkRenderer::MarkChunkDirty(const voxels::ChunkCoordinate& coordinate) {
     ++m_revisions[coordinate];
     m_dirty.insert(coordinate);
@@ -173,7 +179,9 @@ void ChunkRenderer::MarkChunkDirty(const voxels::ChunkCoordinate& coordinate) {
 
 void ChunkRenderer::MarkChunkDirtyForEdit(const voxels::ChunkCoordinate& coordinate) {
     MarkChunkDirty(coordinate);
-    m_editPriority.insert(coordinate);
+    if (m_editPriority.insert(coordinate).second) {
+        m_editRequestedAt.emplace(coordinate, std::chrono::steady_clock::now());
+    }
 }
 
 void ChunkRenderer::MarkBlockEdited(const voxels::ChunkCoordinate& coordinate, const voxels::Vec3I& localEditPos,
@@ -191,6 +199,47 @@ void ChunkRenderer::MarkBlockEdited(const voxels::ChunkCoordinate& coordinate, c
 void ChunkRenderer::EnqueueDirtyMeshJobs(const voxels::World& world, const glm::vec3& cameraPosition) {
     m_chunkSize = world.GetChunkSize();
 
+    static constexpr std::array<voxels::ChunkCoordinate, 6> kOffsets = {
+        voxels::ChunkCoordinate{1, 0, 0}, voxels::ChunkCoordinate{-1, 0, 0},
+        voxels::ChunkCoordinate{0, 1, 0}, voxels::ChunkCoordinate{0, -1, 0},
+        voxels::ChunkCoordinate{0, 0, 1}, voxels::ChunkCoordinate{0, 0, -1}};
+    const auto& chunks = world.GetChunks();
+    std::vector<voxels::ChunkCoordinate> newlyResident;
+    for (const auto& [coordinate, chunk] : chunks) {
+        (void)chunk;
+        if (m_knownResidentChunks.insert(coordinate).second) {
+            newlyResident.push_back(coordinate);
+        }
+    }
+    for (const auto& coordinate : newlyResident) {
+        MarkChunkDirty(coordinate);
+        for (const auto& offset : kOffsets) {
+            const voxels::ChunkCoordinate neighbor{coordinate.x + offset.x, coordinate.y + offset.y,
+                                                    coordinate.z + offset.z};
+            if (chunks.contains(neighbor)) {
+                MarkChunkDirty(neighbor);
+            }
+        }
+    }
+    std::vector<voxels::ChunkCoordinate> removedResidents;
+    for (auto it = m_knownResidentChunks.begin(); it != m_knownResidentChunks.end();) {
+        if (!chunks.contains(*it)) {
+            removedResidents.push_back(*it);
+            it = m_knownResidentChunks.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (const auto& coordinate : removedResidents) {
+        for (const auto& offset : kOffsets) {
+            const voxels::ChunkCoordinate neighbor{coordinate.x + offset.x, coordinate.y + offset.y,
+                                                    coordinate.z + offset.z};
+            if (chunks.contains(neighbor)) {
+                MarkChunkDirty(neighbor);
+            }
+        }
+    }
+
     std::vector<voxels::ChunkCoordinate> candidates(m_dirty.begin(), m_dirty.end());
     std::sort(candidates.begin(), candidates.end(), [&](const auto& a, const auto& b) {
         const bool aIsEdit = m_editPriority.contains(a);
@@ -202,9 +251,12 @@ void ChunkRenderer::EnqueueDirtyMeshJobs(const voxels::World& world, const glm::
                DistanceSq(ChunkOrigin(b, m_chunkSize), cameraPosition);
     });
 
-    const auto& chunks = world.GetChunks();
     for (const auto& coordinate : candidates) {
         if (m_inFlight.contains(coordinate)) {
+            continue;
+        }
+        const bool isEditPriority = m_editPriority.contains(coordinate);
+        if (!isEditPriority && m_backgroundInFlight.size() >= m_backgroundMeshQueueLimit) {
             continue;
         }
         const auto ownerIt = chunks.find(coordinate);
@@ -213,36 +265,41 @@ void ChunkRenderer::EnqueueDirtyMeshJobs(const voxels::World& world, const glm::
         }
 
         ChunkNeighborhood neighborhood;
-        static constexpr std::array<voxels::ChunkCoordinate, 6> kOffsets = {
-            voxels::ChunkCoordinate{1, 0, 0}, voxels::ChunkCoordinate{-1, 0, 0},
-            voxels::ChunkCoordinate{0, 1, 0}, voxels::ChunkCoordinate{0, -1, 0},
-            voxels::ChunkCoordinate{0, 0, 1}, voxels::ChunkCoordinate{0, 0, -1}};
-        std::array<std::shared_ptr<voxels::Chunk>, 6> neighborOwners{};
+        std::array<std::shared_ptr<voxels::Chunk>, 6> neighborSnapshots{};
         for (std::size_t i = 0; i < kOffsets.size(); ++i) {
             const voxels::ChunkCoordinate neighborCoord{coordinate.x + kOffsets[i].x, coordinate.y + kOffsets[i].y,
                                                          coordinate.z + kOffsets[i].z};
             const auto neighborIt = chunks.find(neighborCoord);
             if (neighborIt != chunks.end()) {
-                neighborOwners[i] = neighborIt->second;
-                neighborhood.neighbors[i] = neighborOwners[i].get();
+                neighborSnapshots[i] = std::make_shared<voxels::Chunk>(*neighborIt->second);
+                neighborhood.neighbors[i] = neighborSnapshots[i].get();
             }
         }
 
-        std::shared_ptr<voxels::Chunk> owner = ownerIt->second;
+        const std::shared_ptr<voxels::Chunk> ownerSnapshot = std::make_shared<voxels::Chunk>(*ownerIt->second);
         const std::uint64_t revision = m_revisions[coordinate];
         m_dirty.erase(coordinate);
         m_inFlight.insert(coordinate);
+        if (!isEditPriority) {
+            m_backgroundInFlight.insert(coordinate);
+        }
 
         voxels::BlockRegistry& registry = m_registry;
         voxels::TextureAtlas& atlas = m_atlas;
-        m_jobSystem.Enqueue([this, coordinate, revision, owner, neighborOwners, neighborhood, &registry, &atlas]() mutable {
-            for (std::size_t i = 0; i < neighborOwners.size(); ++i) {
-                neighborhood.neighbors[i] = neighborOwners[i].get();
+        const JobPriority priority = isEditPriority ? JobPriority::High : JobPriority::Normal;
+        m_jobSystem.Enqueue([this, coordinate, revision, ownerSnapshot, neighborSnapshots, neighborhood, isEditPriority,
+                             &registry, &atlas]() mutable {
+            const auto start = std::chrono::steady_clock::now();
+            for (std::size_t i = 0; i < neighborSnapshots.size(); ++i) {
+                neighborhood.neighbors[i] = neighborSnapshots[i].get();
             }
-            ChunkMeshData data = BuildChunkMesh(*owner, neighborhood, registry, atlas);
+            ChunkMeshData data = BuildChunkMesh(*ownerSnapshot, neighborhood, registry, atlas);
+            const double meshingMilliseconds =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
             std::lock_guard<std::mutex> lock(m_completedMutex);
-            m_completed.push_back(PendingMeshResult{coordinate, std::move(data), revision});
-        });
+            m_completed.push_back(PendingMeshResult{coordinate, std::move(data), revision, isEditPriority,
+                                                    meshingMilliseconds});
+        }, priority);
     }
 }
 
@@ -307,11 +364,7 @@ void ChunkRenderer::UploadMesh(const voxels::ChunkCoordinate& coordinate, ChunkM
     mesh.provisional = data.provisional;
 
     if (glGenVertexArrays == nullptr) {
-        // No live GL context (headless unit test): the mesh cache entry above still lets budget
-        // and dirty-tracking logic be exercised without touching the driver.
-        if (mesh.provisional) {
-            m_dirty.insert(coordinate);
-        }
+        // No live GL context (headless unit test): cache mesh metadata without touching the driver.
         return;
     }
 
@@ -345,10 +398,6 @@ void ChunkRenderer::UploadMesh(const voxels::ChunkCoordinate& coordinate, ChunkM
 
     glBindVertexArray(0);
 
-    if (mesh.provisional) {
-        // Neighbours were missing when this mesh was built; queue a re-mesh for when they load.
-        m_dirty.insert(coordinate);
-    }
 }
 
 void ChunkRenderer::UploadCompletedMeshes() {
@@ -363,6 +412,7 @@ void ChunkRenderer::UploadCompletedMeshes() {
     std::uint32_t uploaded = 0;
     for (std::size_t i = 0; i < batch.size(); ++i) {
         m_inFlight.erase(batch[i].coordinate);
+        m_backgroundInFlight.erase(batch[i].coordinate);
 
         if (batch[i].revision != m_revisions[batch[i].coordinate]) {
             // A block edit happened while this job ran; preserve its dirty state and discard stale geometry.
@@ -385,7 +435,17 @@ void ChunkRenderer::UploadCompletedMeshes() {
 
         EnsureProgram(); // best-effort; UploadMesh() degrades gracefully without a GL context
         UploadMesh(batch[i].coordinate, std::move(batch[i].data));
-        m_editPriority.erase(batch[i].coordinate);
+        if (batch[i].editPriority) {
+            m_metrics.lastEditMeshingMilliseconds = batch[i].meshingMilliseconds;
+            const auto requestedAt = m_editRequestedAt.find(batch[i].coordinate);
+            if (requestedAt != m_editRequestedAt.end()) {
+                m_metrics.lastEditLatencyMilliseconds =
+                    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - requestedAt->second).count();
+                m_editRequestedAt.erase(requestedAt);
+            }
+            ++m_metrics.completedEditMeshes;
+            m_editPriority.erase(batch[i].coordinate);
+        }
         ++uploaded;
     }
 

@@ -142,12 +142,13 @@ public:
     void SetSaveManager(ISaveManager& manager) noexcept { m_saveManager = &manager; }
     void SetSaveName(std::string saveName) noexcept { m_saveName = std::move(saveName); }
     void SetWorldOptions(WorldOptions options) noexcept { m_options = std::move(options); }
+    [[nodiscard]] std::unique_ptr<World> ReleaseGeneratedWorld() noexcept { return std::move(m_world); }
 
     void RunGeneration();
     void OnEnter() override;
     void Update(double deltaSeconds) override;
     void Render() override;
-    [[nodiscard]] const World& GetWorld() const noexcept { return m_world; }
+    [[nodiscard]] const World& GetWorld() const noexcept { return *m_world; }
     [[nodiscard]] Vec3I GetSpawnPosition() const noexcept { return m_spawnPosition; }
     [[nodiscard]] GenerationPhase GetPhase() const noexcept { return m_phase; }
     [[nodiscard]] float GetProgress() const noexcept;
@@ -156,10 +157,12 @@ private:
     ISaveManager* m_saveManager = nullptr;
     std::string m_saveName;
     WorldOptions m_options{};
-    World m_world;
+    std::unique_ptr<World> m_world;
     GenerationPhase m_phase = GenerationPhase::Shape;
     Vec3I m_spawnPosition{0, 1, 0};
     bool m_generationComplete = false;
+    std::vector<ChunkCoordinate> m_generationQueue;
+    std::size_t m_generatedChunks = 0;
 };
 
 /// The real playable gameplay state: generates a bounded voxel world and renders it through
@@ -178,6 +181,7 @@ public:
     void SetPlayerCamera(Camera* camera) noexcept { m_cameraOverride = camera; }
     void SetPlatform(IPlatform* platform) noexcept { m_platform = platform; }
     void SetActiveSave(GameSave save) { m_activeSave = std::move(save); }
+    void SetPreparedWorld(std::unique_ptr<World> world) noexcept { m_preparedWorld = std::move(world); }
     void ApplyPreferences(const GamePreferences& preferences) noexcept { m_session.SetPreferences(preferences); }
 
     void OnEnter() override;
@@ -205,6 +209,7 @@ private:
     float m_elapsedSeconds = 0.0f;
     bool m_worldGenerated = false;
     GameSave m_activeSave{};
+    std::unique_ptr<World> m_preparedWorld;
 };
 
 class PauseMenuState final : public IAppState {
@@ -213,6 +218,7 @@ public:
         : IAppState(context), m_activeSave(std::move(activeSave)) {}
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::PauseMenu; }
     void OnEnter() override;
+    void OnExit() override;
     void Update(double deltaSeconds) override;
     void Render() override;
 

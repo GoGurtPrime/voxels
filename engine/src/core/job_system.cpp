@@ -22,13 +22,17 @@ JobSystem::~JobSystem() {
     Shutdown();
 }
 
-void JobSystem::Enqueue(std::function<void()> job) {
+void JobSystem::Enqueue(std::function<void()> job, JobPriority priority) {
     if (!m_running.load()) {
         return;
     }
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_jobs.push(std::move(job));
+        if (priority == JobPriority::High) {
+            m_highPriorityJobs.push(std::move(job));
+        } else {
+            m_normalJobs.push(std::move(job));
+        }
     }
     m_cv.notify_one();
 }
@@ -49,22 +53,24 @@ void JobSystem::Shutdown() {
 }
 
 void JobSystem::WorkerLoop() {
-    // Loop on queue-empty AND not-running (rather than just not-running) so Shutdown() always
-    // drains every already-queued job instead of racing worker threads and silently dropping
-    // whatever was still queued when m_running flipped false.
+    // Loop on both queues being empty AND not-running so Shutdown() drains every queued job.
     while (true) {
         std::function<void()> job;
         {
             std::unique_lock<std::mutex> lock(m_mutex);
-            m_cv.wait(lock, [this] { return !m_jobs.empty() || !m_running.load(); });
-            if (m_jobs.empty()) {
+            m_cv.wait(lock, [this] {
+                return !m_highPriorityJobs.empty() || !m_normalJobs.empty() || !m_running.load();
+            });
+            if (m_highPriorityJobs.empty() && m_normalJobs.empty()) {
                 if (!m_running.load()) {
                     return;
                 }
                 continue;
             }
-            job = std::move(m_jobs.front());
-            m_jobs.pop();
+            std::queue<std::function<void()>>& queue =
+                m_highPriorityJobs.empty() ? m_normalJobs : m_highPriorityJobs;
+            job = std::move(queue.front());
+            queue.pop();
         }
         if (job) {
             job();

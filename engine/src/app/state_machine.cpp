@@ -135,24 +135,17 @@ void LoadingScreenState::RunGeneration() {
         }
     }
 
-    m_world = World();
-    m_world.Initialize(m_options);
-    m_world.SetPlayerSpawn({0, 0, 0});
-
+    m_world = std::make_unique<World>();
+    m_world->Initialize(m_options);
+    m_generationQueue.clear();
+    for (int z = -1; z <= 1; ++z) {
+        for (int x = -1; x <= 1; ++x) {
+            for (int y = 0; y < 3; ++y) m_generationQueue.push_back({x, y, z});
+            m_generationQueue.push_back({x, 3, z});
+        }
+    }
+    m_generatedChunks = 0;
     m_phase = GenerationPhase::Shape;
-    WorldGenerator generator(m_options);
-    const Chunk chunk = generator.GenerateChunk({0, 0, 0});
-    FillWorldFromChunk(m_world, chunk);
-
-    m_phase = GenerationPhase::Caves;
-    m_phase = GenerationPhase::Vegetation;
-    m_phase = GenerationPhase::SpawnPlacement;
-
-    const Vec3I spawn = FindSafeSpawn(chunk, 0, 0);
-    m_spawnPosition = spawn;
-    m_world.SetPlayerSpawn({0, 0, 0});
-
-    m_phase = GenerationPhase::Complete;
 }
 
 float LoadingScreenState::GetProgress() const noexcept {

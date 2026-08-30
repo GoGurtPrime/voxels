@@ -34,9 +34,15 @@ TEST_CASE("MVP.LoadingScreenGeneratesPlayableWorld", "[mvp]") {
     loading.SetWorldOptions(options);
     loading.RunGeneration();
 
+    REQUIRE(loading.GetPhase() == voxels::GenerationPhase::Shape);
+    REQUIRE(loading.GetWorld().LoadedChunkCount() == 0);
+    for (int index = 0; index < 36; ++index) loading.Update(0.0);
+    REQUIRE(loading.GetWorld().LoadedChunkCount() == 36);
+    loading.Update(0.0);
     REQUIRE(loading.GetPhase() == voxels::GenerationPhase::Complete);
     REQUIRE(loading.GetProgress() == Catch::Approx(1.0f).margin(0.001f));
-    REQUIRE(loading.GetWorld().HasChunk({0, 0, 0}));
+    REQUIRE(loading.GetWorld().HasChunk({-1, 0, -1}));
+    REQUIRE(loading.GetWorld().HasChunk({1, 3, 1}));
 
     const auto spawn = loading.GetSpawnPosition();
     REQUIRE(spawn.y > 0);

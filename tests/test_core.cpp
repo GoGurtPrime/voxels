@@ -6,9 +6,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <vector>
 
+#include "voxels/core/job_system.hpp"
 #include "voxels/core/logger.hpp"
 #include "voxels/core/math.hpp"
 #include "voxels/core/memory.hpp"
@@ -28,6 +30,28 @@ public:
 };
 
 } // namespace
+
+TEST_CASE("JobSystem.HighPriorityJobsRunBeforeQueuedNormalJobs", "[core][jobs]") {
+    voxels::JobSystem jobSystem(1);
+    std::promise<void> workerStarted;
+    std::promise<void> releaseWorker;
+    std::future<void> releaseFuture = releaseWorker.get_future();
+    std::vector<int> executionOrder;
+
+    jobSystem.Enqueue([&] {
+        executionOrder.push_back(1);
+        workerStarted.set_value();
+        releaseFuture.wait();
+    });
+    workerStarted.get_future().wait();
+
+    jobSystem.Enqueue([&] { executionOrder.push_back(2); });
+    jobSystem.Enqueue([&] { executionOrder.push_back(3); }, voxels::JobPriority::High);
+    releaseWorker.set_value();
+    jobSystem.Shutdown();
+
+    REQUIRE(executionOrder == std::vector<int>{1, 3, 2});
+}
 
 TEST_CASE("Logger.LevelFiltering", "[core][logger]") {
     voxels::Logger logger(voxels::LogLevel::Warn);

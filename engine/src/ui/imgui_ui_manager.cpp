@@ -174,6 +174,12 @@ namespace ui {
 bool MenuButton(const char* label, bool enabled) { ImGui::BeginDisabled(!enabled); const bool pressed = ImGui::Button(label, {-1.0f, 0.0f}); ImGui::EndDisabled(); return pressed; }
 void MenuTitle(const char* title) { ImGui::PushStyleColor(ImGuiCol_Text, kWarmAccent); ImGui::TextUnformatted(title); ImGui::PopStyleColor(); ImGui::Separator(); }
 bool SettingSlider(const char* label, float* value, float minimum, float maximum, const char* format) { return ImGui::SliderFloat(label, value, minimum, maximum, format); }
+bool SettingPercentSlider(const char* label, float* normalizedValue) {
+    float percent = std::clamp(*normalizedValue, 0.0f, 1.0f) * 100.0f;
+    if (!ImGui::SliderFloat(label, &percent, 0.0f, 100.0f, "%.0f%%")) return false;
+    *normalizedValue = percent / 100.0f;
+    return true;
+}
 bool SettingToggle(const char* label, bool* value) { return ImGui::Checkbox(label, value); }
 bool SettingDropdown(const char* label, int* currentItem, const char* const items[], int itemCount) { return ImGui::Combo(label, currentItem, items, itemCount); }
 bool KeyBindRow(const char* label, int* key) { return ImGui::InputInt(label, key); }

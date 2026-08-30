@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <charconv>
 #include <chrono>
+#include <cfloat>
 #include <cctype>
 #include <iomanip>
 #include <random>
@@ -36,6 +37,20 @@ void CenterNextWindow() {
 void BeginMenuFrame(AppContext* context) {
     if (context != nullptr && context->renderer != nullptr) context->renderer->BeginFrame({0.12f, 0.16f, 0.19f, 1.0f});
 }
+
+void SetResponsivePanelSize(float preferredWidth, float preferredHeight) {
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const float horizontalMargin = 32.0f;
+    const float verticalMargin = 32.0f;
+    ImGui::SetNextWindowSize({std::clamp(display.x * 0.78f, preferredWidth, display.x - horizontalMargin),
+                              std::clamp(display.y * 0.82f, preferredHeight, display.y - verticalMargin)}, ImGuiCond_Always);
+}
+
+bool BeginSettingsTable(const char* id) {
+    return ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV);
+}
+
+void EndSettingsRow() { ImGui::TableNextColumn(); ImGui::SetNextItemWidth(-FLT_MIN); }
 
 std::string TimestampNow() {
     const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -218,16 +233,32 @@ void WorldCreationState::Render() {
 void LoadingScreenState::OnEnter() {
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
     m_generationComplete = false;
-    m_phase = GenerationPhase::Shape;
+    RunGeneration();
 }
 
 void LoadingScreenState::Update(double) {
-    if (!m_generationComplete) {
-        RunGeneration();
-        m_generationComplete = true;
+    if (m_world == nullptr || m_generatedChunks < m_generationQueue.size()) {
+        if (m_world == nullptr) {
+            m_context->requestTransition(std::make_unique<ErrorState>(m_context, "World Generation Failed", "The loading world could not be initialized."));
+            return;
+        }
+        const ChunkCoordinate coordinate = m_generationQueue[m_generatedChunks];
+        if (coordinate.y == 3) m_world->GetOrCreateChunk(coordinate);
+        else {
+            WorldGenerator generator(m_options);
+            m_world->GetOrCreateChunk(coordinate) = generator.GenerateChunk(coordinate);
+        }
+        ++m_generatedChunks;
+        const float fraction = static_cast<float>(m_generatedChunks) / static_cast<float>(m_generationQueue.size());
+        m_phase = fraction < 0.33f ? GenerationPhase::Shape : fraction < 0.66f ? GenerationPhase::Caves : GenerationPhase::Vegetation;
         return;
     }
-    if (m_context == nullptr || m_context->saveManager == nullptr) return;
+    m_phase = GenerationPhase::SpawnPlacement;
+    m_generationComplete = true;
+    if (m_context == nullptr || m_context->saveManager == nullptr) {
+        m_phase = GenerationPhase::Complete;
+        return;
+    }
     GameSave save{};
     if (!m_context->saveManager->Load(m_saveName, save)) {
         m_context->requestTransition(std::make_unique<ErrorState>(m_context, "World Load Failed", "The selected world metadata could not be read."));
@@ -235,6 +266,8 @@ void LoadingScreenState::Update(double) {
     }
     auto game = std::make_unique<InGameState>(m_context);
     ConfigureInGameState(*game, m_context, save);
+    game->SetPreparedWorld(ReleaseGeneratedWorld());
+    m_phase = GenerationPhase::Complete;
     m_context->requestTransition(std::move(game));
 }
 
@@ -245,14 +278,19 @@ void LoadingScreenState::Render() {
     ImGui::Begin("Loading", nullptr, kMenuWindowFlags);
     ui::MenuTitle("LOADING...");
     ImGui::Text("Generating spawn terrain: %s", ToString(m_phase).data());
-    const std::string percent = std::to_string(static_cast<int>(GetProgress() * 100.0f)) + "%";
-    ui::ProgressBar(GetProgress(), percent.c_str());
-    ImGui::TextDisabled(m_generationComplete ? "Spawn terrain ready." : "Preparing world data...");
+    const float chunkProgress = m_generationQueue.empty() ? 0.0f : static_cast<float>(m_generatedChunks) / static_cast<float>(m_generationQueue.size());
+    const std::string percent = std::to_string(static_cast<int>(chunkProgress * 100.0f)) + "%";
+    ui::ProgressBar(chunkProgress, percent.c_str());
+    ImGui::Text("Chunks ready: %zu / %zu", m_generatedChunks, m_generationQueue.size());
     ImGui::End();
 }
 
 void PauseMenuState::OnEnter() {
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
+    if (m_context != nullptr && m_context->input != nullptr) m_context->input->ClearGameplayInput();
+}
+void PauseMenuState::OnExit() {
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Gameplay);
     if (m_context != nullptr && m_context->input != nullptr) m_context->input->ClearGameplayInput();
 }
 void PauseMenuState::Update(double) {}
@@ -289,26 +327,35 @@ void SettingsState::Update(double) {}
 void SettingsState::Render() {
     if (m_context == nullptr || m_context->preferences == nullptr) return;
     CenterNextWindow();
-    ImGui::SetNextWindowSize({580.0f, 450.0f}, ImGuiCond_Always);
+    SetResponsivePanelSize(760.0f, 560.0f);
     ImGui::Begin("Settings", nullptr, kMenuWindowFlags);
     ui::MenuTitle("SETTINGS");
     if (ImGui::BeginTabBar("Settings Tabs")) {
         if (ImGui::BeginTabItem("Video")) {
-            ui::SettingSlider("Field of View", &m_pending.fieldOfView, 60.0f, 110.0f, "%.0f deg");
-            ImGui::SliderInt("Render Distance", &m_pending.renderDistance, 2, 16, "%d chunks");
-            ImGui::SliderInt("Simulation Distance", &m_pending.simulationDistance, 2, 12, "%d chunks");
+            if (BeginSettingsTable("VideoSettings")) {
+                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Field of View"); EndSettingsRow(); ui::SettingSlider("##fov", &m_pending.fieldOfView, 60.0f, 110.0f, "%.0f deg");
+                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Render Distance"); EndSettingsRow(); ImGui::SliderInt("##renderDistance", &m_pending.renderDistance, 2, 16, "%d chunks");
+                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Simulation Distance"); EndSettingsRow(); ImGui::SliderInt("##simulationDistance", &m_pending.simulationDistance, 2, 12, "%d chunks");
+                ImGui::EndTable();
+            }
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Audio")) {
-            ui::SettingSlider("Master", &m_pending.masterVolume, 0.0f, 1.0f, "%.0f%%");
-            ui::SettingSlider("Music", &m_pending.musicVolume, 0.0f, 1.0f, "%.0f%%");
-            ui::SettingSlider("Effects", &m_pending.sfxVolume, 0.0f, 1.0f, "%.0f%%");
+            if (BeginSettingsTable("AudioSettings")) {
+                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Master Volume"); EndSettingsRow(); ui::SettingPercentSlider("##masterVolume", &m_pending.masterVolume);
+                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Music Volume"); EndSettingsRow(); ui::SettingPercentSlider("##musicVolume", &m_pending.musicVolume);
+                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Effects Volume"); EndSettingsRow(); ui::SettingPercentSlider("##effectsVolume", &m_pending.sfxVolume);
+                ImGui::EndTable();
+            }
             ImGui::TextDisabled("Audio output arrives with work item 11.");
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Controls")) {
-            ui::SettingSlider("Mouse Sensitivity", &m_pending.mouseSensitivity, 0.1f, 4.0f, "%.1f");
-            ui::SettingToggle("Invert Y", &m_pending.invertY);
+            if (BeginSettingsTable("ControlsSettings")) {
+                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Mouse Sensitivity"); EndSettingsRow(); ui::SettingSlider("##mouseSensitivity", &m_pending.mouseSensitivity, 0.1f, 4.0f, "%.1f");
+                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Invert Y"); EndSettingsRow(); ui::SettingToggle("##invertY", &m_pending.invertY);
+                ImGui::EndTable();
+            }
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Gameplay")) {

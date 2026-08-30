@@ -84,6 +84,7 @@ namespace ui {
 bool MenuButton(const char* label, bool enabled = true);
 void MenuTitle(const char* title);
 bool SettingSlider(const char* label, float* value, float minimum, float maximum, const char* format = "%.0f");
+bool SettingPercentSlider(const char* label, float* normalizedValue);
 bool SettingToggle(const char* label, bool* value);
 bool SettingDropdown(const char* label, int* currentItem, const char* const items[], int itemCount);
 bool KeyBindRow(const char* label, int* key);
