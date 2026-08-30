@@ -121,6 +121,10 @@ AppCommandLineOptions CliParser::Parse(const std::vector<std::string>& args) con
         } else if (key == "forge-audio-assets") {
             options.forgeAudioAssets = true;
             if (!value.empty()) options.forgeAudioAssetsPath = std::string(value);
+        } else if (key == "gen-preview") {
+            options.genPreview = true;
+        } else if (key == "out") {
+            options.genPreviewPath = std::string(value);
         }
     }
 
