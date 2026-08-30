@@ -14,6 +14,10 @@
 #include <queue>
 #include <system_error>
 
+#include <nlohmann/json.hpp>
+#include "voxels/assets/texture_loader.hpp"
+#include "voxels/world/block.hpp"
+
 namespace voxels::editor {
 namespace {
 
@@ -254,5 +258,50 @@ bool EditorProject::CreateLayout(std::string& error) const {
 }
 
 bool EditorProject::BuildPack(const std::filesystem::path& output, AssetBundleReport& report, std::string& error) const { return AssetBundler::Bundle(m_root, output, report, error); }
+
+bool EditorProject::CreateBlockTexture(const std::string& textureId, const ImageData& image, std::string& error) const {
+    if (textureId.empty() || textureId.find("..") != std::string::npos || image.width != 16 || image.height != 16 || image.channels != 4) { error = "texture must be a 16x16 RGBA image with a safe id"; return false; }
+    const std::filesystem::path path = m_root / "textures" / (textureId + ".png");
+    if (!TextureLoader::WritePngToFile(path, image)) { error = "could not write " + path.string(); return false; }
+    return true;
+}
+
+bool EditorProject::UpsertModelBlock(const std::string& id, const std::string& displayName, const std::string& modelId,
+                                     const std::string& textureId, float hardness, std::string& error) const {
+    if (id.empty() || modelId.empty() || id.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_-") != std::string::npos) { error = "block id must use lowercase letters, digits, _ or -"; return false; }
+    const std::filesystem::path modelPath = m_root / modelId;
+    if (!std::filesystem::exists(modelPath)) { error = "model does not exist: " + modelPath.string(); return false; }
+    const std::filesystem::path texturePath = m_root / "textures" / (textureId + ".png");
+    if (!textureId.empty() && !TextureLoader::LoadFromFile(texturePath)) { error = "texture is not a valid PNG: " + texturePath.string(); return false; }
+    const std::filesystem::path path = m_root / "data" / "blocks.json";
+    nlohmann::json document = {{"blocks", nlohmann::json::array()}};
+    if (std::ifstream input(path); input) { try { input >> document; } catch (const nlohmann::json::exception& exception) { error = exception.what(); return false; } }
+    auto& blocks = document["blocks"];
+    int nextId = 0;
+    for (const auto& block : blocks) nextId = std::max(nextId, block.value("numeric_id", -1) + 1);
+    nlohmann::json definition = {{"id", id}, {"display_name", displayName}, {"numeric_id", nextId}, {"solid", true}, {"opaque", true}, {"liquid", false}, {"hardness", hardness}, {"light_emission", 0}, {"textures", textureId.empty() ? nlohmann::json::object() : nlohmann::json{{"all", textureId}}}, {"render_type", "model"}, {"model_id", modelId}, {"sounds", nlohmann::json::object()}, {"drops", nlohmann::json::array()}};
+    bool replaced = false;
+    for (auto& block : blocks) if (block.value("id", "") == id) { definition["numeric_id"] = block.value("numeric_id", nextId); block = definition; replaced = true; break; }
+    if (!replaced) blocks.push_back(std::move(definition));
+    try { voxels::BlockRegistry registry; registry.LoadFromJsonString(document.dump()); } catch (const std::exception& exception) { error = exception.what(); return false; }
+    std::ofstream output(path, std::ios::trunc);
+    if (!output) { error = "could not open " + path.string(); return false; }
+    output << document.dump(2) << '\n';
+    return static_cast<bool>(output);
+}
+
+TextureDocument::TextureDocument(int width, int height) {
+    m_image.width = width; m_image.height = height; m_image.channels = 4;
+    m_image.pixels.assign(static_cast<std::size_t>(width * height * 4), 255);
+}
+
+bool TextureDocument::SetPixel(int x, int y, std::array<std::uint8_t, 4> color) noexcept {
+    if (x < 0 || y < 0 || x >= m_image.width || y >= m_image.height) return false;
+    const std::size_t offset = static_cast<std::size_t>((y * m_image.width + x) * 4);
+    std::copy(color.begin(), color.end(), m_image.pixels.begin() + static_cast<std::ptrdiff_t>(offset));
+    return true;
+}
+
+bool TextureDocument::Save(const std::filesystem::path& path) const { return TextureLoader::WritePngToFile(path, m_image); }
 
 } // namespace voxels::editor

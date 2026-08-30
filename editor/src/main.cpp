@@ -21,6 +21,7 @@
 #include "voxels/engine.hpp"
 #include "voxels/graphics/gl_renderer.hpp"
 #include "voxels/platform/platform.hpp"
+#include "voxels/render/texture_forge.hpp"
 #include "voxels/ui/imgui_ui_manager.hpp"
 
 namespace {
@@ -40,7 +41,7 @@ private:
     voxels::graphics::GLRenderer& m_renderer;
 };
 
-struct BlockDraft { std::string id = "authored_block"; std::string displayName = "Authored Block"; std::string modelId = "models/authored_block.vmdl"; int numericId = 1; float hardness = 1.0F; bool solid = true; bool opaque = true; };
+struct BlockDraft { std::string id = "authored_block"; std::string displayName = "Authored Block"; std::string modelId = "models/authored_block.vmdl"; std::string textureId = "blocks/authored_block"; int numericId = 1; float hardness = 1.0F; bool solid = true; bool opaque = true; };
 
 std::size_t VoxelIndex(const voxels::VoxelModel& model, std::uint32_t x, std::uint32_t y, std::uint32_t z) { return x + static_cast<std::size_t>(model.gridSize[0]) * (y + static_cast<std::size_t>(model.gridSize[1]) * z); }
 
@@ -90,14 +91,6 @@ void RenderVoxelPreview(const voxels::VoxelModel& model) {
     ImGui::Dummy({size.x, height});
 }
 
-bool SaveBlockDefinition(const voxels::editor::EditorProject& project, const BlockDraft& draft, std::string& error) {
-    const std::filesystem::path path = project.Root() / "data" / "blocks.json";
-    std::ofstream output(path, std::ios::trunc);
-    if (!output) { error = "could not open " + path.string(); return false; }
-    output << "{\n  \"blocks\": [\n    {\"id\":\"air\",\"numeric_id\":0,\"solid\":false,\"opaque\":false,\"model_id\":null},\n    {\"id\":\"" << draft.id << "\",\"display_name\":\"" << draft.displayName << "\",\"numeric_id\":" << draft.numericId << ",\"solid\":" << (draft.solid ? "true" : "false") << ",\"opaque\":" << (draft.opaque ? "true" : "false") << ",\"hardness\":" << draft.hardness << ",\"render_type\":\"model\",\"model_id\":\"" << draft.modelId << "\"}\n  ]\n}\n";
-    if (!output) { error = "could not write " + path.string(); return false; } return true;
-}
-
 } // namespace
 
 int main(int argc, char** argv) {
@@ -118,6 +111,8 @@ int main(int argc, char** argv) {
     voxels::editor::EditorProject project(std::filesystem::path(VOXELS_SOURCE_DIR) / "editor" / "samples" / "starter");
     std::string error;
     if (!project.CreateLayout(error)) std::cerr << "Editor project setup failed: " << error << '\n';
+    const std::filesystem::path defaultTexture = project.Root() / "textures" / "blocks" / "authored_block.png";
+    if (!std::filesystem::exists(defaultTexture) && !project.CreateBlockTexture("blocks/authored_block", voxels::TextureForge::GenerateTexture("planks"), error)) std::cerr << "Editor texture setup failed: " << error << '\n';
     voxels::editor::EditorDocument document;
     const std::filesystem::path modelPath = project.Root() / "models" / "authored_block.vmdl";
     if (std::filesystem::exists(modelPath) && !document.Load(modelPath, error)) std::cerr << "Editor model load failed: " << error << '\n';
@@ -136,7 +131,7 @@ int main(int argc, char** argv) {
         if (ImGui::BeginMenuBar()) {
             if (ImGui::BeginMenu("File")) { if (ImGui::MenuItem("Save Model", "Ctrl+S")) output = document.Save(modelPath, error) ? "Model saved." : "Save failed: " + error; if (ImGui::MenuItem("Export OBJ")) output = document.ExportObj(project.Root() / "exports" / "authored_block.obj", error) ? "OBJ exported." : "Export failed: " + error; if (ImGui::MenuItem("Exit")) requestClose = true; ImGui::EndMenu(); }
             if (ImGui::BeginMenu("Edit")) { if (ImGui::MenuItem("Undo", "Ctrl+Z", false, document.CanUndo())) document.Undo(); if (ImGui::MenuItem("Redo", "Ctrl+Y", false, document.CanRedo())) document.Redo(); ImGui::EndMenu(); }
-            if (ImGui::BeginMenu("Content")) { if (ImGui::MenuItem("Build Pack")) { if (!document.Save(modelPath, error)) output = "Save failed: " + error; else if (!SaveBlockDefinition(project, block, error)) output = "Block definition failed: " + error; else { voxels::AssetBundleReport report; output = project.BuildPack(project.Root() / "packs" / "content.vpk", report, error) ? "Pack built: " + std::to_string(report.archive.entryCount) + " entries." : "Pack rejected: " + error; } } ImGui::EndMenu(); }
+            if (ImGui::BeginMenu("Content")) { if (ImGui::MenuItem("Build Pack")) { if (!document.Save(modelPath, error)) output = "Save failed: " + error; else if (!project.UpsertModelBlock(block.id, block.displayName, block.modelId, block.textureId, block.hardness, error)) output = "Block definition rejected: " + error; else { voxels::AssetBundleReport report; output = project.BuildPack(project.Root() / "packs" / "content.vpk", report, error) ? "Pack built: " + std::to_string(report.archive.entryCount) + " entries." : "Pack rejected: " + error; } } ImGui::EndMenu(); }
             if (ImGui::BeginMenu("Help")) { ImGui::TextUnformatted("Voxel Content Editor - VMDL v1 / VPK1"); ImGui::EndMenu(); } ImGui::EndMenuBar();
         }
         if (ImGui::Begin("Content Browser")) { ImGui::TextWrapped("%s", project.Root().string().c_str()); ImGui::Separator(); for (const auto& asset : project.ListAssets()) ImGui::BulletText("%s", asset.generic_string().c_str()); } ImGui::End();
@@ -147,7 +142,7 @@ int main(int argc, char** argv) {
             if (ImGui::Button("Add Palette")) document.AddPaletteEntry({180, 180, 180, 255, 0, 0, 0}); ImGui::Separator(); ImGui::InputFloat3("Pivot", document.Model().pivot.data()); ImGui::InputFloat3("Bounds min", document.Model().boundsMin.data()); ImGui::InputFloat3("Bounds max", document.Model().boundsMax.data());
             if (ImGui::Button("Mirror X")) static_cast<void>(document.Mirror(voxels::editor::Axis::X)); ImGui::SameLine(); if (ImGui::Button("Mirror Y")) static_cast<void>(document.Mirror(voxels::editor::Axis::Y)); ImGui::SameLine(); if (ImGui::Button("Mirror Z")) static_cast<void>(document.Mirror(voxels::editor::Axis::Z)); if (ImGui::Button("Rotate X")) static_cast<void>(document.Rotate90(voxels::editor::Axis::X)); ImGui::SameLine(); if (ImGui::Button("Rotate Y")) static_cast<void>(document.Rotate90(voxels::editor::Axis::Y)); ImGui::SameLine(); if (ImGui::Button("Rotate Z")) static_cast<void>(document.Rotate90(voxels::editor::Axis::Z));
         } ImGui::End();
-        if (ImGui::Begin("Block Definition")) { static_cast<void>(voxels::ui::TextField("Id", block.id)); static_cast<void>(voxels::ui::TextField("Display name", block.displayName)); static_cast<void>(voxels::ui::TextField("Model id", block.modelId)); ImGui::InputInt("Numeric id", &block.numericId); ImGui::InputFloat("Hardness", &block.hardness); ImGui::Checkbox("Solid", &block.solid); ImGui::Checkbox("Opaque", &block.opaque); if (ImGui::Button("Write Block Definition")) output = SaveBlockDefinition(project, block, error) ? "Block definition written." : "Block definition failed: " + error; } ImGui::End();
+        if (ImGui::Begin("Block Definition")) { static_cast<void>(voxels::ui::TextField("Id", block.id)); static_cast<void>(voxels::ui::TextField("Display name", block.displayName)); static_cast<void>(voxels::ui::TextField("Model id", block.modelId)); static_cast<void>(voxels::ui::TextField("Texture id", block.textureId)); ImGui::InputFloat("Hardness", &block.hardness); if (ImGui::Button("Write Block Definition")) output = project.UpsertModelBlock(block.id, block.displayName, block.modelId, block.textureId, block.hardness, error) ? "Block definition written." : "Block definition failed: " + error; } ImGui::End();
         if (ImGui::Begin("Build Output")) ImGui::TextWrapped("%s", output.c_str()); ImGui::End(); ImGui::End();
         if (requestClose && document.IsDirty()) { ImGui::OpenPopup("Unsaved model"); if (ImGui::BeginPopupModal("Unsaved model", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) { ImGui::TextUnformatted("Save the authored model before closing?"); if (ImGui::Button("Save and Exit")) { if (document.Save(modelPath, error)) events.CloseNow(); else { output = "Save failed: " + error; requestClose = false; } ImGui::CloseCurrentPopup(); } ImGui::SameLine(); if (ImGui::Button("Discard")) { events.CloseNow(); ImGui::CloseCurrentPopup(); } ImGui::SameLine(); if (ImGui::Button("Cancel")) { requestClose = false; ImGui::CloseCurrentPopup(); } ImGui::EndPopup(); } } else if (requestClose) events.CloseNow();
         ui.EndFrame(); renderer.EndFrame(); platform->SwapBuffers();

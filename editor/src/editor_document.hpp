@@ -19,6 +19,7 @@
 
 #include "voxels/assets/asset_bundler.hpp"
 #include "voxels/assets/vmdl_codec.hpp"
+#include "voxels/assets/asset_manager.hpp"
 
 namespace voxels::editor {
 
@@ -79,9 +80,22 @@ public:
     [[nodiscard]] std::vector<std::filesystem::path> ListAssets() const;
     [[nodiscard]] bool CreateLayout(std::string& error) const;
     [[nodiscard]] bool BuildPack(const std::filesystem::path& output, AssetBundleReport& report, std::string& error) const;
+    [[nodiscard]] bool CreateBlockTexture(const std::string& textureId, const ImageData& image, std::string& error) const;
+    [[nodiscard]] bool UpsertModelBlock(const std::string& id, const std::string& displayName, const std::string& modelId,
+                                        const std::string& textureId, float hardness, std::string& error) const;
 
 private:
     std::filesystem::path m_root;
+};
+
+class TextureDocument {
+public:
+    TextureDocument(int width = 16, int height = 16);
+    [[nodiscard]] const ImageData& Image() const noexcept { return m_image; }
+    [[nodiscard]] bool SetPixel(int x, int y, std::array<std::uint8_t, 4> color) noexcept;
+    [[nodiscard]] bool Save(const std::filesystem::path& path) const;
+private:
+    ImageData m_image;
 };
 
 } // namespace voxels::editor

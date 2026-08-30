@@ -1,27 +1,77 @@
-# Editor
+# Voxels Content Editor
 
-The editor project is a separate application that consumes the engine and provides tools for authoring and packing voxel assets, previews, and data creation workflows.
+`voxels_editor` is the desktop content tool for creating sub-voxel models, block definitions, textures, and distributable VPK packs. It writes the same VMDL, PNG, JSON, and VPK formats that the game consumes.
 
-## Required structure
+## Launch
 
-```text
-editor/
-├── CMakeLists.txt
-├── README.md
-├── src/
-│   ├── main.cpp
-│   ├── editor_app.cpp
-│   ├── asset_browser.cpp
-│   ├── model_preview.cpp
-│   ├── texture_packer.cpp
-│   └── project.cpp
-├── include/
-│   └── editor/
-│       ├── editor_app.hpp
-│       ├── asset_pipeline.hpp
-│       ├── model_editor.hpp
-│       └── preview_window.hpp
-└── resources/
+Build the project, then run `build/editor/Debug/voxels_editor.exe`. The default project is [samples/starter](samples/starter). Its persisted dock layout is stored in `%LOCALAPPDATA%/VoxelsEngine/editor_layout.ini`; delete that file to reset the layout.
+
+For automation, use:
+
+```powershell
+build/editor/Debug/voxels_editor.exe --bundle --input=editor/samples/starter --output=editor/samples/starter/packs/content.vpk
 ```
 
-The editor is intentionally decoupled from the runtime app so the asset pipeline can evolve independently from the game loop.
+## Asset Workflow
+
+```mermaid
+flowchart LR
+    A[Create or open content project] --> B[Model a VMDL in Slice Editor]
+    B --> C[Set palette colors and texture layers]
+    C --> D[Save models/name.vmdl]
+    D --> E[Create or import 16x16 RGBA PNG]
+    E --> F[Write or update block definition]
+    F --> G[Runtime schema validation]
+    G --> H[Content Build Pack]
+    H --> I[packs/content.vpk]
+    I --> J[Copy pack or loose project assets to game assets]
+```
+
+```mermaid
+flowchart TD
+    V[Slice Editor: choose Z layer] --> P[Choose palette entry]
+    P --> M[Click cells to add/remove voxels]
+    M --> T[Mirror or rotate whole model]
+    T --> U[Undo/redo if needed]
+    U --> S[Save Model]
+    S --> R[Recovery snapshot every 60 seconds while dirty]
+```
+
+## Create A New Model Block
+
+1. Open **Slice Editor**. Select a `Slice Z` layer, choose a palette color in **Palette and Properties**, and click cells to add or remove micro-voxels. The grid is $16\times16\times16$ and each slice exposes otherwise hidden interiors.
+2. Use **Mirror X/Y/Z** and **Rotate X/Y/Z** to build symmetrical forms quickly. **Edit > Undo/Redo** restores the complete prior model state. Set pivot and bounds in **Palette and Properties**. The Model Viewport is an immediate geometric reference; export OBJ when an external DCC inspection is useful.
+3. Choose **File > Save Model**. The default model is `models/authored_block.vmdl`. This is an atomic save: an interrupted write does not corrupt the previous model. Dirty documents also write `%LOCALAPPDATA%/VoxelsEngine/editor_recovery.vmdl` every 60 seconds.
+4. Give the block a unique lowercase `Id`, display name, model path, texture id, and hardness in **Block Definition**. Select **Write Block Definition**. Existing entries stay in `data/blocks.json`; writing the same id updates that entry. The editor validates the complete JSON using the game's `BlockRegistry` before it writes.
+5. Select **Content > Build Pack**. The editor saves the model, validates its referenced PNG/VMDL files, and creates `packs/content.vpk`. A failed validation is shown in **Build Output** and produces no replacement pack.
+
+## Texture Workflow
+
+Block textures live below `textures/` and must be square, power-of-two RGBA PNG files. Use **16x16 RGBA8 PNG** for block atlas art. The starter project generates `textures/blocks/authored_block.png` from the engine's intentional filler texture set; replace it with artist-authored art using the same relative texture id, such as `blocks/authored_block`.
+
+The texture id intentionally excludes both `textures/` and `.png`:
+
+```text
+Project file: textures/blocks/lantern.png
+Block texture id: blocks/lantern
+```
+
+Before building, the editor decodes referenced PNG files. A malformed image, missing model, invalid VMDL, duplicate block id, or non-dense numeric IDs prevents the pack from being written. This keeps broken content from reaching the game.
+
+## Project Layout
+
+```text
+my_content/
+  models/              # VMDL model files
+  textures/            # RGBA PNG textures, commonly textures/blocks/
+  data/blocks.json     # Block records and model/texture association
+  audio/               # WAV or OGG clips
+  shaders/             # GLSL sources
+  packs/content.vpk    # Generated output; do not hand edit
+```
+
+The game resolves loose assets before packs. During development, copy this layout under the game's `assets/` directory to test changes directly, or copy the generated `content.vpk` to `app/assets/packs/` and restart the game. A block becomes available to the runtime when its `blocks.json` record has `render_type: "model"` and a `model_id` matching a valid VMDL path.
+
+## Safety And Collaboration
+
+The close dialog prevents accidental loss of a dirty model. VMDL saves, recovery files, and generated block JSON are durable filesystem changes, so keep each content project in version control. Commit source models, textures, and `blocks.json`; regenerate VPK output in your release build. The **Content Browser** lists all project files so an artist can verify that intended source assets are included.

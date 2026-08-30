@@ -9,6 +9,7 @@
 #include <fstream>
 
 #include "editor_document.hpp"
+#include "voxels/world/block.hpp"
 
 namespace {
 
@@ -100,4 +101,27 @@ TEST_CASE("Editor project persists VMDL recovery and produces a pack", "[editor]
     REQUIRE(project.BuildPack(root / "editor_test.vpk", report, error));
     REQUIRE(report.archive.entryCount >= 3);
     REQUIRE(std::filesystem::file_size(root / "editor_test.vpk") > 0);
+}
+
+TEST_CASE("Editor project writes textures and preserves existing block definitions", "[editor][filesystem]") {
+    const std::filesystem::path root = TestDirectory("block_upsert");
+    voxels::editor::EditorProject project(root);
+    std::string error;
+    REQUIRE(project.CreateLayout(error));
+    auto document = MakeDocument();
+    REQUIRE(document.SetVoxel({1, 1, 1}, 1));
+    REQUIRE(document.Save(root / "models" / "lantern.vmdl", error));
+    voxels::editor::TextureDocument texture;
+    REQUIRE(texture.SetPixel(0, 0, {255, 160, 32, 255}));
+    REQUIRE(project.CreateBlockTexture("blocks/lantern", texture.Image(), error));
+    REQUIRE(std::filesystem::exists(root / "textures" / "blocks" / "lantern.png"));
+    REQUIRE(project.UpsertModelBlock("lantern", "Lantern", "models/lantern.vmdl", "blocks/lantern", 0.4F, error));
+    REQUIRE(project.UpsertModelBlock("lantern", "Polished Lantern", "models/lantern.vmdl", "blocks/lantern", 0.8F, error));
+    voxels::BlockRegistry registry;
+    registry.LoadFromFile(root / "data" / "blocks.json");
+    REQUIRE(registry.Count() == 1);
+    const auto* lantern = registry.GetDefinition("lantern");
+    REQUIRE(lantern != nullptr);
+    REQUIRE(lantern->displayName == "Polished Lantern");
+    REQUIRE(lantern->modelId == "models/lantern.vmdl");
 }
