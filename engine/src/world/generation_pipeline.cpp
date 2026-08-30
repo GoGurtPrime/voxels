@@ -10,7 +10,7 @@ namespace voxels {
 
 namespace {
 constexpr int kChunkSize = 16;
-constexpr int kWaterLevel = 62;
+constexpr int kWaterLevel = 24;
 
 class TerrainShapePhase : public IGenerationPhase {
 public:

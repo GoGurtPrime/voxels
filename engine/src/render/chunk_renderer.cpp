@@ -443,6 +443,7 @@ void ChunkRenderer::Render(const voxels::Camera& camera) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_FALSE);
+    glDisable(GL_CULL_FACE);
     for (auto& [coordinate, mesh] : visibleTransparent) {
         const glm::vec3 origin = ChunkOrigin(*coordinate, m_chunkSize);
         glUniform3fv(m_uniformChunkOrigin, 1, &origin[0]);
@@ -453,6 +454,7 @@ void ChunkRenderer::Render(const voxels::Camera& camera) {
         triangles += mesh->transparentIndexCount / 3;
     }
     glDepthMask(GL_TRUE);
+    glEnable(GL_CULL_FACE);
     glBindVertexArray(0);
 
     m_metrics.visibleChunks = visibleOpaque.size() + visibleTransparent.size();

@@ -74,6 +74,8 @@ private:
     gameplay::BlockInteraction m_blockInteraction{};
     RaycastHit m_target{};
     Vec3I m_breakTarget{};
+    BlockId m_breakTargetBlockId = static_cast<BlockId>(BlockType::Air);
+    bool m_hasBreakTarget = false;
     float m_breakProgress = 0.0f;
     float m_placeCooldown = 0.0f;
     std::vector<Vec3I> m_editedBlocks;

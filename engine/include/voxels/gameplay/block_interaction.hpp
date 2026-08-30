@@ -27,18 +27,11 @@ public:
 
     [[nodiscard]] RaycastHit Target(const World& world, const Player& player, const BlockRegistry& registry,
                                     bool targetLiquids = false) const;
-    [[nodiscard]] InteractionResult BreakBlock(World& world, const Player& player, float reachDistanceOverride = -1.0f) const;
-    [[nodiscard]] InteractionResult PlaceBlock(World& world, const Player& player, float reachDistanceOverride = -1.0f) const;
-
-    void SetLastTarget(const Vec3I& position, Face face) {
-        m_lastTarget = position;
-        m_lastFace = face;
-    }
+    [[nodiscard]] InteractionResult BreakBlock(World& world, const RaycastHit& target, const BlockRegistry& registry) const;
+    [[nodiscard]] InteractionResult PlaceBlock(World& world, const Player& player, const RaycastHit& target) const;
 
 private:
     float m_reachDistance;
-    mutable Vec3I m_lastTarget{};
-    mutable Face m_lastFace = Face::PosY;
 };
 
 } // namespace voxels::gameplay

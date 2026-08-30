@@ -127,3 +127,17 @@ TEST_CASE("WorldGen.SafeSpawnFinding", "[world][generation]") {
     REQUIRE(chunk.GetBlock(spawn.x, spawn.y - 1, spawn.z) != static_cast<voxels::BlockId>(voxels::BlockType::Air));
     REQUIRE(chunk.GetBlock(spawn.x, spawn.y - 1, spawn.z) != static_cast<voxels::BlockId>(voxels::BlockType::Water));
 }
+
+TEST_CASE("WorldGen.InitialPlayableCapIsNotFlooded", "[world][generation][water]") {
+    voxels::WorldOptions options{};
+    options.seed = 12345u;
+    voxels::WorldGenerator generator(options);
+    const voxels::Chunk upperChunk = generator.GenerateChunk({0, 2, 0});
+
+    for (std::uint32_t z = 0; z < upperChunk.GetDepth(); ++z) {
+        for (std::uint32_t x = 0; x < upperChunk.GetWidth(); ++x) {
+            REQUIRE(upperChunk.GetBlock(static_cast<int>(x), 15, static_cast<int>(z)) ==
+                    static_cast<voxels::BlockId>(voxels::BlockType::Air));
+        }
+    }
+}

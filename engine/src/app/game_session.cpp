@@ -153,14 +153,17 @@ void GameSession::Update(float deltaSeconds) {
             m_placeCooldown = std::max(0.0f, m_placeCooldown - deltaSeconds);
             if (input.destroyBlock && m_target.hit) {
                 const BlockDefinition* definition = m_registry->GetDefinition(m_world->GetBlock(m_target.blockPosition));
-                if (definition != nullptr && definition->hardness >= 0.0f) {
-                    if (m_breakTarget != m_target.blockPosition) {
+                if (definition != nullptr && !definition->isLiquid && definition->hardness >= 0.0f) {
+                    if (!m_hasBreakTarget || m_breakTarget != m_target.blockPosition ||
+                        m_breakTargetBlockId != definition->id) {
                         m_breakTarget = m_target.blockPosition;
+                        m_breakTargetBlockId = definition->id;
+                        m_hasBreakTarget = true;
                         m_breakProgress = 0.0f;
                     }
                     m_breakProgress += m_worldOptions.sandboxMode ? 1.0f : deltaSeconds / std::max(0.05f, definition->hardness);
                     if (m_breakProgress >= 1.0f) {
-                        const gameplay::InteractionResult result = m_blockInteraction.BreakBlock(*m_world, m_player);
+                        const gameplay::InteractionResult result = m_blockInteraction.BreakBlock(*m_world, m_target, *m_registry);
                         if (result.success) {
                             for (const BlockDrop& drop : definition->drops) {
                                 const BlockDefinition* dropDefinition = m_registry->GetDefinition(drop.item);
@@ -174,13 +177,18 @@ void GameSession::Update(float deltaSeconds) {
                             if (m_preferences.particles) m_particleBursts.push_back(result.targetPosition);
                         }
                         m_breakProgress = 0.0f;
+                        m_hasBreakTarget = false;
                     }
+                } else {
+                    m_breakProgress = 0.0f;
+                    m_hasBreakTarget = false;
                 }
             } else {
                 m_breakProgress = 0.0f;
+                m_hasBreakTarget = false;
             }
             if (input.placeBlock && m_target.hit && m_placeCooldown <= 0.0f) {
-                const gameplay::InteractionResult result = m_blockInteraction.PlaceBlock(*m_world, m_player);
+                const gameplay::InteractionResult result = m_blockInteraction.PlaceBlock(*m_world, m_player, m_target);
                 if (result.success) {
                     if (!m_worldOptions.sandboxMode) {
                         const bool removed = m_player.state.inventory.RemoveItem(
@@ -205,6 +213,8 @@ void GameSession::Update(float deltaSeconds) {
         m_input->Update();
     } else {
         gameplay::Physics::Step(*m_world, m_player, deltaSeconds);
+        m_breakProgress = 0.0f;
+        m_hasBreakTarget = false;
     }
 
     m_camera.position = glm::vec3(m_player.state.position.x,

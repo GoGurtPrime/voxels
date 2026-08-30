@@ -84,6 +84,8 @@ TEST_CASE("Physics.HorizontalCollisionStopsAtWall", "[gameplay][physics]") {
 TEST_CASE("BlockInteraction.BreakAndPlace", "[gameplay][block_interaction]") {
     voxels::World world;
     world.SetBlock(voxels::Vec3I{3, 2, -1}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+    world.SetBlock(voxels::Vec3I{3, 2, -3}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
 
     voxels::Player player;
     player.state.position = voxels::Vec3{3.5f, 2.0f, 1.5f};
@@ -92,15 +94,17 @@ TEST_CASE("BlockInteraction.BreakAndPlace", "[gameplay][block_interaction]") {
     player.state.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 4};
 
     const voxels::gameplay::BlockInteraction interaction;
-    const voxels::gameplay::InteractionResult breakResult = interaction.BreakBlock(world, player, 8.0f);
+    const voxels::gameplay::InteractionResult breakResult =
+        interaction.BreakBlock(world, interaction.Target(world, player, registry), registry);
     REQUIRE(breakResult.success);
     REQUIRE(world.GetBlock(voxels::Vec3I{3, 2, -1}) == static_cast<voxels::BlockId>(voxels::BlockType::Air));
 
-    const voxels::gameplay::InteractionResult placeResult = interaction.PlaceBlock(world, player, 8.0f);
+    const voxels::gameplay::InteractionResult placeResult =
+        interaction.PlaceBlock(world, player, interaction.Target(world, player, registry));
     REQUIRE(placeResult.success);
-    REQUIRE(world.GetBlock(voxels::Vec3I{3, 2, 0}) == static_cast<voxels::BlockId>(voxels::BlockType::Dirt));
+    REQUIRE(world.GetBlock(voxels::Vec3I{3, 2, -2}) == static_cast<voxels::BlockId>(voxels::BlockType::Dirt));
 
-    const voxels::gameplay::InteractionResult rejected = interaction.PlaceBlock(world, player, 8.0f);
+    const voxels::gameplay::InteractionResult rejected = interaction.PlaceBlock(world, player, {});
     REQUIRE_FALSE(rejected.success);
 }
 
