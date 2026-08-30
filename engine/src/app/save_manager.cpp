@@ -120,4 +120,18 @@ bool SaveManager::DeleteSave(const std::string& saveName) {
     return !ec && removed > 0;
 }
 
+bool SaveManager::SavePlayerState(const std::string& saveName,
+                                 const std::string& playerId,
+                                 const PlayerState& state) const {
+    const auto playerPath = GetSaveDirectory(saveName) / "players" / (playerId + ".player");
+    return voxels::SavePlayerState(playerPath, state);
+}
+
+bool SaveManager::LoadPlayerState(const std::string& saveName,
+                                 const std::string& playerId,
+                                 PlayerState& outState) const {
+    const auto playerPath = GetSaveDirectory(saveName) / "players" / (playerId + ".player");
+    return voxels::LoadPlayerState(playerPath, outState);
+}
+
 } // namespace voxels

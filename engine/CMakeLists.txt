@@ -14,6 +14,7 @@ add_library(voxels_engine
     src/world/noise.cpp
     src/world/spawn_calculator.cpp
     src/world/world.cpp
+    src/world/world_serialization.cpp
     src/core/logger.cpp
     src/core/preferences.cpp
     src/core/math.cpp

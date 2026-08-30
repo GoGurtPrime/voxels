@@ -13,6 +13,7 @@ add_executable(voxels_tests
     test_app_lifecycle.cpp
     test_networking.cpp
     test_gameplay.cpp
+    test_runtime_integration.cpp
 )
 
 target_link_libraries(voxels_tests

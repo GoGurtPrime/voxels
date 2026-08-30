@@ -63,6 +63,10 @@ public:
     [[nodiscard]] bool HasChunk(const ChunkCoordinate& coordinate) const;
     [[nodiscard]] std::size_t LoadedChunkCount() const noexcept { return m_chunks.size(); }
     [[nodiscard]] std::uint32_t GetChunkSize() const noexcept { return m_chunkSize; }
+    [[nodiscard]] const std::unordered_map<ChunkCoordinate, std::shared_ptr<Chunk>, ChunkCoordinateHash>&
+    GetChunks() const noexcept {
+        return m_chunks;
+    }
 
     [[nodiscard]] BlockId GetBlock(const Vec3I& worldBlockPos) const;
     bool SetBlock(const Vec3I& worldBlockPos, BlockId block);

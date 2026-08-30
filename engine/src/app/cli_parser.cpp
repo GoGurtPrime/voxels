@@ -92,6 +92,12 @@ AppCommandLineOptions CliParser::Parse(const std::vector<std::string>& args) con
                 options.renderDistanceOverride = true;
                 options.renderDistance = renderDistance;
             }
+        } else if (key == "max-ticks") {
+            int maxTicks = 0;
+            if (ParseIntValue(value, maxTicks) && maxTicks > 0) {
+                options.maxTicksOverride = true;
+                options.maxTicks = maxTicks;
+            }
         }
     }
 

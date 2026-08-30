@@ -92,6 +92,8 @@ struct AppCommandLineOptions {
     WorldSeed seed = 0;
     bool renderDistanceOverride = false;
     int renderDistance = 8;
+    bool maxTicksOverride = false;
+    int maxTicks = 0;
 };
 
 } // namespace voxels

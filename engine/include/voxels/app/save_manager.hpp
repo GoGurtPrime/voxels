@@ -14,6 +14,8 @@
 #include <filesystem>
 
 #include "voxels/core/save.hpp"
+#include "voxels/gameplay/player.hpp"
+#include "voxels/world/world_serialization.hpp"
 
 namespace voxels {
 
@@ -26,6 +28,12 @@ public:
     [[nodiscard]] std::vector<SaveSlot> ListSaves() const override;
 
     bool DeleteSave(const std::string& saveName);
+    bool SavePlayerState(const std::string& saveName,
+                         const std::string& playerId,
+                         const PlayerState& state) const;
+    bool LoadPlayerState(const std::string& saveName,
+                         const std::string& playerId,
+                         PlayerState& outState) const;
     [[nodiscard]] std::filesystem::path GetSaveDirectory(const std::string& saveName) const;
 
     [[nodiscard]] static std::string ToMetaText(const GameSave& save);

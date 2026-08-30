@@ -8,6 +8,7 @@
  * and should remain focused on orchestration rather than low-level systems implementation.
  */
 
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -17,10 +18,10 @@
 #include "voxels/engine.hpp"
 #include "voxels/networking/client.hpp"
 #include "voxels/networking/server.hpp"
+#include "voxels/platform/platform.hpp"
 
 int main(int argc, char** argv) {
     const std::vector<std::string> args(argv + 1, argv + argc);
-
     const voxels::CliParser cliParser;
     const voxels::AppCommandLineOptions options = cliParser.Parse(args);
 
@@ -31,8 +32,10 @@ int main(int argc, char** argv) {
             std::cerr << "Voxels server failed to start." << std::endl;
             return 1;
         }
-        server.Tick();
         std::cout << "Voxels server listening on port " << server.Port() << "." << std::endl;
+        for (int tick = 0; tick < std::max(1, options.maxTicks > 0 ? options.maxTicks : 1); ++tick) {
+            server.Tick();
+        }
         server.Stop();
         return 0;
     }
@@ -43,6 +46,10 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    voxels::AppStateMachine stateMachine;
+    stateMachine.Start(std::make_unique<voxels::BootState>());
+    stateMachine.TransitionTo(std::make_unique<voxels::MainMenuState>());
+
     voxels::networking::GameServer localServer;
     voxels::networking::GameClient localClient;
     if (!localServer.Start("127.0.0.1", 0) || !localClient.Connect("127.0.0.1", localServer.Port())) {
@@ -50,17 +57,28 @@ int main(int argc, char** argv) {
         engine.shutdown();
         return 1;
     }
-    localServer.Tick();
-    localClient.Tick();
 
-    voxels::AppStateMachine stateMachine;
-    stateMachine.Start(std::make_unique<voxels::BootState>());
-    stateMachine.TransitionTo(std::make_unique<voxels::MainMenuState>());
+    bool running = true;
+    int maxTicks = options.maxTicks > 0 ? options.maxTicks : 200;
+    int tickCount = 0;
+    const auto lastTime = std::chrono::steady_clock::now();
+    (void)lastTime;
 
-    std::cout << "Voxels app scaffold initialized (engine v" << engine.getVersion() << ")." << std::endl;
+    while (running && tickCount < maxTicks) {
+        if (engine.getPlatform() != nullptr) {
+            engine.getPlatform()->PollEvents(nullptr);
+        }
+
+        localServer.Tick();
+        localClient.Tick();
+        stateMachine.Update(1.0 / 60.0);
+        stateMachine.Render();
+        ++tickCount;
+    }
 
     localClient.Disconnect();
     localServer.Stop();
+    std::cout << "Voxels app loop exited after " << tickCount << " ticks.\n";
     engine.shutdown();
     return 0;
 }

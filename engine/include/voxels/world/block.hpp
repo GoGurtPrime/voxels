@@ -27,7 +27,9 @@ enum class BlockType : std::uint32_t {
     Dirt,
     Coal,
     Water,
-    Wood,
+    Wood = 5,
+    TreeTrunk = Wood,
+    Tree = Wood,
     Leaf
 };
 
