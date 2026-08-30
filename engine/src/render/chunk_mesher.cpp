@@ -336,11 +336,21 @@ ChunkMeshData BuildChunkMesh(const Chunk& chunk, const ChunkNeighborhood& neighb
                         }
                     }
 
-                    const std::array<std::array<std::uint8_t, 2>, 4> uvs = {
+                    const std::uint8_t widthUv = static_cast<std::uint8_t>(width);
+                    const std::uint8_t heightUv = static_cast<std::uint8_t>(height);
+                    std::array<std::array<std::uint8_t, 2>, 4> uvs = {
                         std::array<std::uint8_t, 2>{0, 0},
-                        std::array<std::uint8_t, 2>{static_cast<std::uint8_t>(width), 0},
-                        std::array<std::uint8_t, 2>{static_cast<std::uint8_t>(width), static_cast<std::uint8_t>(height)},
-                        std::array<std::uint8_t, 2>{0, static_cast<std::uint8_t>(height)}};
+                        std::array<std::uint8_t, 2>{widthUv, 0},
+                        std::array<std::uint8_t, 2>{widthUv, heightUv},
+                        std::array<std::uint8_t, 2>{0, heightUv}};
+                    if (cell.face == Face::PosX || cell.face == Face::NegX) {
+                        // X-facing masks are built as Y-by-Z rectangles. Swap their UV axes so
+                        // texture V follows world height and vertical textures remain upright.
+                        uvs = {{{0, 0}, {0, widthUv}, {heightUv, widthUv}, {heightUv, 0}}};
+                    } else if (cell.face == Face::PosY || cell.face == Face::NegY) {
+                        // Horizontal masks are built as Z-by-X rectangles; keep U east-west.
+                        uvs = {{{0, 0}, {0, widthUv}, {heightUv, widthUv}, {heightUv, 0}}};
+                    }
 
                     std::vector<ChunkVertex>& outVerts = cell.transparent ? transparentVerts : opaqueVerts;
                     std::vector<std::uint32_t>& outIdx = cell.transparent ? transparentIdx : opaqueIdx;

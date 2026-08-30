@@ -105,6 +105,8 @@ private:
         std::uint64_t revision = 0;
     };
 
+    void MarkChunkDirtyForEdit(const voxels::ChunkCoordinate& coordinate);
+
     bool EnsureProgram();
     void UploadMesh(const voxels::ChunkCoordinate& coordinate, ChunkMeshData&& data);
     static void ReleaseMesh(GpuChunkMesh& mesh);
@@ -123,6 +125,7 @@ private:
 
     std::unordered_map<voxels::ChunkCoordinate, GpuChunkMesh, voxels::ChunkCoordinateHash> m_meshes;
     std::unordered_set<voxels::ChunkCoordinate, voxels::ChunkCoordinateHash> m_dirty;
+    std::unordered_set<voxels::ChunkCoordinate, voxels::ChunkCoordinateHash> m_editPriority;
     std::unordered_set<voxels::ChunkCoordinate, voxels::ChunkCoordinateHash> m_inFlight;
     std::unordered_map<voxels::ChunkCoordinate, std::uint64_t, voxels::ChunkCoordinateHash> m_revisions;
 

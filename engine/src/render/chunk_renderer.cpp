@@ -171,16 +171,21 @@ void ChunkRenderer::MarkChunkDirty(const voxels::ChunkCoordinate& coordinate) {
     m_dirty.insert(coordinate);
 }
 
+void ChunkRenderer::MarkChunkDirtyForEdit(const voxels::ChunkCoordinate& coordinate) {
+    MarkChunkDirty(coordinate);
+    m_editPriority.insert(coordinate);
+}
+
 void ChunkRenderer::MarkBlockEdited(const voxels::ChunkCoordinate& coordinate, const voxels::Vec3I& localEditPos,
                                     std::uint32_t chunkSize) {
-    MarkChunkDirty(coordinate);
+    MarkChunkDirtyForEdit(coordinate);
     const int size = static_cast<int>(chunkSize);
-    if (localEditPos.x == 0) MarkChunkDirty({coordinate.x - 1, coordinate.y, coordinate.z});
-    if (localEditPos.x == size - 1) MarkChunkDirty({coordinate.x + 1, coordinate.y, coordinate.z});
-    if (localEditPos.y == 0) MarkChunkDirty({coordinate.x, coordinate.y - 1, coordinate.z});
-    if (localEditPos.y == size - 1) MarkChunkDirty({coordinate.x, coordinate.y + 1, coordinate.z});
-    if (localEditPos.z == 0) MarkChunkDirty({coordinate.x, coordinate.y, coordinate.z - 1});
-    if (localEditPos.z == size - 1) MarkChunkDirty({coordinate.x, coordinate.y, coordinate.z + 1});
+    if (localEditPos.x == 0) MarkChunkDirtyForEdit({coordinate.x - 1, coordinate.y, coordinate.z});
+    if (localEditPos.x == size - 1) MarkChunkDirtyForEdit({coordinate.x + 1, coordinate.y, coordinate.z});
+    if (localEditPos.y == 0) MarkChunkDirtyForEdit({coordinate.x, coordinate.y - 1, coordinate.z});
+    if (localEditPos.y == size - 1) MarkChunkDirtyForEdit({coordinate.x, coordinate.y + 1, coordinate.z});
+    if (localEditPos.z == 0) MarkChunkDirtyForEdit({coordinate.x, coordinate.y, coordinate.z - 1});
+    if (localEditPos.z == size - 1) MarkChunkDirtyForEdit({coordinate.x, coordinate.y, coordinate.z + 1});
 }
 
 void ChunkRenderer::EnqueueDirtyMeshJobs(const voxels::World& world, const glm::vec3& cameraPosition) {
@@ -188,6 +193,11 @@ void ChunkRenderer::EnqueueDirtyMeshJobs(const voxels::World& world, const glm::
 
     std::vector<voxels::ChunkCoordinate> candidates(m_dirty.begin(), m_dirty.end());
     std::sort(candidates.begin(), candidates.end(), [&](const auto& a, const auto& b) {
+        const bool aIsEdit = m_editPriority.contains(a);
+        const bool bIsEdit = m_editPriority.contains(b);
+        if (aIsEdit != bIsEdit) {
+            return aIsEdit;
+        }
         return DistanceSq(ChunkOrigin(a, m_chunkSize), cameraPosition) <
                DistanceSq(ChunkOrigin(b, m_chunkSize), cameraPosition);
     });
@@ -362,7 +372,9 @@ void ChunkRenderer::UploadCompletedMeshes() {
 
         const auto elapsedMs =
             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-        const bool overBudget = uploaded >= m_uploadBudgetChunksPerFrame || elapsedMs >= m_uploadBudgetMilliseconds;
+        const bool isEditPriority = m_editPriority.contains(batch[i].coordinate);
+        const bool overBudget = !isEditPriority &&
+                    (uploaded >= m_uploadBudgetChunksPerFrame || elapsedMs >= m_uploadBudgetMilliseconds);
         if (overBudget) {
             // Skipped this frame due to budget: its mesh data is discarded rather than cached,
             // and the coordinate goes back on the dirty queue to be re-meshed next pass (keeps
@@ -373,6 +385,7 @@ void ChunkRenderer::UploadCompletedMeshes() {
 
         EnsureProgram(); // best-effort; UploadMesh() degrades gracefully without a GL context
         UploadMesh(batch[i].coordinate, std::move(batch[i].data));
+        m_editPriority.erase(batch[i].coordinate);
         ++uploaded;
     }
 

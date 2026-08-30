@@ -176,6 +176,31 @@ TEST_CASE("Mesher.TransparentBlocksGoToTransparentRangeOnly", "[render][mesher]"
     REQUIRE(mesh.vertices.size() == 24);
 }
 
+TEST_CASE("Mesher.SideTexturesKeepWorldHeightOnTextureV", "[render][mesher][uv]") {
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::TextureAtlas atlas = MakeAtlas(registry);
+    voxels::Chunk chunk({0, 0, 0}, 3, 3, 3);
+    chunk.SetBlock(1, 1, 1, static_cast<voxels::BlockId>(voxels::BlockType::Grass));
+
+    const auto mesh = voxels::graphics::BuildChunkMesh(chunk, {}, registry, atlas);
+    for (const voxels::Face face : {voxels::Face::PosX, voxels::Face::NegX, voxels::Face::PosZ, voxels::Face::NegZ}) {
+        std::uint16_t minY = UINT16_MAX;
+        std::uint16_t minV = UINT8_MAX;
+        for (const auto& vertex : mesh.vertices) {
+            if (vertex.faceIndex == static_cast<std::uint8_t>(face)) {
+                minY = std::min(minY, vertex.y);
+                minV = std::min(minV, static_cast<std::uint16_t>(vertex.v));
+            }
+        }
+        for (const auto& vertex : mesh.vertices) {
+            if (vertex.faceIndex == static_cast<std::uint8_t>(face)) {
+                REQUIRE(vertex.v == (vertex.y - minY) / static_cast<std::uint16_t>(voxels::graphics::kChunkVertexPositionScale));
+            }
+        }
+        REQUIRE(minV == 0);
+    }
+}
+
 TEST_CASE("Mesher.AmbientOcclusionValuesMatchExpectedCornerCases", "[render][mesher]") {
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
     voxels::TextureAtlas atlas = MakeAtlas(registry);
@@ -301,6 +326,26 @@ TEST_CASE("ChunkRenderer.UploadBudgetIsRespected", "[render][chunkrenderer]") {
     renderer.UploadCompletedMeshes();
     REQUIRE(renderer.GetResidentMeshCount() == static_cast<std::size_t>(kBudget));
     REQUIRE(renderer.GetDirtyCount() == 100 - kBudget);
+}
+
+TEST_CASE("ChunkRenderer.EditMeshesBypassTheBackgroundUploadBudget", "[render][chunkrenderer][edit]") {
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::TextureAtlas atlas = MakeAtlas(registry);
+    voxels::JobSystem jobSystem(1);
+    voxels::World world;
+    world.GetOrCreateChunk({0, 0, 0});
+    world.GetOrCreateChunk({1, 0, 0});
+
+    voxels::graphics::ChunkRenderer renderer(registry, atlas, jobSystem);
+    renderer.SetUploadBudget(0, 0.0);
+    renderer.MarkChunkDirty({0, 0, 0});
+    renderer.MarkBlockEdited({1, 0, 0}, {8, 8, 8}, 16);
+    renderer.EnqueueDirtyMeshJobs(world, glm::vec3(0.0f));
+    jobSystem.Shutdown();
+    renderer.UploadCompletedMeshes();
+
+    REQUIRE_FALSE(renderer.HasMesh({0, 0, 0}));
+    REQUIRE(renderer.HasMesh({1, 0, 0}));
 }
 
 TEST_CASE("ChunkRenderer.RendersGeneratedChunkToOffscreenTarget", "[render][chunkrenderer][gpu]") {
