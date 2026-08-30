@@ -123,6 +123,7 @@ void InGameState::OnEnter() {
         auto& world = m_session.GetWorld();
         const int chunkSize = static_cast<int>(world.GetChunkSize());
         for (const Vec3I& position : m_session.GetEditedBlocks()) {
+            (void)world.RebuildSkyLightAround(position);
             const ChunkCoordinate coordinate{static_cast<int>(std::floor(static_cast<float>(position.x) / chunkSize)),
                                              static_cast<int>(std::floor(static_cast<float>(position.y) / chunkSize)),
                                              static_cast<int>(std::floor(static_cast<float>(position.z) / chunkSize))};
@@ -241,6 +242,14 @@ void InGameState::Update(double deltaSeconds) {
                                ((position.y % chunkSize) + chunkSize) % chunkSize,
                                ((position.z % chunkSize) + chunkSize) % chunkSize};
             m_chunkRenderer->MarkBlockEdited(coordinate, local, world.GetChunkSize());
+            for (int chunkZ = coordinate.z - 1; chunkZ <= coordinate.z + 1; ++chunkZ) {
+                for (int chunkY = coordinate.y - 1; chunkY <= coordinate.y + 1; ++chunkY) {
+                    for (int chunkX = coordinate.x - 1; chunkX <= coordinate.x + 1; ++chunkX) {
+                        const ChunkCoordinate affected{chunkX, chunkY, chunkZ};
+                        if (world.HasChunk(affected)) m_chunkRenderer->MarkChunkDirty(affected);
+                    }
+                }
+            }
         }
         m_session.ClearEditedBlocks();
         for (const auto& [coordinate, chunk] : world.GetChunks()) {

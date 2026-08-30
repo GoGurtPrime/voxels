@@ -153,7 +153,7 @@ Every state receives an `AppContext&` holding non-owning references to the servi
 - `render/chunk_mesher.cpp` consumes a chunk and its six neighbours and emits `ChunkMeshData { vertices, indices, opaqueIndexCount, transparentIndexCount, provisional }`. It lives under `render/` (not `world/`) because it also depends on `TextureAtlas`; `world/` itself still never includes `graphics/`.
 - `ChunkRenderer` owns the `chunkCoord → GpuChunkMesh` cache, the dirty rebuild queue (mesh jobs run on `JobSystem` workers per ADR-008; only GPU upload/draw happen on the render thread), frustum culling, and draw submission (opaque front-to-back, then transparent back-to-front).
 - A neighbour that is not yet resident is treated as occluding (no face drawn) rather than exposing a face, and the mesh is marked `provisional` so it is automatically re-queued once the neighbour loads - this avoids ever drawing a "wall of faces" at an unloaded seam.
-- `ChunkRenderer::MarkBlockEdited` marks the owning chunk dirty plus any neighbour whose boundary the edit touched (interior edits dirty 1 chunk, corner edits dirty at most 4); not yet called by gameplay code since block breaking/placing is work item 07.
+- `ChunkRenderer::MarkBlockEdited` marks the owning chunk dirty plus any neighbour whose boundary the edit touched. Gameplay additionally re-meshes the bounded 3×3×3 resident lighting neighborhood after a block edit so updated skylight reaches the GPU.
 
 ### 6.3 Generation
 - `GenerationPipeline` samples **Shape → Caves → Ore → Vegetation → Lighting** from global coordinates and phase-derived seed domains. Detached chunk values may be built by workers, but insertion into `World` occurs on the main thread, preserving the no-worker-`Chunk`-mutation rule.

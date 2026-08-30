@@ -12,6 +12,7 @@
 #include "voxels/world/world.hpp"
 
 #include <cmath>
+#include <deque>
 #include <limits>
 
 namespace voxels {
@@ -33,6 +34,13 @@ int FloorMod(int value, int divisor) noexcept {
         modulo += divisor;
     }
     return modulo;
+}
+
+bool IsOpaqueForSkyLight(BlockId block) noexcept {
+    return block != static_cast<BlockId>(BlockType::Air) &&
+           block != static_cast<BlockId>(BlockType::Water) &&
+           block != static_cast<BlockId>(BlockType::Glass) &&
+           block != static_cast<BlockId>(BlockType::Leaf);
 }
 
 } // namespace
@@ -100,6 +108,72 @@ bool World::SetBlock(const Vec3I& worldBlockPos, BlockId block) {
     Chunk& chunk = GetOrCreateChunk(coordinate);
     return chunk.SetBlock(FloorMod(worldBlockPos.x, size), FloorMod(worldBlockPos.y, size),
                            FloorMod(worldBlockPos.z, size), block);
+}
+
+std::size_t World::RebuildSkyLightAround(const Vec3I& center, int radiusBlocks) {
+    const int radius = std::max(1, radiusBlocks);
+    const int minimumY = std::max(0, center.y - radius);
+    const int maximumY = std::min(255, center.y + radius);
+    const int minimumX = center.x - radius;
+    const int maximumX = center.x + radius;
+    const int minimumZ = center.z - radius;
+    const int maximumZ = center.z + radius;
+    const int chunkSize = static_cast<int>(m_chunkSize);
+    std::size_t touched = 0;
+
+    const auto setLightIfResident = [this, chunkSize, &touched](const Vec3I& position, std::uint8_t light) {
+        const ChunkCoordinate coordinate{FloorDiv(position.x, chunkSize), FloorDiv(position.y, chunkSize),
+                                         FloorDiv(position.z, chunkSize)};
+        const auto found = m_chunks.find(coordinate);
+        if (found == m_chunks.end()) return false;
+        const bool changed = found->second->SetSkyLight(FloorMod(position.x, chunkSize), FloorMod(position.y, chunkSize),
+                                                         FloorMod(position.z, chunkSize), light);
+        if (changed) ++touched;
+        return true;
+    };
+
+    for (int z = minimumZ; z <= maximumZ; ++z) for (int y = minimumY; y <= maximumY; ++y) for (int x = minimumX; x <= maximumX; ++x) {
+        setLightIfResident({x, y, z}, 0);
+    }
+
+    std::deque<Vec3I> frontier;
+    for (int z = minimumZ; z <= maximumZ; ++z) {
+        for (int x = minimumX; x <= maximumX; ++x) {
+            bool exposed = true;
+            for (int y = 255; y >= minimumY; --y) {
+                const Vec3I position{x, y, z};
+                const BlockId block = GetBlock(position);
+                if (y <= maximumY && exposed && setLightIfResident(position, 15) && !IsOpaqueForSkyLight(block)) {
+                    frontier.push_back(position);
+                }
+                if (IsOpaqueForSkyLight(block)) exposed = false;
+            }
+        }
+    }
+
+    constexpr Vec3I directions[] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    while (!frontier.empty()) {
+        const Vec3I current = frontier.front();
+        frontier.pop_front();
+        const std::uint8_t light = GetChunks().at({FloorDiv(current.x, chunkSize), FloorDiv(current.y, chunkSize), FloorDiv(current.z, chunkSize)})
+                                       ->GetSkyLight(FloorMod(current.x, chunkSize), FloorMod(current.y, chunkSize), FloorMod(current.z, chunkSize));
+        if (light <= 1) continue;
+        for (const Vec3I direction : directions) {
+            const Vec3I next{current.x + direction.x, current.y + direction.y, current.z + direction.z};
+            if (next.x < minimumX || next.x > maximumX || next.y < minimumY || next.y > maximumY || next.z < minimumZ || next.z > maximumZ ||
+                IsOpaqueForSkyLight(GetBlock(next))) continue;
+            const ChunkCoordinate coordinate{FloorDiv(next.x, chunkSize), FloorDiv(next.y, chunkSize), FloorDiv(next.z, chunkSize)};
+            const auto found = m_chunks.find(coordinate);
+            if (found == m_chunks.end()) continue;
+            const int localX = FloorMod(next.x, chunkSize);
+            const int localY = FloorMod(next.y, chunkSize);
+            const int localZ = FloorMod(next.z, chunkSize);
+            if (found->second->GetSkyLight(localX, localY, localZ) >= light - 1) continue;
+            setLightIfResident(next, static_cast<std::uint8_t>(light - 1));
+            frontier.push_back(next);
+        }
+    }
+    return touched;
 }
 
 RaycastHit World::Raycast(const Vec3& origin, const Vec3& direction, float maxDistance) const {

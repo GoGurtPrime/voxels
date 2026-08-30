@@ -71,6 +71,9 @@ public:
     [[nodiscard]] BlockId GetBlock(const Vec3I& worldBlockPos) const;
     bool SetBlock(const Vec3I& worldBlockPos, BlockId block);
 
+    /// Rebuilds skylight in a bounded resident region after a terrain edit and returns touched voxels.
+    [[nodiscard]] std::size_t RebuildSkyLightAround(const Vec3I& center, int radiusBlocks = 16);
+
     /// Casts a ray through the voxel grid starting at `origin` along `direction` (need not be
     /// normalized), up to `maxDistance` world units, returning the first solid block hit.
     [[nodiscard]] RaycastHit Raycast(const Vec3& origin, const Vec3& direction, float maxDistance) const;
