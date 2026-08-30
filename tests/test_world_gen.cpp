@@ -238,3 +238,13 @@ TEST_CASE("Gen.BiomesAndBedrockAreStable", "[world][generation]") {
         }
     }
 }
+
+TEST_CASE("Gen.LegacyVersionOneRemainsStable", "[world][generation]") {
+    const voxels::WorldOptions legacyOptions{.seed = 773849u, .generatorVersion = 1};
+    const voxels::Chunk first = voxels::WorldGenerator(legacyOptions).GenerateChunk({2, 1, -3});
+    const voxels::Chunk second = voxels::WorldGenerator(legacyOptions).GenerateChunk({2, 1, -3});
+    const voxels::Chunk current = voxels::WorldGenerator({.seed = 773849u, .generatorVersion = 2}).GenerateChunk({2, 1, -3});
+
+    REQUIRE(first.SerializeRLE() == second.SerializeRLE());
+    REQUIRE(first.SerializeRLE() != current.SerializeRLE());
+}

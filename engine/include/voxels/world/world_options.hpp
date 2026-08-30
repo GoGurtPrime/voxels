@@ -16,6 +16,7 @@ namespace voxels {
 
 struct WorldOptions {
     std::uint64_t seed = 0;
+    std::uint32_t generatorVersion = 2;
     bool peaceful = false;
     bool permadeath = false;
     bool alwaysSunny = true;

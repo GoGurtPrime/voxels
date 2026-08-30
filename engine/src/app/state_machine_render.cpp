@@ -242,14 +242,6 @@ void InGameState::Update(double deltaSeconds) {
                                ((position.y % chunkSize) + chunkSize) % chunkSize,
                                ((position.z % chunkSize) + chunkSize) % chunkSize};
             m_chunkRenderer->MarkBlockEdited(coordinate, local, world.GetChunkSize());
-            for (int chunkZ = coordinate.z - 1; chunkZ <= coordinate.z + 1; ++chunkZ) {
-                for (int chunkY = coordinate.y - 1; chunkY <= coordinate.y + 1; ++chunkY) {
-                    for (int chunkX = coordinate.x - 1; chunkX <= coordinate.x + 1; ++chunkX) {
-                        const ChunkCoordinate affected{chunkX, chunkY, chunkZ};
-                        if (world.HasChunk(affected)) m_chunkRenderer->MarkChunkDirty(affected);
-                    }
-                }
-            }
         }
         m_session.ClearEditedBlocks();
         for (const auto& [coordinate, chunk] : world.GetChunks()) {

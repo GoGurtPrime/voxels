@@ -39,7 +39,7 @@ Anything less than the above is an unfinished product, regardless of unit test c
 | :--- | :--- | :--- |
 | Core (logger, prefs, math, paths) | Real | Usable as-is. |
 | World storage (chunk, RLE serialization, raycast, block registry) | Real | 16³ chunk sections in a sparse map; data-driven catalogue (`blocks.json`) with 14 launch blocks. |
-| World generation (biomes, terrain, caves, ores, vegetation → skylight) | Partial | Global-coordinate deterministic sampling provides blended biome selection, mountains, oceans, caves, coal/iron, boundary-complete trees, bedrock, and a `--gen-preview` map. Runtime chunk generation is worker-scheduled and applied on the main thread. Cross-chunk light propagation and versioned legacy generators remain item 12 work. |
+| World generation (biomes, terrain, caves, ores, vegetation → skylight) | Partial | Global-coordinate deterministic sampling provides blended biome selection, mountains, oceans, caves, coal/iron, boundary-complete trees, bedrock, and a `--gen-preview` map. Initial and runtime chunks are worker-scheduled and applied on the main thread; v1 saves retain their legacy generator. Full lateral cross-chunk light propagation remains future work. |
 | Textures & Atlas | Real | STB decoders, `TextureLoader`, `TextureForge`, `TextureAtlas` (GL_TEXTURE_2D_ARRAY), `--dump-atlas`. |
 | Chunk mesher (`render/chunk_mesher.cpp`) | Real | Neighbour-aware, greedy-merged, AO + sky/block light + transparent-range split; consumed by `ChunkRenderer` and **reaches the GPU every frame**. |
 | `ChunkRenderer` (`render/chunk_renderer.cpp`) | Real | Job-scheduled meshing, budgeted upload, frustum-culled opaque/transparent draw. Wired into `InGameState`. |
@@ -153,7 +153,7 @@ Every state receives an `AppContext&` holding non-owning references to the servi
 - `render/chunk_mesher.cpp` consumes a chunk and its six neighbours and emits `ChunkMeshData { vertices, indices, opaqueIndexCount, transparentIndexCount, provisional }`. It lives under `render/` (not `world/`) because it also depends on `TextureAtlas`; `world/` itself still never includes `graphics/`.
 - `ChunkRenderer` owns the `chunkCoord → GpuChunkMesh` cache, the dirty rebuild queue (mesh jobs run on `JobSystem` workers per ADR-008; only GPU upload/draw happen on the render thread), frustum culling, and draw submission (opaque front-to-back, then transparent back-to-front).
 - A neighbour that is not yet resident is treated as occluding (no face drawn) rather than exposing a face, and the mesh is marked `provisional` so it is automatically re-queued once the neighbour loads - this avoids ever drawing a "wall of faces" at an unloaded seam.
-- `ChunkRenderer::MarkBlockEdited` marks the owning chunk dirty plus any neighbour whose boundary the edit touched. Gameplay additionally re-meshes the bounded 3×3×3 resident lighting neighborhood after a block edit so updated skylight reaches the GPU.
+- `ChunkRenderer::MarkBlockEdited` marks the owning chunk dirty plus any neighbour whose boundary the edit touched. Gameplay refreshes only the edited skylight column across resident vertical sections, then re-meshes those chunks through the normal owner/boundary invalidation path.
 
 ### 6.3 Generation
 - `GenerationPipeline` samples **Shape → Caves → Ore → Vegetation → Lighting** from global coordinates and phase-derived seed domains. Detached chunk values may be built by workers, but insertion into `World` occurs on the main thread, preserving the no-worker-`Chunk`-mutation rule.

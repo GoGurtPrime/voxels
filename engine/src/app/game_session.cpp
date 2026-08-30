@@ -84,11 +84,11 @@ void GameSession::Initialize() {
         WorldGenerator generator(m_worldOptions);
         for (int cz = -1; cz <= 1; ++cz) {
             for (int cx = -1; cx <= 1; ++cx) {
-                for (int cy = 0; cy < 3; ++cy) {
+                for (int cy = 0; cy < 5; ++cy) {
                     const ChunkCoordinate coord{cx, cy, cz};
                     m_world->GetOrCreateChunk(coord) = generator.GenerateChunk(coord);
                 }
-                m_world->GetOrCreateChunk({cx, 3, cz});
+                m_world->GetOrCreateChunk({cx, 5, cz});
             }
         }
     }
@@ -141,7 +141,7 @@ void GameSession::EnsureChunkResidentAroundPlayer() {
     const std::size_t maxQueued = m_jobSystem == nullptr ? 0 : std::max<std::size_t>(1, m_jobSystem->WorkerCount() * 2);
     for (int z = -1; z <= 1; ++z) {
         for (int x = -1; x <= 1; ++x) {
-            for (int y = 0; y < 3; ++y) {
+            for (int y = 0; y < 5; ++y) {
                 const ChunkCoordinate coord{cx + x, y, cz + z};
                 const bool queued = std::any_of(m_pendingChunkJobs.begin(), m_pendingChunkJobs.end(), [&coord](const PendingChunkJob& pending) {
                     return pending.coordinate == coord;
@@ -155,7 +155,7 @@ void GameSession::EnsureChunkResidentAroundPlayer() {
                     m_world->GetOrCreateChunk(coord) = WorldGenerator(m_worldOptions).GenerateChunk(coord);
                 }
             }
-            const ChunkCoordinate capCoord{cx + x, 3, cz + z};
+            const ChunkCoordinate capCoord{cx + x, 5, cz + z};
             if (!m_world->HasChunk(capCoord)) {
                 m_world->GetOrCreateChunk(capCoord);
             }

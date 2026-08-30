@@ -69,7 +69,7 @@ std::string TimestampNow() {
 void ConfigureInGameState(InGameState& state, AppContext* context, const GameSave& save) {
     state.SetBlockRegistry(context->blockRegistry);
     state.SetTextureAtlas(context->textureAtlas);
-    state.SetWorldOptions(WorldOptions{.seed = save.seed, .isPublic = save.publicVisibility});
+    state.SetWorldOptions(WorldOptions{.seed = save.seed, .generatorVersion = save.generatorVersion, .isPublic = save.publicVisibility});
     state.SetInputManager(context->input);
     state.SetPlatform(context->platform);
     state.SetActiveSave(save);
@@ -244,19 +244,40 @@ void LoadingScreenState::OnEnter() {
     RunGeneration();
 }
 
+void LoadingScreenState::OnExit() {
+    if (m_generationJobs != nullptr) {
+        m_generationJobs->Shutdown();
+        m_generationJobs.reset();
+    }
+    m_generationResults.clear();
+}
+
 void LoadingScreenState::Update(double) {
+    if (m_options.generatorVersion > WorldGenerator::kGeneratorVersion) {
+        m_context->requestTransition(std::make_unique<ErrorState>(m_context, "World Load Failed", "This world uses a newer generator version."));
+        return;
+    }
     if (m_world == nullptr || m_generatedChunks < m_generationQueue.size()) {
         if (m_world == nullptr) {
             m_context->requestTransition(std::make_unique<ErrorState>(m_context, "World Generation Failed", "The loading world could not be initialized."));
             return;
         }
-        const ChunkCoordinate coordinate = m_generationQueue[m_generatedChunks];
-        if (coordinate.y == 3) m_world->GetOrCreateChunk(coordinate);
-        else {
-            WorldGenerator generator(m_options);
-            m_world->GetOrCreateChunk(coordinate) = generator.GenerateChunk(coordinate);
+        if (m_generationResults.empty()) {
+            const ChunkCoordinate coordinate = m_generationQueue[m_generatedChunks];
+            m_world->GetOrCreateChunk(coordinate) = WorldGenerator(m_options).GenerateChunk(coordinate);
+            ++m_generatedChunks;
+        } else {
+            bool applied = false;
+            for (std::size_t index = 0; index < m_generationResults.size(); ++index) {
+                auto& result = m_generationResults[index];
+                if (!result.valid() || result.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
+                const ChunkCoordinate coordinate = m_generationQueue[index];
+                m_world->GetOrCreateChunk(coordinate) = result.get();
+                ++m_generatedChunks;
+                applied = true;
+            }
+            if (!applied) return;
         }
-        ++m_generatedChunks;
         const float fraction = static_cast<float>(m_generatedChunks) / static_cast<float>(m_generationQueue.size());
         m_phase = fraction < 0.33f ? GenerationPhase::Shape : fraction < 0.66f ? GenerationPhase::Caves : GenerationPhase::Vegetation;
         return;

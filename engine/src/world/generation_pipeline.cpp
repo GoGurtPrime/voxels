@@ -160,6 +160,69 @@ void PlaceTree(Chunk& chunk, int worldX, int worldZ, const TerrainColumn& column
         }
     }
 }
+
+[[nodiscard]] Chunk GenerateVersionOneChunk(const WorldOptions& options, const ChunkCoordinate& coordinate) {
+    Chunk chunk(coordinate, kChunkSize, kChunkSize, kChunkSize);
+    const Noise terrainNoise(options.seed + 11u);
+    const Noise caveNoise(options.seed + 27u);
+    const Noise treeNoise(options.seed + 51u);
+    const int originX = coordinate.x * kChunkSize;
+    const int originY = coordinate.y * kChunkSize;
+    const int originZ = coordinate.z * kChunkSize;
+
+    for (int z = 0; z < kChunkSize; ++z) {
+        for (int x = 0; x < kChunkSize; ++x) {
+            const int surfaceY = static_cast<int>(std::round(terrainNoise.Fractal2D((originX + x) * 0.12, (originZ + z) * 0.12, 5, 0.55, 2.0) * 18.0 + 28.0));
+            const bool underwater = surfaceY <= kSeaLevel;
+            for (int y = 0; y < kChunkSize; ++y) {
+                const int worldY = originY + y;
+                BlockId block = kAir;
+                if (worldY <= 2) block = kStone;
+                else if (worldY <= surfaceY) {
+                    if (worldY > surfaceY - 3) {
+                        block = worldY == surfaceY ? (underwater ? kSand : kGrass) : kDirt;
+                    } else block = kStone;
+                } else if (worldY <= kSeaLevel) block = kWater;
+                chunk.SetBlock(x, y, z, block);
+            }
+        }
+    }
+    if (!options.peaceful) {
+        for (int z = 0; z < kChunkSize; ++z) for (int y = 0; y < kChunkSize; ++y) for (int x = 0; x < kChunkSize; ++x) {
+            if (chunk.GetBlock(x, y, z) == kStone && caveNoise.Evaluate3D(x * 0.35 + 7.0, y * 0.35 + 11.0, z * 0.35 + 13.0) > 0.62 && y < 40) {
+                chunk.SetBlock(x, y, z, kAir);
+            }
+        }
+    }
+    if (!options.sandboxMode) {
+        for (int z = 0; z < kChunkSize; ++z) for (int x = 0; x < kChunkSize; ++x) {
+            int surface = kChunkSize - 1;
+            while (surface > 0 && chunk.GetBlock(x, surface, z) == kAir) --surface;
+            const BlockId base = chunk.GetBlock(x, surface, z);
+            if (surface <= 0 || (base != kDirt && base != kGrass) || treeNoise.Fractal2D((x + originX) * 0.65, (z + originZ) * 0.65, 2, 0.7, 2.5) <= 0.68 || surface <= 4 || surface >= kChunkSize - 3) continue;
+            for (int y = surface + 1; y <= surface + 4 && y < kChunkSize; ++y) if (chunk.GetBlock(x, y, z) == kAir) chunk.SetBlock(x, y, z, kWood);
+            for (int offsetY = 0; offsetY < 3; ++offsetY) for (int offsetZ = -2; offsetZ <= 2; ++offsetZ) for (int offsetX = -2; offsetX <= 2; ++offsetX) {
+                const int leafX = x + offsetX;
+                const int leafY = surface + 4 + offsetY;
+                const int leafZ = z + offsetZ;
+                if (chunk.InBounds(leafX, leafY, leafZ) && std::sqrt(static_cast<double>(offsetX * offsetX + offsetZ * offsetZ + offsetY * offsetY)) <= 2.2 && chunk.GetBlock(leafX, leafY, leafZ) == kAir) {
+                    chunk.SetBlock(leafX, leafY, leafZ, kLeaf);
+                }
+            }
+        }
+    }
+    for (int z = 0; z < kChunkSize; ++z) for (int x = 0; x < kChunkSize; ++x) {
+        bool lit = true;
+        for (int y = kChunkSize - 1; y >= 0; --y) {
+            const BlockId block = chunk.GetBlock(x, y, z);
+            if (lit) {
+                chunk.SetSkyLight(x, y, z, 15);
+                if (block != kAir && block != kWater) lit = false;
+            }
+        }
+    }
+    return chunk;
+}
 } // namespace
 
 WorldGenerator::WorldGenerator() : WorldGenerator(WorldOptions{}) {}
@@ -174,6 +237,7 @@ Chunk WorldGenerator::GenerateChunk(const ChunkCoordinate& coordinate) const {
         for (const auto& phase : m_phases) if (phase) phase->Execute(chunk);
         return chunk;
     }
+    if (m_options.generatorVersion == 1) return GenerateVersionOneChunk(m_options, coordinate);
     const int originX = coordinate.x * kChunkSize;
     const int originY = coordinate.y * kChunkSize;
     const int originZ = coordinate.z * kChunkSize;

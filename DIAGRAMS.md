@@ -241,8 +241,8 @@ sequenceDiagram
     BI->>W: DDA raycast from eye, max 5 blocks
     alt hit and cooldown elapsed
         BI->>W: SetBlock (break → Air, place → held block)
-        W->>W: bounded skylight repropagation across resident chunks
-        W->>CR: mark affected lighting neighborhood dirty
+        W->>W: refresh edited skylight column across resident sections
+        W->>CR: mark edited chunk and touched boundaries dirty
         W->>Snd: queue block break/place sound event
         Srv->>Cli: S2C_BlockEdit broadcast
     end

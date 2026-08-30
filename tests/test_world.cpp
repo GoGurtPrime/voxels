@@ -135,27 +135,25 @@ TEST_CASE("World.BlockAccessAcrossChunkBoundaries", "[world][chunk]") {
     REQUIRE(world.LoadedChunkCount() == 1);
 }
 
-TEST_CASE("World.SkylightRebuildPropagatesAcrossResidentChunkBoundary", "[world][lighting]") {
+TEST_CASE("World.SkylightRebuildUpdatesTheEditedColumnAcrossSections", "[world][lighting]") {
     voxels::World world;
     const auto stone = static_cast<voxels::BlockId>(voxels::BlockType::Stone);
     const auto air = static_cast<voxels::BlockId>(voxels::BlockType::Air);
-    for (int z = -16; z <= 16; ++z) {
-        for (int x = -1; x <= 31; ++x) {
-            REQUIRE(world.SetBlock({x, 8, z}, stone));
-        }
-    }
-    REQUIRE(world.RebuildSkyLightAround({15, 7, 0}, 16) > 0);
-    REQUIRE(world.GetChunks().at({1, 0, 0})->GetSkyLight(0, 7, 0) == 0);
+    REQUIRE(world.SetBlock({15, 8, 0}, stone));
+    REQUIRE(world.SetBlock({15, 24, 0}, air));
+    REQUIRE(world.RebuildSkyLightAround({15, 7, 0}) > 0);
+    REQUIRE(world.GetChunks().at({0, 0, 0})->GetSkyLight(15, 7, 0) == 0);
+    REQUIRE(world.GetChunks().at({0, 1, 0})->GetSkyLight(15, 8, 0) == 15);
 
     REQUIRE(world.SetBlock({15, 8, 0}, air));
-    const std::size_t openedTouched = world.RebuildSkyLightAround({15, 7, 0}, 16);
+    const std::size_t openedTouched = world.RebuildSkyLightAround({15, 7, 0});
     REQUIRE(openedTouched > 0);
-    REQUIRE(world.GetChunks().at({1, 0, 0})->GetSkyLight(0, 7, 0) > 0);
-    REQUIRE(openedTouched < 40000);
+    REQUIRE(world.GetChunks().at({0, 0, 0})->GetSkyLight(15, 7, 0) == 15);
+    REQUIRE(openedTouched < 300);
 
     REQUIRE(world.SetBlock({15, 8, 0}, stone));
-    REQUIRE(world.RebuildSkyLightAround({15, 7, 0}, 16) > 0);
-    REQUIRE(world.GetChunks().at({1, 0, 0})->GetSkyLight(0, 7, 0) == 0);
+    REQUIRE(world.RebuildSkyLightAround({15, 7, 0}) > 0);
+    REQUIRE(world.GetChunks().at({0, 0, 0})->GetSkyLight(15, 7, 0) == 0);
 }
 
 TEST_CASE("GreedyMeshing.FaceCulling", "[world][geometry]") {

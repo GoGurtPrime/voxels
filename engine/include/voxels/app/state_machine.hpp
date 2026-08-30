@@ -151,6 +151,7 @@ public:
 
     void RunGeneration();
     void OnEnter() override;
+    void OnExit() override;
     void Update(double deltaSeconds) override;
     void Render() override;
     [[nodiscard]] const World& GetWorld() const noexcept { return *m_world; }
@@ -167,6 +168,8 @@ private:
     Vec3I m_spawnPosition{0, 1, 0};
     bool m_generationComplete = false;
     std::vector<ChunkCoordinate> m_generationQueue;
+    std::unique_ptr<JobSystem> m_generationJobs;
+    std::vector<std::future<Chunk>> m_generationResults;
     std::size_t m_generatedChunks = 0;
 };
 

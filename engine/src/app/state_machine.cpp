@@ -8,6 +8,7 @@
 
 #include "voxels/app/state_machine.hpp"
 
+#include <chrono>
 #include <utility>
 
 #include "voxels/world/generation_pipeline.hpp"
@@ -129,22 +130,39 @@ void LoadingScreenState::RunGeneration() {
         GameSave loadedSave{};
         if (m_saveManager->Load(m_saveName, loadedSave)) {
             m_options.seed = loadedSave.seed;
+            m_options.generatorVersion = loadedSave.generatorVersion;
             if (loadedSave.publicVisibility) {
                 m_options.isPublic = true;
             }
         }
     }
 
+    if (m_options.generatorVersion > WorldGenerator::kGeneratorVersion) {
+        m_generationQueue.clear();
+        m_phase = GenerationPhase::Complete;
+        return;
+    }
     m_world = std::make_unique<World>();
     m_world->Initialize(m_options);
     m_generationQueue.clear();
     for (int z = -1; z <= 1; ++z) {
         for (int x = -1; x <= 1; ++x) {
-            for (int y = 0; y < 3; ++y) m_generationQueue.push_back({x, y, z});
-            m_generationQueue.push_back({x, 3, z});
+            for (int y = 0; y < 5; ++y) m_generationQueue.push_back({x, y, z});
+            m_generationQueue.push_back({x, 5, z});
         }
     }
     m_generatedChunks = 0;
+    m_generationResults.clear();
+    if (m_context != nullptr) {
+        m_generationJobs = std::make_unique<JobSystem>();
+        m_generationResults.reserve(m_generationQueue.size());
+        for (const ChunkCoordinate coordinate : m_generationQueue) {
+            const WorldOptions options = m_options;
+            m_generationResults.push_back(m_generationJobs->EnqueueWithResult([options, coordinate] {
+                return WorldGenerator(options).GenerateChunk(coordinate);
+            }));
+        }
+    }
     m_phase = GenerationPhase::Shape;
 }
 
