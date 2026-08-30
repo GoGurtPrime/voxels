@@ -1,68 +1,81 @@
-# Work Items Sequence Index & Execution Strategy
+# Work Items — Execution Roadmap
 
-> **Role & Directive:** This sequence index guides the principal solutions architect, software lead, and LLM coding agents through the step-by-step implementation of the `VoxelsEngine` project.
-
----
-
-## ⚠️ Sequencing History (read this first)
-
-Work items `01`-`10` (formerly `00`-`09`) were completed as isolated, unit-tested subsystems, and that is exactly the problem this re-sequencing fixes: nothing required those subsystems to be wired together into a running, playable application. Running `voxels_app` produced no visible gameplay because `app/src/main.cpp` only constructed each subsystem once, printed a line, and exited — no game loop, no player entity, no physics, no persistence.
-
-Items `11`, `12`, and `13` are **new** and exist specifically to close that gap:
-* `11_gameplay_player_and_physics` — the missing player/physics/camera/block-interaction layer.
-* `12_persistence_and_runtime_integration` — the missing real game loop + save/load + chunk streaming that ties every prior subsystem together at runtime.
-* `13_minimum_viable_playable_build` — the capstone: an actual end-to-end playable Main Menu → World Creation → Loading → Spawn → Play → Pause → Save & Quit experience, verified by integration tests that assert on real side effects, not just state-transition logs.
-
-Former items `10` (Steam SDK) and `11` (Voxel Editor) have been renumbered to `14` and `15` and pushed to run **after** `13`, since platform-SDK integration and content-authoring tooling are not prerequisites for a playable base game and must not be prioritized ahead of it.
-
-Item `00_git_and_repository_hygiene` is also new: it initializes Git, `.gitignore`, `.gitattributes` (LFS-ready for future art/audio/model assets), and produces the baseline commit for everything already implemented. See `AGENT_RULES.md` → *Agentic Git Workflow* for the ongoing commit/push convention every subsequent item must follow.
+> **Read first:** [ARCHITECTURE.md](../ARCHITECTURE.md), [DIAGRAMS.md](../DIAGRAMS.md), [AGENT_RULES.md](../AGENT_RULES.md).
+> **Prompt to start an item:** [WORK_ITEM_PROMPT_TEMPLATE.md](WORK_ITEM_PROMPT_TEMPLATE.md).
+> **Content the operator owes us:** [ASSET_REQUESTS.md](../ASSET_REQUESTS.md).
 
 ---
 
-## 🗂 Sequence Roadmap & Dependencies
+## Why This Sequence Was Rewritten
 
-| Sequence ID | Work Item File | Key Deliverable | Co-dependencies & Prerequisites |
-| :--- | :--- | :--- | :--- |
-| **00** | [00_git_and_repository_hygiene.md](00_git_and_repository_hygiene.md) | Git init, `.gitignore`/`.gitattributes`, baseline commit | *None (First Step)* |
-| **01** | [01_testing_and_build_infrastructure.md](01_testing_and_build_infrastructure.md) | Catch2 & CTest integration | `00` |
-| **02** | [02_core_engine_foundation.md](02_core_engine_foundation.md) | Logger, Config/Preferences, Math | `01` |
-| **03** | [03_platform_windowing_sdl2.md](03_platform_windowing_sdl2.md) | SDL2 Windowing & Event Loop | `02` |
-| **04** | [04_input_and_multiplayer_abstraction.md](04_input_and_multiplayer_abstraction.md) | Input Action Mapping & Drop-in Splitscreen | `03` |
-| **05** | [05_graphics_renderer_abstraction.md](05_graphics_renderer_abstraction.md) | Multi-Backend RHI & Mock Renderer | `03` |
-| **06** | [06_world_voxel_core.md](06_world_voxel_core.md) | Blocks, Chunks, Sub-Voxels, Serialization | `02`, `05` |
-| **07** | [07_world_generation_pipeline.md](07_world_generation_pipeline.md) | Multi-Phase Noise Terrain & Safe Spawn | `06` |
-| **08** | [08_audio_and_asset_pipeline.md](08_audio_and_asset_pipeline.md) | Audio Device, 3D Spatial Sound, Asset Packs | `02` |
-| **09** | [09_app_lifecycle_ui_and_menus.md](09_app_lifecycle_ui_and_menus.md) | CLI Parser, Menus, State Machine, ImGui | `02`, `03`, `04`, `05`, `07` |
-| **10** | [10_networking_and_server_client.md](10_networking_and_server_client.md) | Asio Packets, Server/Client, Loopback | `02`, `06`, `09` |
-| **11** | [11_gameplay_player_and_physics.md](11_gameplay_player_and_physics.md) | Player entity, AABB physics, block break/place | `04`, `05`, `06`, `07` |
-| **12** | [12_persistence_and_runtime_integration.md](12_persistence_and_runtime_integration.md) | Real game loop, world/player save-load, chunk streaming | `03`, `05`, `06`, `07`, `09`, `10`, `11` |
-| **13** | [13_minimum_viable_playable_build.md](13_minimum_viable_playable_build.md) | End-to-end playable MVP (menus → spawn → play → save) | `09`, `10`, `11`, `12` |
-| **14** | [14_steam_sdk_and_platform_integration.md](14_steam_sdk_and_platform_integration.md) | Steam API Wrapper & Platform Services | `02`, `09`, `10`, `13` |
-| **15** | [15_voxel_editor_tool.md](15_voxel_editor_tool.md) | Sub-Voxel Model Editor & Asset Packer | `02`, `05`, `06`, `08`, `09`, `13` |
+The previous roadmap ran sixteen work items and was reported complete through "Minimum Viable Playable Build". The result launches an SDL window and renders a black screen. There is no menu, no world on screen, no player, no sound, and no way to start a game.
+
+The audit found the cause, and it was systemic rather than incidental:
+
+* **No renderer exists.** Every graphics backend was an empty subclass of `MockRenderer`. Nothing in the project has ever issued a graphics API call.
+* **SDL2 was optional.** When CMake could not find it, the platform layer was excluded from the build and the game silently ran headless for 200 ticks and exited — while still reporting a successful build.
+* **No UI exists.** Dear ImGui was never a dependency. `UIManager` computes a DPI scale and draws nothing.
+* **Every app state was an empty class.** `MainMenuState`, `InGameState`, and `PauseMenuState` had one member each: a function returning their own enum value.
+* **Working subsystems were never connected.** Physics, input, the greedy mesher, block interaction, and networking are all genuinely implemented — and none of them are called from the running game loop.
+* **The editor was never started.** It prints one line and exits.
+* **There is no content.** `app/assets/` contains two JSON files. No textures, audio, fonts, shaders, or models.
+
+The old sequence rewarded isolated, mock-backed subsystems with passing unit tests. The new sequence is ordered so that **something new is visible or audible in the running game after almost every item**, and [AGENT_RULES.md](../AGENT_RULES.md) has been rewritten to make "mock-backed and unit-tested" an explicit failure state rather than a definition of done.
+
+Work already done is not wasted — roughly half the engine is real and reusable. Items 01–11 connect it to a screen, a mouse, and a speaker.
 
 ---
 
-## 💡 Co-Dependency & Grouping Considerations
+## Roadmap
 
-When prompting an LLM coding agent, some work items can either be executed individually or in combined feature pairs if higher throughput is desired:
-
-* **Foundation Phase (00, 01, 02):** Must be completed first to establish version control, CTest testing, and logging/config infrastructure.
-* **Platform & Hardware Group (03, 04, 05):** These three form the core platform engine. If working in a single large session, `03` + `04` or `03` + `05` can be fed together.
-* **Voxel Core & Generation Group (06, 07):** `06` establishes block/chunk memory layouts, and `07` builds procedural generation directly on top of `06`.
-* **App & Networking Integration (09, 10):** `09` creates menus and command line options (`--server`), which directly trigger `10`'s internal loopback server or dedicated server mode.
-* **Playable-Game Group (11, 12, 13):** These three must be worked *in order* and are not safe to parallelize — `12` depends on `11`'s `PlayerState` shape, and `13`'s tests depend on `12`'s real game loop existing. Do not skip ahead to `13` without `11`/`12` merged and passing.
-* **Post-MVP Group (14, 15):** Steam/platform SDK integration and the editor tool are valuable but strictly secondary to having a playable base game; only pick these up once `13` is green.
+| # | Work Item | Phase | Prereqs | What the player can do afterwards |
+| :--- | :--- | :--- | :--- | :--- |
+| **01** | [Dependency & Build Hardening](01_dependency_and_build_hardening.md) | A · Foundation Repair | — | (build only) SDL2/ImGui/decoders are mandatory; no silent headless fallback |
+| **02** | [SDL2 Platform & Window Runtime](02_sdl2_platform_and_window_runtime.md) | A | 01 | A real, resizable window with a GL context and a proper frame loop |
+| **03** | [OpenGL Render Backend](03_opengl_render_backend.md) | A | 01, 02 | **The screen is no longer black** — real 3D rendering |
+| **04** | [Block Definitions, Textures & Atlas](04_block_definitions_textures_and_atlas.md) | B · Making the World Visible | 03 | Blocks have real, data-driven textures |
+| **05** | [Chunk Mesh Pipeline & World Rendering](05_chunk_mesh_pipeline_and_world_rendering.md) | B | 03, 04 | **The voxel world is on screen** — lit, textured terrain with water |
+| **06** | [Player Controller, Camera & Chunk Streaming](06_player_controller_camera_and_chunk_streaming.md) | B | 02, 05 | Walk, look, jump, fall, and explore streaming terrain |
+| **07** | [Block Interaction, Inventory & HUD](07_block_interaction_inventory_and_hud.md) | B | 05, 06 | **Break and place blocks** with crosshair, hotbar, and highlight |
+| **08** | [Dear ImGui UI Framework](08_dear_imgui_ui_framework.md) | C · The Application Shell | 02, 03 | Themed, DPI-aware UI with correct input arbitration; F3 overlay |
+| **09** | [Game Flow: Menus & Settings](09_game_flow_menus_and_settings.md) | C | 06, 07, 08 | **Main menu, world creation, loading, pause, settings** — a real game shell |
+| **10** | [Persistence: Local AppData Saves](10_persistence_local_appdata_saves.md) | C | 06, 09 | **Worlds and settings persist** — quit and resume exactly where you left off |
+| **11** | [Audio Runtime & 🚩 MVP Gate](11_audio_runtime_and_mvp_gate.md) | C | 07, 09 | **The game is fully playable, and audible.** Hard gate. |
+| **12** | [World Generation Quality & Threading](12_world_generation_quality_and_threading.md) | D · Depth & Polish | 11 | Biomes, mountains, connected caves, ores — a world worth exploring |
+| **13** | [Sub-Voxel Model Format & Rendering](13_sub_voxel_model_format_and_rendering.md) | E · Content Tooling | 05, 12 | Stairs, slabs, torches, doors, items — shapes beyond cubes |
+| **14** | [Asset Pack Format & Bundler](14_asset_pack_format_and_bundler.md) | E | 04, 11, 13 | The game ships and runs from a validated `core.vpk` content pack |
+| **15** | [Voxel Editor Tool](15_voxel_editor_tool.md) | E | 08, 13, 14 | Author models, assign textures, define blocks, build packs |
+| **16** | [Multiplayer Runtime Integration](16_multiplayer_runtime_integration.md) | F · Production Hardening | 10, 12 | Host and join over LAN; singleplayer is genuinely server-authoritative |
+| **17** | [Performance, Stability & Hardening](17_performance_stability_and_hardening.md) | F | 16 | 60 FPS, no leaks, no crashes, survives hostile input and long sessions |
+| **18** | [Packaging, Distribution & Platform Services](18_packaging_distribution_and_platform_services.md) | F | 17 | A redistributable build a non-developer can unzip and play |
 
 ---
 
-## 🤖 Instructions for Feeding Work Items to Coding Agents
+## Milestones
 
-1. **Prompt Template:** Provide the LLM coding agent with:
-   * The active Work Item file (e.g. `work_items/02_core_engine_foundation.md`).
-   * The master rules file (`AGENT_RULES.md`).
-   * The architectural context file (`ARCHITECTURE.md`).
-2. **Execution Prompt:**
-   > *"You are acting as the lead developer for VoxelsEngine. Please implement Work Item `02_core_engine_foundation.md` strictly following the standards in `AGENT_RULES.md` and `ARCHITECTURE.md`. Ensure all tests in `tests/` pass cleanly via `cmake --build build` and `ctest --test-dir build` before completing your turn, then follow the Agentic Git Workflow in `AGENT_RULES.md` to commit and push your work."*
-3. **Review Human-in-the-Loop Section:** Check if the active work item lists human steps (e.g., placing art/textures/audio files, installing SDL2 dev libraries). If human assets are missing, verify that the agent created procedural fallbacks so automated testing passes.
-4. **Definition of Done includes integration, not just unit tests:** for any work item that adds runtime behavior reachable from a running session (gameplay, menus, networking, persistence), passing isolated unit tests is necessary but **not sufficient** — the behavior must also be wired into `app/src/main.cpp`'s real game loop (from `12` onward) so it is actually reachable when the game runs. See `AGENT_RULES.md` → *Integration Requirement*.
-5. **When stuck, search history first:** before re-deriving a design decision from scratch, use `git log --oneline -- <path>` / `git log -p -- <path>` / `git blame <path>` to see what a previous agent session already tried and why — see `AGENT_RULES.md` → *Git History as Institutional Memory*.
+| Gate | After | Meaning |
+| :--- | :--- | :--- |
+| **Pixels** | 03 | The renderer is real. The reported black-screen symptom is gone. |
+| **World** | 05 | The generated voxel world is visible on screen. |
+| **Sandbox loop** | 07 | Move, look, jump, break, place — the core loop exists. |
+| **Game shell** | 10 | Menus, settings, and persistence — it behaves like a game, not a demo. |
+| **🚩 MVP** | 11 | **Playable end to end.** Do not begin 12 until the item 11 playability sweep passes. |
+| **Content pipeline** | 15 | Content can be authored and shipped without touching C++. |
+| **Shippable** | 18 | A stranger can download it and play it. |
+
+---
+
+## Execution Rules
+
+1. **In order, one at a time.** Prerequisites are real; skipping produces the exact failure this rewrite is correcting.
+2. **Do not start the next item.** If the current item cannot be completed without the next one, stop and say so rather than half-implementing both.
+3. **The MVP gate at item 11 is hard.** If any step of its playability sweep fails, item 11 is not complete. Items 12–18 are polish, depth, and distribution on top of a game that already works.
+4. **Every item ends with a completion report** in the format defined in [AGENT_RULES.md](../AGENT_RULES.md) § 7 — including the **"Assets & Actions Needed From You"** section. Agents are expected to levy asset and tooling requirements on the operator; working around a missing asset in silence is a rule violation.
+5. **Update the documentation in the same commit** when an item changes a flow, contract, or ADR. [DIAGRAMS.md](../DIAGRAMS.md) is meant to stay accurate, not become archaeology.
+6. **Delete what you replace.** Superseded stubs, dead backends, and unused headers go away. Compatibility with a placeholder is not a value.
+
+---
+
+## Adding Work Items
+
+New items go at the end unless a prerequisite genuinely forces an earlier slot. When inserting, renumber the files, update this table, and explain the reordering in the commit message. Every item must state, in one sentence, **what a human can newly see, hear, or do** once it lands. If it cannot, it is probably not a work item — it is a task inside one.
