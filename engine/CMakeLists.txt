@@ -43,6 +43,7 @@ add_library(voxels_engine
     src/app/save_manager.cpp
     src/app/menus.cpp
     src/ui/ui_manager.cpp
+    src/ui/imgui_ui_manager.cpp
 )
 
 target_include_directories(voxels_engine

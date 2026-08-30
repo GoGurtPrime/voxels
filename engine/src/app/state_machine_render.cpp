@@ -49,7 +49,6 @@ void MainMenuState::Render() {
         return;
     }
     g_renderer->BeginFrame({0.58f, 0.72f, 0.88f, 1.0f});
-    g_renderer->EndFrame();
 }
 
 void InGameState::OnEnter() {
@@ -187,7 +186,6 @@ void InGameState::Render() {
                               m_session.GetSelectedItemLabel(), m_session.GetSelectedItemLabelAge(), m_session.GetParticleBursts());
         m_session.ClearParticleBursts();
     }
-    g_renderer->EndFrame();
 }
 
 } // namespace voxels

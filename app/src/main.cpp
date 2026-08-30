@@ -28,14 +28,16 @@
 #include "voxels/platform/platform.hpp"
 #include "voxels/render/texture_atlas.hpp"
 #include "voxels/render/texture_forge.hpp"
+#include "voxels/ui/imgui_ui_manager.hpp"
 #include "voxels/world/block.hpp"
 
 namespace {
 
 class WindowEventListener final : public voxels::IPlatformEventListener {
 public:
-    WindowEventListener(bool& runningFlag, voxels::graphics::GLRenderer& renderer, voxels::InputManager& inputManager)
-        : m_running(runningFlag), m_renderer(renderer), m_inputManager(inputManager) {}
+    WindowEventListener(bool& runningFlag, voxels::graphics::GLRenderer& renderer, voxels::InputManager& inputManager,
+                        voxels::ImGuiUIManager& uiManager)
+        : m_running(runningFlag), m_renderer(renderer), m_inputManager(inputManager), m_uiManager(uiManager) {}
 
     void OnPlatformEvent(const voxels::PlatformEvent& event) override {
         if (event.type == voxels::PlatformEventType::WindowClosed ||
@@ -44,16 +46,26 @@ public:
         } else if (event.type == voxels::PlatformEventType::WindowResized) {
             m_renderer.SetViewport(event.width, event.height);
         } else if (event.type == voxels::PlatformEventType::KeyDown) {
+            if (event.keyCode == 1073741884U) {
+                m_uiManager.ToggleDebugOverlay();
+                return;
+            }
+            if (m_uiManager.WantsKeyboardCapture()) return;
             m_inputManager.InjectKeyEvent(static_cast<int>(event.keyCode), true);
         } else if (event.type == voxels::PlatformEventType::KeyUp) {
+            if (m_uiManager.WantsKeyboardCapture()) return;
             m_inputManager.InjectKeyEvent(static_cast<int>(event.keyCode), false);
         } else if (event.type == voxels::PlatformEventType::MouseMotion) {
+            if (m_uiManager.ConsumeFirstMouseDelta() || m_uiManager.WantsMouseCapture()) return;
             m_inputManager.InjectMouseDelta(static_cast<float>(event.relativeX), static_cast<float>(event.relativeY));
         } else if (event.type == voxels::PlatformEventType::MouseButtonDown) {
+            if (m_uiManager.WantsMouseCapture()) return;
             m_inputManager.InjectMouseButtonEvent(static_cast<int>(event.button), true);
         } else if (event.type == voxels::PlatformEventType::MouseButtonUp) {
+            if (m_uiManager.WantsMouseCapture()) return;
             m_inputManager.InjectMouseButtonEvent(static_cast<int>(event.button), false);
         } else if (event.type == voxels::PlatformEventType::MouseWheel) {
+            if (m_uiManager.WantsMouseCapture()) return;
             m_inputManager.InjectMouseWheel(event.wheelY);
         }
     }
@@ -62,6 +74,7 @@ private:
     bool& m_running;
     voxels::graphics::GLRenderer& m_renderer;
     voxels::InputManager& m_inputManager;
+    voxels::ImGuiUIManager& m_uiManager;
 };
 
 constexpr double kFixedStepSeconds = 1.0 / 60.0;
@@ -191,6 +204,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    voxels::ImGuiUIManager uiManager;
+    if (!uiManager.Initialize(platform, nullptr)) {
+        std::cerr << "Voxels ImGui UI failed to initialize." << std::endl;
+        renderer.Shutdown();
+        engine.shutdown();
+        return 1;
+    }
+
     voxels::SetGlobalRenderer(&renderer);
 
     voxels::AppStateMachine stateMachine;
@@ -221,8 +242,9 @@ int main(int argc, char** argv) {
     }
 
     bool running = true;
-    WindowEventListener windowListener(running, renderer, inputManager);
+    WindowEventListener windowListener(running, renderer, inputManager, uiManager);
     if (platform != nullptr) {
+        platform->RegisterEventListener(&uiManager, 1000);
         platform->RegisterEventListener(&windowListener, 100);
         const auto [drawableW, drawableH] = platform->GetDrawableSize();
         renderer.SetViewport(drawableW, drawableH);
@@ -235,7 +257,7 @@ int main(int argc, char** argv) {
 
     while (running && frameCount < maxFrames) {
         if (platform != nullptr) {
-            platform->PollEvents(&windowListener);
+            platform->PollEvents(nullptr);
         }
 
         const auto now = std::chrono::steady_clock::now();
@@ -251,6 +273,30 @@ int main(int argc, char** argv) {
         }
 
         stateMachine.Render();
+        uiManager.BeginFrame();
+        voxels::UIDebugMetrics debugMetrics{};
+        const auto& camera = renderer.GetCamera();
+        debugMetrics.playerX = camera.position.x;
+        debugMetrics.playerY = camera.position.y;
+        debugMetrics.playerZ = camera.position.z;
+        debugMetrics.chunkX = static_cast<int>(std::floor(camera.position.x / 16.0f));
+        debugMetrics.chunkY = static_cast<int>(std::floor(camera.position.y / 16.0f));
+        debugMetrics.chunkZ = static_cast<int>(std::floor(camera.position.z / 16.0f));
+        if (const auto* inGame = dynamic_cast<const voxels::InGameState*>(stateMachine.GetCurrentState())) {
+            if (const auto* chunkRenderer = inGame->GetChunkRenderer()) {
+                const auto& metrics = chunkRenderer->GetMetrics();
+                debugMetrics.loadedChunks = metrics.loadedChunks;
+                debugMetrics.meshedChunks = metrics.meshedChunks;
+                debugMetrics.visibleChunks = metrics.visibleChunks;
+                debugMetrics.drawCalls = metrics.drawCalls;
+                debugMetrics.triangles = metrics.triangles;
+                debugMetrics.meshQueueDepth = metrics.meshQueueDepth;
+            }
+        }
+        debugMetrics.glRenderer = "OpenGL 3.3 Core";
+        uiManager.SetDebugMetrics(std::move(debugMetrics));
+        uiManager.EndFrame();
+        renderer.EndFrame();
         if (platform != nullptr) {
             platform->SwapBuffers();
         }
@@ -266,6 +312,10 @@ int main(int argc, char** argv) {
     // tear it down. Destroying stateMachine after engine.shutdown() would call GL delete
     // functions against an already-destroyed context.
     stateMachine.Shutdown();
+    if (platform != nullptr) {
+        platform->UnregisterEventListener(&uiManager);
+    }
+    uiManager.Shutdown();
     voxels::SetGlobalRenderer(nullptr);
     renderer.Shutdown();
     engine.shutdown();
