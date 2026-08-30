@@ -11,6 +11,7 @@
 #pragma once
 
 #include <array>
+#include <filesystem>
 #include <memory>
 #include <string>
 
@@ -39,6 +40,7 @@ public:
     [[nodiscard]] const Camera& GetCamera() const noexcept { return m_camera; }
     void SetTextureAtlas(TextureAtlas* atlas) { m_atlas = atlas; }
     [[nodiscard]] TextureAtlas* GetTextureAtlas() const noexcept { return m_atlas; }
+    [[nodiscard]] bool CaptureScreenshot(const std::filesystem::path& path) const;
 
 private:
     void CreateDefaultAtlas();

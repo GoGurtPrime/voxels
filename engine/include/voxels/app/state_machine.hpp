@@ -13,6 +13,7 @@
 
 #include <memory>
 #include <functional>
+#include <future>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -194,6 +195,7 @@ public:
 
 private:
     void GenerateInitialWorld();
+    void StartAutosave();
 
     BlockRegistry* m_registry = nullptr;
     TextureAtlas* m_atlas = nullptr;
@@ -207,6 +209,9 @@ private:
     std::unique_ptr<graphics::ChunkRenderer> m_chunkRenderer;
     std::unique_ptr<graphics::GameplayHudRenderer> m_hudRenderer;
     float m_elapsedSeconds = 0.0f;
+    float m_autosaveSeconds = 0.0f;
+    std::future<bool> m_autosaveFuture;
+    bool m_screenshotPressed = false;
     bool m_worldGenerated = false;
     GameSave m_activeSave{};
     std::unique_ptr<World> m_preparedWorld;

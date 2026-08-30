@@ -28,6 +28,7 @@ namespace voxels {
 namespace {
 constexpr ImGuiWindowFlags kMenuWindowFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
                                                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize;
+constexpr std::size_t kMaximumSeedTextLength = 20;
 
 void CenterNextWindow() {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
@@ -118,12 +119,17 @@ void WorldSelectState::Render() {
     ImGui::Begin("Select World", nullptr, kMenuWindowFlags);
     ui::MenuTitle("SELECT WORLD");
     if (m_saves.empty()) ImGui::TextDisabled("No worlds yet. Create one to begin.");
+    if (ImGui::BeginTable("WorldSaves", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV)) {
     for (int index = 0; index < static_cast<int>(m_saves.size()); ++index) {
         const SaveSlot& slot = m_saves[static_cast<std::size_t>(index)];
         const std::string label = slot.save.worldName + "###save" + std::to_string(index);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
         if (ui::SaveListEntry(label.c_str(), index == m_selectedSave)) m_selectedSave = index;
-        ImGui::SameLine();
+        ImGui::TableSetColumnIndex(1);
         ImGui::TextDisabled("Seed %u  %s", slot.save.seed, slot.save.lastPlayedAt.c_str());
+    }
+    ImGui::EndTable();
     }
     ImGui::Spacing();
     if (ui::MenuButton("New World")) m_context->requestTransition(std::make_unique<WorldCreationState>(m_context));
@@ -178,7 +184,7 @@ void WorldCreationState::Render() {
     ui::MenuTitle("CREATE WORLD");
     std::string name = m_controller->GetWorldName();
     if (ui::TextField("World Name", name)) m_controller->SetWorldName(std::move(name));
-    ui::TextField("Seed (blank = random)", m_seedText);
+    ui::TextField("Seed (blank = random)", m_seedText, kMaximumSeedTextLength + 1);
     WorldOptions options = m_controller->GetWorldOptions();
     bool sandbox = options.sandboxMode;
     bool peaceful = options.peaceful;
@@ -202,6 +208,8 @@ void WorldCreationState::Render() {
     if (ui::MenuButton("Create")) {
         if (!IsFilesystemSafeWorldName(m_controller->GetWorldName())) {
             m_error = "World names use letters, numbers, spaces, hyphens, and underscores only.";
+        } else if (m_seedText.size() > kMaximumSeedTextLength) {
+            m_error = "Seed text is limited to 20 characters.";
         } else if (m_context->saveManager == nullptr) {
             m_error = "Save service is unavailable.";
         } else if (m_context->saveManager->GetSaveDirectory(m_controller->GetWorldName()).lexically_normal().filename() != m_controller->GetWorldName()) {
@@ -262,6 +270,22 @@ void LoadingScreenState::Update(double) {
     GameSave save{};
     if (!m_context->saveManager->Load(m_saveName, save)) {
         m_context->requestTransition(std::make_unique<ErrorState>(m_context, "World Load Failed", "The selected world metadata could not be read."));
+        return;
+    }
+    for (const auto& [coordinate, chunk] : m_world->GetChunks()) {
+        (void)coordinate;
+        chunk->ClearDirty();
+    }
+    if (const auto spawnChunk = m_world->GetChunks().find({0, 1, 0}); spawnChunk != m_world->GetChunks().end()) {
+        m_spawnPosition = FindSafeSpawn(*spawnChunk->second, 0, 0);
+        save.spawnX = static_cast<float>(m_spawnPosition.x) + 0.5f;
+        save.spawnY = static_cast<float>(m_spawnPosition.y) + 0.9f;
+        save.spawnZ = static_cast<float>(m_spawnPosition.z) + 0.5f;
+        m_context->saveManager->Save(save);
+    }
+    if (!m_context->saveManager->LoadWorldState(m_saveName, *m_world) &&
+        std::filesystem::exists(m_context->saveManager->GetSaveDirectory(m_saveName) / "regions")) {
+        m_context->requestTransition(std::make_unique<ErrorState>(m_context, "World Load Failed", "The world region data could not be read."));
         return;
     }
     auto game = std::make_unique<InGameState>(m_context);

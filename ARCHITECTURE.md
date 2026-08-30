@@ -165,13 +165,14 @@ Every state receives an `AppContext&` holding non-owning references to the servi
 - `BlockInteraction` raycasts from the eye (max 5 blocks) using DDA voxel traversal, returning the hit block plus face for break/place.
 
 ### 6.5 Persistence
-Save root: `<userdata>/saves/<world_name>/`
+Save root: `<userdata>/saves/v1/<world_name>/`. The `v1` directory is the persistence
+format namespace; unsupported unversioned save directories are removed at desktop startup.
 
 | File | Contents |
 | :--- | :--- |
 | `level.json` | Schema version, display name, seed, world options, created/last-played timestamps, spawn point. |
 | `player.dat` | Position, velocity, yaw/pitch, health, hotbar/inventory. |
-| `regions/r.<rx>.<rz>.bin` | RLE-compressed chunk sections grouped into 32×32-chunk regions. |
+| `regions/r.<rx>.<rz>.vrg` | Versioned, CRC-checked, sector-aligned RLE chunk sections grouped into 32×32-chunk regions. |
 
 All writes are **atomic** (write temp → flush → rename). Every file carries a schema version; loaders migrate or refuse cleanly, and never crash on malformed input.
 

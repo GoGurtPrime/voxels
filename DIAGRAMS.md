@@ -374,8 +374,9 @@ flowchart TD
         L6 --> L7["ChunkStreamer requests chunks; region hit → decode, miss → generate"]
     end
 
-    ROOT["User data root<br/>Windows %LOCALAPPDATA%/VoxelsEngine<br/>Linux $XDG_DATA_HOME/VoxelsEngine<br/>macOS ~/Library/Application Support/VoxelsEngine"] --> SAVEP
-    ROOT --> LOADP
+    ROOT["User data root<br/>Windows %LOCALAPPDATA%/VoxelsEngine<br/>Linux $XDG_DATA_HOME/VoxelsEngine<br/>macOS ~/Library/Application Support/VoxelsEngine"] --> VERSION["saves/v1 format namespace"]
+    VERSION --> SAVEP
+    VERSION --> LOADP
     ROOT --> CFG["settings.json — preferences and key bindings"]
     ROOT --> LOG["logs/voxels_TIMESTAMP.log"]
 ```

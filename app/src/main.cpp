@@ -79,6 +79,17 @@ private:
 };
 
 constexpr double kFixedStepSeconds = 1.0 / 60.0;
+constexpr char kSaveFormatDirectory[] = "v1";
+
+void RemoveUnversionedSaves() {
+    const std::filesystem::path savesRoot = voxels::Paths::SavesDir();
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator(savesRoot, error)) {
+        if (error || !entry.is_directory() || entry.path().filename() == kSaveFormatDirectory) continue;
+        std::filesystem::remove_all(entry.path(), error);
+        if (error) return;
+    }
+}
 
 std::string GetOpenGLString(GLenum name) {
     const auto* value = glGetString(name);
@@ -223,7 +234,8 @@ int main(int argc, char** argv) {
     voxels::InputManager inputManager;
     voxels::PreferencesManager preferencesManager(voxels::Paths::UserDataDir() / "settings.json", platform->GetContext().type);
     voxels::GamePreferences preferences = preferencesManager.Load();
-    voxels::SaveManager saveManager(voxels::Paths::UserDataDir() / "saves");
+    RemoveUnversionedSaves();
+    voxels::SaveManager saveManager(voxels::Paths::SavesDir() / kSaveFormatDirectory);
     bool running = true;
     voxels::AppStateMachine stateMachine;
     voxels::AppContext appContext{};

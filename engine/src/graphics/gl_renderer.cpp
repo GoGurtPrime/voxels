@@ -5,6 +5,11 @@
 
 #include "voxels/graphics/gl_renderer.hpp"
 
+#include <algorithm>
+#include <vector>
+
+#include "voxels/assets/texture_loader.hpp"
+
 #include "voxels/core/logger.hpp"
 #include "voxels/render/texture_forge.hpp"
 
@@ -57,6 +62,18 @@ void GLRenderer::SetViewport(int width, int height) {
         m_viewportHeight = height;
         glViewport(0, 0, width, height);
     }
+}
+
+bool GLRenderer::CaptureScreenshot(const std::filesystem::path& path) const {
+    if (!m_initialized || m_viewportWidth <= 0 || m_viewportHeight <= 0) return false;
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(m_viewportWidth) * m_viewportHeight * 4U);
+    glReadPixels(0, 0, m_viewportWidth, m_viewportHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    for (int row = 0; row < m_viewportHeight / 2; ++row) {
+        auto first = pixels.begin() + static_cast<std::ptrdiff_t>(row) * m_viewportWidth * 4;
+        auto last = pixels.begin() + static_cast<std::ptrdiff_t>(m_viewportHeight - row - 1) * m_viewportWidth * 4;
+        std::swap_ranges(first, first + m_viewportWidth * 4, last);
+    }
+    return TextureLoader::WritePngToFile(path, m_viewportWidth, m_viewportHeight, 4, pixels.data());
 }
 
 bool GLRenderer::BeginFrame(const std::array<float, 4>& clearColor, int viewportWidth, int viewportHeight) {

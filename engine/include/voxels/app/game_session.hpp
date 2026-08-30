@@ -34,6 +34,7 @@ public:
     void SetBlockRegistry(const BlockRegistry* registry) noexcept;
     void SetPlayerSpawn(const Vec3& spawn);
     void SetPlayerSpawn(const Vec3I& spawn);
+    void RestorePlayerState(const PlayerState& state) noexcept;
 
     void Initialize();
     void Update(float deltaSeconds);
@@ -70,6 +71,7 @@ private:
     WorldOptions m_worldOptions{};
     Vec3 m_spawnPosition{0.0f, 1.9f, 0.0f};
     bool m_spawnExplicitlySet = false;
+    bool m_playerStateRestored = false;
     bool m_initialized = false;
     const BlockRegistry* m_registry = nullptr;
     gameplay::BlockInteraction m_blockInteraction{};

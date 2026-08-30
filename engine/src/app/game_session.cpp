@@ -64,6 +64,12 @@ void GameSession::SetPlayerSpawn(const Vec3I& spawn) {
     m_player.state.onGround = false;
 }
 
+void GameSession::RestorePlayerState(const PlayerState& state) noexcept {
+    m_player.state = state;
+    m_spawnPosition = state.position;
+    m_playerStateRestored = true;
+}
+
 void GameSession::Initialize() {
     if (m_world == nullptr) {
         m_ownedWorld = std::make_unique<World>();
@@ -102,9 +108,11 @@ void GameSession::Initialize() {
                                static_cast<float>(spawnBlockZ) + 0.5f};
     }
 
-    m_player.state.position = m_spawnPosition;
-    m_player.state.velocity = Vec3{0.0f};
-    m_player.state.onGround = true;
+    if (!m_playerStateRestored) {
+        m_player.state.position = m_spawnPosition;
+        m_player.state.velocity = Vec3{0.0f};
+        m_player.state.onGround = true;
+    }
     m_lastSelectedStack = m_player.state.inventory.GetSelectedStack();
     m_camera.position = glm::vec3(m_player.state.position.x,
                                   m_player.state.position.y + 0.72f,
@@ -236,6 +244,7 @@ void GameSession::Shutdown() noexcept {
     m_world = nullptr;
     m_ownedWorld.reset();
     m_player = Player{};
+    m_playerStateRestored = false;
 }
 
 World& GameSession::GetWorld() noexcept {
