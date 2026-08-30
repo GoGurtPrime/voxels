@@ -4,10 +4,6 @@ add_executable(voxels_app
     src/main.cpp
 )
 
-set_target_properties(voxels_app PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)
-
 target_link_libraries(voxels_app PRIVATE voxels_engine)
 
 target_compile_features(voxels_app PRIVATE cxx_std_20)
