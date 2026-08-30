@@ -17,6 +17,7 @@ add_executable(voxels_tests
     test_mvp_playthrough.cpp
     test_build_environment.cpp
     test_render_backend.cpp
+    test_chunk_meshing.cpp
     test_block_catalogue.cpp
 )
 
