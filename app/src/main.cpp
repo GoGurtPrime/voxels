@@ -95,18 +95,13 @@ int main(int argc, char** argv) {
 
     auto* platform = engine.getPlatform();
     if (platform != nullptr) {
-        voxels::WindowConfig config{};
-        config.title = "Voxels Engine";
-        config.width = options.resolutionOverride ? options.resolutionWidth : 1280;
-        config.height = options.resolutionOverride ? options.resolutionHeight : 720;
-        config.fullscreen = options.fullscreenOverride ? options.fullscreenValue : false;
-        config.resizable = true;
-        platform->Shutdown();
-        if (!platform->Initialize(config)) {
-            std::cerr << "Voxels platform failed to initialize with the configured window settings." << std::endl;
-            return 1;
-        }
+        const int windowWidth = options.resolutionOverride ? options.resolutionWidth : 1280;
+        const int windowHeight = options.resolutionOverride ? options.resolutionHeight : 720;
+        const bool windowFullscreen = options.fullscreenOverride ? options.fullscreenValue : false;
+
         platform->SetWindowTitle("Voxels Engine");
+        platform->SetWindowResolution(windowWidth, windowHeight);
+        platform->SetWindowFullscreen(windowFullscreen);
         if (options.vsyncOverride) {
             platform->SetVSync(options.vsyncValue);
         }

@@ -64,6 +64,15 @@ bool SDLPlatform::Initialize(const WindowConfig& config) {
         return false;
     }
 
+    if (SDL_GL_MakeCurrent(m_window, m_context) != 0) {
+        SDL_GL_DeleteContext(m_context);
+        m_context = nullptr;
+        SDL_DestroyWindow(m_window);
+        m_window = nullptr;
+        SDL_Quit();
+        return false;
+    }
+
     if (!gladLoadGLLoader(static_cast<GLADloadproc>(SDL_GL_GetProcAddress))) {
         SDL_GL_DeleteContext(m_context);
         m_context = nullptr;
@@ -72,6 +81,8 @@ bool SDLPlatform::Initialize(const WindowConfig& config) {
         SDL_Quit();
         return false;
     }
+
+    SDL_ShowWindow(m_window);
 
     m_title = config.title;
     m_width = config.width;
