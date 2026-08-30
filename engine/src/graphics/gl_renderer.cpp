@@ -218,12 +218,26 @@ void GLRenderer::Shutdown() {
     m_initialized = false;
 }
 
-bool GLRenderer::BeginFrame(const std::array<float, 4>& clearColor) {
+void GLRenderer::SetViewport(int width, int height) {
+    if (width > 0 && height > 0) {
+        m_viewportWidth = width;
+        m_viewportHeight = height;
+        glViewport(0, 0, width, height);
+    }
+}
+
+bool GLRenderer::BeginFrame(const std::array<float, 4>& clearColor, int viewportWidth, int viewportHeight) {
     if (!m_initialized) {
         return false;
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, 1280, 720);
+    if (viewportWidth > 0 && viewportHeight > 0) {
+        m_viewportWidth = viewportWidth;
+        m_viewportHeight = viewportHeight;
+    }
+    if (m_viewportWidth > 0 && m_viewportHeight > 0) {
+        glViewport(0, 0, m_viewportWidth, m_viewportHeight);
+    }
     glClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);

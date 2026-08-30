@@ -29,9 +29,10 @@ public:
     void Shutdown();
     [[nodiscard]] bool IsInitialized() const noexcept { return m_initialized; }
 
-    bool BeginFrame(const std::array<float, 4>& clearColor = {0.2f, 0.3f, 0.4f, 1.0f});
+    bool BeginFrame(const std::array<float, 4>& clearColor = {0.58f, 0.72f, 0.88f, 1.0f}, int viewportWidth = 0, int viewportHeight = 0);
     bool EndFrame();
 
+    void SetViewport(int width, int height);
     void SetCamera(const Camera& camera) { m_camera = camera; }
     void SetTextureAtlas(TextureAtlas* atlas) { m_atlas = atlas; }
     [[nodiscard]] TextureAtlas* GetTextureAtlas() const noexcept { return m_atlas; }
@@ -47,6 +48,8 @@ private:
     void ApplyUniforms(const glm::mat4& modelMatrix) const;
 
     bool m_initialized = false;
+    int m_viewportWidth = 1280;
+    int m_viewportHeight = 720;
     GLuint m_program = 0;
     GLuint m_vao = 0;
     GLuint m_vbo = 0;

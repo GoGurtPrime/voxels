@@ -30,19 +30,23 @@
 
 namespace {
 
-class QuitOnWindowClosedListener final : public voxels::IPlatformEventListener {
+class WindowEventListener final : public voxels::IPlatformEventListener {
 public:
-    explicit QuitOnWindowClosedListener(bool& runningFlag) : m_running(runningFlag) {}
+    WindowEventListener(bool& runningFlag, voxels::graphics::GLRenderer& renderer)
+        : m_running(runningFlag), m_renderer(renderer) {}
 
     void OnPlatformEvent(const voxels::PlatformEvent& event) override {
         if (event.type == voxels::PlatformEventType::WindowClosed ||
             event.type == voxels::PlatformEventType::QuitRequested) {
             m_running = false;
+        } else if (event.type == voxels::PlatformEventType::WindowResized) {
+            m_renderer.SetViewport(event.width, event.height);
         }
     }
 
 private:
     bool& m_running;
+    voxels::graphics::GLRenderer& m_renderer;
 };
 
 constexpr double kFixedStepSeconds = 1.0 / 60.0;
@@ -174,9 +178,11 @@ int main(int argc, char** argv) {
     }
 
     bool running = true;
-    QuitOnWindowClosedListener windowCloseListener(running);
+    WindowEventListener windowListener(running, renderer);
     if (platform != nullptr) {
-        platform->RegisterEventListener(&windowCloseListener, 100);
+        platform->RegisterEventListener(&windowListener, 100);
+        const auto [drawableW, drawableH] = platform->GetDrawableSize();
+        renderer.SetViewport(drawableW, drawableH);
     }
 
     voxels::FrameAccumulator frameAccumulator;
@@ -186,7 +192,7 @@ int main(int argc, char** argv) {
 
     while (running && frameCount < maxFrames) {
         if (platform != nullptr) {
-            platform->PollEvents(&windowCloseListener);
+            platform->PollEvents(&windowListener);
         }
 
         const auto now = std::chrono::steady_clock::now();

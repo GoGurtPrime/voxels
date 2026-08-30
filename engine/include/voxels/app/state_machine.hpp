@@ -65,6 +65,7 @@ public:
 
 private:
     float m_elapsedSeconds = 0.0f;
+    Camera m_camera{};
 };
 
 class WorldSelectState final : public IAppState {
