@@ -36,6 +36,9 @@ public:
         int width = kDefaultTextureSize,
         int height = kDefaultTextureSize);
 
+    /// Generates one of ten progressive 16x16 RGBA8 mining-crack overlays.
+    [[nodiscard]] static ImageData GenerateCrackTexture(int stage);
+
     /// Returns the list of standard launch texture identifiers.
     [[nodiscard]] static std::vector<std::string> GetLaunchTextureNames();
 
@@ -45,6 +48,11 @@ public:
         const std::filesystem::path& targetDirectory,
         bool overwrite = false,
         std::uint32_t seed = 1337);
+
+    /// Forges the crosshair, hotbar frame, selection frame, and ten crack overlays below `assetRoot`.
+    static std::size_t ForgeInteractionAssets(
+        const std::filesystem::path& assetRoot,
+        bool overwrite = false);
 };
 
 } // namespace voxels

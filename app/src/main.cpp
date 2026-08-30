@@ -27,6 +27,7 @@
 #include "voxels/networking/server.hpp"
 #include "voxels/platform/platform.hpp"
 #include "voxels/render/texture_atlas.hpp"
+#include "voxels/render/texture_forge.hpp"
 #include "voxels/world/block.hpp"
 
 namespace {
@@ -71,6 +72,19 @@ int main(int argc, char** argv) {
     const std::vector<std::string> args(argv + 1, argv + argc);
     const voxels::CliParser cliParser;
     const voxels::AppCommandLineOptions options = cliParser.Parse(args);
+
+    if (options.forgeInteractionAssets) {
+        const std::filesystem::path outputPath = options.forgeInteractionAssetsPath.empty()
+            ? voxels::Paths::AssetsDir()
+            : std::filesystem::path(options.forgeInteractionAssetsPath);
+        const std::size_t count = voxels::TextureForge::ForgeInteractionAssets(outputPath, true);
+        if (count != 13) {
+            std::cerr << "Failed to forge all interaction assets under " << outputPath.string() << ".\n";
+            return 1;
+        }
+        std::cout << "Forged " << count << " interaction assets under " << outputPath.string() << ".\n";
+        return 0;
+    }
 
     if (options.serverMode) {
         std::cout << "Voxels app booting in headless server mode." << std::endl;

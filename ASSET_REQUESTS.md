@@ -54,9 +54,9 @@ Agents add rows here as they introduce filler. Each row is a standing invitation
 | **TEX-013** | `app/assets/textures/blocks/planks.png` | 16×16 RGBA8 PNG | Procedural oak planks with seams | Hand-authored wooden plank tiles | QUALITY |
 | **TEX-014** | `app/assets/textures/blocks/glass.png` | 16×16 RGBA8 PNG (alpha: 35/255) | Procedural border + glint | Hand-authored clean glass panel texture | QUALITY |
 | **TEX-015** | `app/assets/textures/blocks/bedrock.png` | 16×16 RGBA8 PNG | Procedural dark charcoal mottling | Hand-authored unbreakable bedrock art | QUALITY |
-| **UI-001** | `app/assets/ui/crosshair.png` | 16×16 RGBA8 PNG | Crisp engine-rendered white line crosshair | Styled, themed aiming reticle | QUALITY |
-| **UI-002** | `app/assets/ui/hotbar.png`, `app/assets/ui/hotbar_selection.png` | 182×22 and 24×24 RGBA8 PNG | Engine-rendered line slot borders and gold selected outline | Textured hotbar frame and selected-slot treatment | QUALITY |
-| **UI-003** | `app/assets/textures/misc/crack_0.png` through `crack_9.png` | Ten 16×16 RGBA8 alpha-only PNGs | Engine-rendered progressive dark fracture lines | Detailed per-face mining crack animation | QUALITY |
+| **UI-001** | `app/assets/ui/crosshair.png` | 16×16 RGBA8 PNG | Generated white pixel crosshair | Styled, themed aiming reticle | QUALITY |
+| **UI-002** | `app/assets/ui/hotbar.png`, `app/assets/ui/hotbar_selection.png` | 182×22 and 24×24 RGBA8 PNG | Generated dark slot frame and gold selection outline | Textured hotbar frame and selected-slot treatment | QUALITY |
+| **UI-003** | `app/assets/textures/misc/crack_0.png` through `crack_9.png` | Ten 16×16 RGBA8 PNG | Generated progressive dark fracture overlays rendered on the targeted face | Detailed per-face mining crack animation | QUALITY |
 | **FONT-001** | `app/assets/fonts/AtkinsonHyperlegible-Regular.ttf` | TrueType, regular weight, Latin glyph coverage | Bundled Atkinson Hyperlegible Regular from Google Fonts under SIL Open Font License 1.1 (`app/assets/fonts/OFL.txt`) | A branded gameplay typeface and expanded localization coverage | QUALITY |
 
 **Expected entries as the roadmap progresses** (agents will fill in exact rows when the corresponding work item lands):

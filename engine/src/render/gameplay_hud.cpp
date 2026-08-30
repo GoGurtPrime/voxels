@@ -6,6 +6,7 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "voxels/render/gameplay_hud.hpp"
 
+#include <algorithm>
 #include <array>
 #include <fstream>
 #include <vector>
@@ -13,12 +14,15 @@
 #include <glad/glad.h>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "voxels/assets/texture_loader.hpp"
 #include "voxels/core/paths.hpp"
+#include "voxels/render/texture_forge.hpp"
 
 namespace voxels::graphics {
 namespace {
 struct Vertex { glm::vec3 position; glm::vec4 color; };
 struct TextVertex { glm::vec2 position; glm::vec2 uv; };
+struct CrackVertex { glm::vec3 position; glm::vec2 uv; };
 
 GLuint Compile(GLenum stage, const char* source) {
     const GLuint shader = glCreateShader(stage);
@@ -39,6 +43,27 @@ void AddRect(std::vector<Vertex>& vertices, float left, float bottom, float righ
     AddLine(vertices, {right, bottom, 0.0f}, {right, top, 0.0f}, color);
     AddLine(vertices, {right, top, 0.0f}, {left, top, 0.0f}, color);
     AddLine(vertices, {left, top, 0.0f}, {left, bottom, 0.0f}, color);
+}
+
+std::array<CrackVertex, 6> MakeCrackQuad(const RaycastHit& target) {
+    constexpr float kBias = 0.005f;
+    const float minX = static_cast<float>(target.blockPosition.x);
+    const float minY = static_cast<float>(target.blockPosition.y);
+    const float minZ = static_cast<float>(target.blockPosition.z);
+    const float maxX = minX + 1.0f;
+    const float maxY = minY + 1.0f;
+    const float maxZ = minZ + 1.0f;
+    std::array<glm::vec3, 4> points{};
+    switch (target.face) {
+        case Face::PosX: points = {{{maxX + kBias, minY, minZ}, {maxX + kBias, maxY, minZ}, {maxX + kBias, maxY, maxZ}, {maxX + kBias, minY, maxZ}}}; break;
+        case Face::NegX: points = {{{minX - kBias, minY, minZ}, {minX - kBias, minY, maxZ}, {minX - kBias, maxY, maxZ}, {minX - kBias, maxY, minZ}}}; break;
+        case Face::PosY: points = {{{minX, maxY + kBias, minZ}, {minX, maxY + kBias, maxZ}, {maxX, maxY + kBias, maxZ}, {maxX, maxY + kBias, minZ}}}; break;
+        case Face::NegY: points = {{{minX, minY - kBias, minZ}, {maxX, minY - kBias, minZ}, {maxX, minY - kBias, maxZ}, {minX, minY - kBias, maxZ}}}; break;
+        case Face::PosZ: points = {{{minX, minY, maxZ + kBias}, {maxX, minY, maxZ + kBias}, {maxX, maxY, maxZ + kBias}, {minX, maxY, maxZ + kBias}}}; break;
+        case Face::NegZ: points = {{{minX, minY, minZ - kBias}, {minX, maxY, minZ - kBias}, {maxX, maxY, minZ - kBias}, {maxX, minY, minZ - kBias}}}; break;
+    }
+    return {{{points[0], {0.0f, 0.0f}}, {points[1], {1.0f, 0.0f}}, {points[2], {1.0f, 1.0f}},
+             {points[0], {0.0f, 0.0f}}, {points[2], {1.0f, 1.0f}}, {points[3], {0.0f, 1.0f}}}};
 }
 } // namespace
 
@@ -78,6 +103,33 @@ void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target,
         glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(TextVertex), nullptr);
         glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(TextVertex), reinterpret_cast<void*>(sizeof(glm::vec2)));
 
+        constexpr const char* crackVertexSource = "#version 330 core\nlayout(location=0) in vec3 p; layout(location=1) in vec2 uv; uniform mat4 vp; out vec2 t; void main(){gl_Position=vp*vec4(p,1);t=uv;}";
+        constexpr const char* crackFragmentSource = "#version 330 core\nin vec2 t; uniform sampler2D crack; out vec4 outColor; void main(){float alpha=texture(crack,t).a;outColor=vec4(0.09,0.025,0.015,alpha);}";
+        const GLuint crackVertex = Compile(GL_VERTEX_SHADER, crackVertexSource);
+        const GLuint crackFragment = Compile(GL_FRAGMENT_SHADER, crackFragmentSource);
+        if (crackVertex != 0 && crackFragment != 0) {
+            m_crackProgram = glCreateProgram(); glAttachShader(m_crackProgram, crackVertex); glAttachShader(m_crackProgram, crackFragment); glLinkProgram(m_crackProgram);
+            GLint crackLinked = GL_FALSE; glGetProgramiv(m_crackProgram, GL_LINK_STATUS, &crackLinked);
+            if (crackLinked == GL_FALSE) { glDeleteProgram(m_crackProgram); m_crackProgram = 0; }
+            glDeleteShader(crackVertex); glDeleteShader(crackFragment);
+        }
+        if (m_crackProgram != 0) {
+            glGenVertexArrays(1, &m_crackVao); glGenBuffers(1, &m_crackVbo);
+            glBindVertexArray(m_crackVao); glBindBuffer(GL_ARRAY_BUFFER, m_crackVbo);
+            glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(CrackVertex), nullptr);
+            glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CrackVertex), reinterpret_cast<void*>(sizeof(glm::vec3)));
+            for (int stage = 0; stage < static_cast<int>(m_crackTextures.size()); ++stage) {
+                const std::filesystem::path path = Paths::AssetsDir() / "textures" / "misc" / ("crack_" + std::to_string(stage) + ".png");
+                const auto loaded = TextureLoader::LoadFromFile(path);
+                const ImageData image = loaded.has_value() ? *loaded : TextureForge::GenerateCrackTexture(stage);
+                glGenTextures(1, &m_crackTextures[static_cast<std::size_t>(stage)]);
+                glBindTexture(GL_TEXTURE_2D, m_crackTextures[static_cast<std::size_t>(stage)]);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width, image.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.pixels.data());
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            }
+        }
+
         std::ifstream font(Paths::AssetsDir() / "fonts" / "AtkinsonHyperlegible-Regular.ttf", std::ios::binary | std::ios::ate);
         if (font.is_open()) {
             const std::streamsize size = font.tellg(); font.seekg(0, std::ios::beg);
@@ -101,12 +153,6 @@ void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target,
         constexpr std::array<std::array<int, 2>, 12> edges = {{{0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}}};
         const std::array<glm::vec3, 8> points = {{{min.x,min.y,min.z},{max.x,min.y,min.z},{max.x,max.y,min.z},{min.x,max.y,min.z},{min.x,min.y,max.z},{max.x,min.y,max.z},{max.x,max.y,max.z},{min.x,max.y,max.z}}};
         for (const auto& edge : edges) AddLine(worldLines, points[edge[0]], points[edge[1]], {0,0,0,1});
-        if (breakProgress > 0.0f) {
-            const glm::vec4 crack{0.12f, 0.04f, 0.02f, 0.55f + 0.45f * breakProgress};
-            const float y = max.y + 0.004f;
-            const int lines = 1 + static_cast<int>(breakProgress * 9.0f);
-            for (int i = 0; i < lines; ++i) { const float x = min.x + (static_cast<float>(i) + 0.5f) / lines; AddLine(worldLines, {x,y,min.z}, {x + 0.12f,y,max.z}, crack); }
-        }
     }
     for (const Vec3I& burst : particleBursts) {
         const glm::vec3 center{static_cast<float>(burst.x) + 0.5f, static_cast<float>(burst.y) + 0.5f,
@@ -122,6 +168,25 @@ void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target,
     glUniform1i(glGetUniformLocation(m_program, "screen"), GL_FALSE);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(worldLines.size() * sizeof(Vertex)), worldLines.data(), GL_DYNAMIC_DRAW);
     glLineWidth(2.0f); glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(worldLines.size()));
+
+    if (target.hit && breakProgress > 0.0f && m_crackProgram != 0) {
+        const std::size_t stage = std::min<std::size_t>(m_crackTextures.size() - 1,
+                                                        static_cast<std::size_t>(breakProgress * m_crackTextures.size()));
+        const auto crackVertices = MakeCrackQuad(target);
+        glUseProgram(m_crackProgram);
+        glUniformMatrix4fv(glGetUniformLocation(m_crackProgram, "vp"), 1, GL_FALSE, glm::value_ptr(viewProjection));
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, m_crackTextures[stage]);
+        glUniform1i(glGetUniformLocation(m_crackProgram, "crack"), 0);
+        glBindVertexArray(m_crackVao);
+        glBindBuffer(GL_ARRAY_BUFFER, m_crackVbo);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(crackVertices.size() * sizeof(CrackVertex)), crackVertices.data(), GL_DYNAMIC_DRAW);
+        glDepthMask(GL_FALSE);
+        glDisable(GL_CULL_FACE);
+        glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(crackVertices.size()));
+        glEnable(GL_CULL_FACE);
+        glDepthMask(GL_TRUE);
+    }
 
     std::vector<Vertex> screenLines;
     const glm::vec4 white{1,1,1,0.92f};
@@ -191,7 +256,14 @@ void GameplayHudRenderer::Shutdown() {
     if (m_textVao != 0) glDeleteVertexArrays(1, &m_textVao);
     if (m_fontTexture != 0) glDeleteTextures(1, &m_fontTexture);
     if (m_textProgram != 0) glDeleteProgram(m_textProgram);
-    m_vbo = m_vao = m_program = m_textVbo = m_textVao = m_fontTexture = m_textProgram = 0;
+    if (m_crackVbo != 0) glDeleteBuffers(1, &m_crackVbo);
+    if (m_crackVao != 0) glDeleteVertexArrays(1, &m_crackVao);
+    if (m_crackProgram != 0) glDeleteProgram(m_crackProgram);
+    for (unsigned int& texture : m_crackTextures) {
+        if (texture != 0) glDeleteTextures(1, &texture);
+        texture = 0;
+    }
+    m_vbo = m_vao = m_program = m_textVbo = m_textVao = m_fontTexture = m_textProgram = m_crackVbo = m_crackVao = m_crackProgram = 0;
     m_fontReady = false;
 }
 

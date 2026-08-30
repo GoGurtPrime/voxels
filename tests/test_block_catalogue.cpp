@@ -324,6 +324,30 @@ TEST_CASE("TextureForge.ForgesAllLaunchTexturesToDisk", "[assets][forge]") {
     }
 }
 
+TEST_CASE("TextureForge.ForgesInteractionAssetsToDisk", "[assets][forge][interaction]") {
+    const std::filesystem::path targetDir = "build/test_interaction_assets";
+    REQUIRE(voxels::TextureForge::ForgeInteractionAssets(targetDir, true) == 13);
+
+    const auto crosshair = voxels::TextureLoader::LoadFromFile(targetDir / "ui/crosshair.png");
+    REQUIRE(crosshair.has_value());
+    REQUIRE(crosshair->width == 16);
+    REQUIRE(crosshair->height == 16);
+
+    const auto hotbar = voxels::TextureLoader::LoadFromFile(targetDir / "ui/hotbar.png", false, false);
+    REQUIRE(hotbar.has_value());
+    REQUIRE(hotbar->width == 182);
+    REQUIRE(hotbar->height == 22);
+
+    const auto crack = voxels::TextureLoader::LoadFromFile(targetDir / "textures/misc/crack_9.png");
+    REQUIRE(crack.has_value());
+    REQUIRE(crack->width == 16);
+    REQUIRE(crack->height == 16);
+    REQUIRE(crack->pixels != voxels::TextureForge::GenerateCrackTexture(0).pixels);
+
+    std::error_code ec;
+    std::filesystem::remove_all(targetDir, ec);
+}
+
 TEST_CASE("TextureLoader.DecodesGeneratedPngRoundTrip", "[assets][loader]") {
     const voxels::ImageData original = voxels::TextureForge::GenerateTexture("blocks/stone", 1234U);
     REQUIRE(original.width == 16);

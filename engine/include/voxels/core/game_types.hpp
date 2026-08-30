@@ -101,6 +101,8 @@ struct AppCommandLineOptions {
     int maxFrames = 0;
     bool dumpAtlas = false;
     std::string dumpAtlasPath;
+    bool forgeInteractionAssets = false;
+    std::string forgeInteractionAssetsPath;
 };
 
 } // namespace voxels

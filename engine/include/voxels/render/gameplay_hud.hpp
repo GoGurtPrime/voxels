@@ -35,6 +35,10 @@ private:
     unsigned int m_textVao = 0;
     unsigned int m_textVbo = 0;
     unsigned int m_fontTexture = 0;
+    unsigned int m_crackProgram = 0;
+    unsigned int m_crackVao = 0;
+    unsigned int m_crackVbo = 0;
+    std::array<unsigned int, 10> m_crackTextures{};
     std::array<stbtt_bakedchar, 96> m_glyphs{};
     bool m_fontReady = false;
 };

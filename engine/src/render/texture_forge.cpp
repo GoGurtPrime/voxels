@@ -72,6 +72,84 @@ ImageData CreateEmptyImage(int w = 16, int h = 16) {
     return img;
 }
 
+ImageData CreateTransparentImage(int w = 16, int h = 16) {
+    ImageData img;
+    img.width = w;
+    img.height = h;
+    img.channels = 4;
+    img.pixels.assign(static_cast<std::size_t>(w * h * 4), 0);
+    return img;
+}
+
+void DrawAlphaLine(ImageData& img, int x0, int y0, int x1, int y1, std::uint8_t alpha) {
+    const int dx = std::abs(x1 - x0);
+    const int sx = x0 < x1 ? 1 : -1;
+    const int dy = -std::abs(y1 - y0);
+    const int sy = y0 < y1 ? 1 : -1;
+    int error = dx + dy;
+    while (true) {
+        SetPixel(img, x0, y0, {24, 12, 8, alpha});
+        if (x0 == x1 && y0 == y1) break;
+        const int doubledError = 2 * error;
+        if (doubledError >= dy) {
+            error += dy;
+            x0 += sx;
+        }
+        if (doubledError <= dx) {
+            error += dx;
+            y0 += sy;
+        }
+    }
+}
+
+ImageData ForgeCrack(int stage) {
+    ImageData img = CreateTransparentImage();
+    const std::array<std::array<int, 4>, 10> segments = {{{2, 1, 8, 6}, {8, 6, 13, 5}, {8, 6, 7, 12},
+                                                            {7, 12, 3, 14}, {7, 12, 12, 14}, {4, 3, 3, 8},
+                                                            {11, 1, 13, 5}, {1, 10, 4, 11}, {12, 8, 14, 10},
+                                                            {6, 7, 2, 6}}};
+    const int segmentCount = std::clamp(stage + 1, 1, static_cast<int>(segments.size()));
+    const std::uint8_t alpha = static_cast<std::uint8_t>(80 + segmentCount * 17);
+    for (int index = 0; index < segmentCount; ++index) {
+        const auto& segment = segments[static_cast<std::size_t>(index)];
+        DrawAlphaLine(img, segment[0], segment[1], segment[2], segment[3], alpha);
+    }
+    return img;
+}
+
+ImageData ForgeCrosshair() {
+    ImageData img = CreateTransparentImage();
+    for (int offset = 0; offset < 5; ++offset) {
+        SetPixel(img, 3 + offset, 7, {255, 255, 255, 230});
+        SetPixel(img, 8 + offset, 7, {255, 255, 255, 230});
+        SetPixel(img, 7, 3 + offset, {255, 255, 255, 230});
+        SetPixel(img, 7, 8 + offset, {255, 255, 255, 230});
+    }
+    return img;
+}
+
+ImageData ForgeHotbarFrame(bool selected) {
+    const int width = selected ? 24 : 182;
+    const int height = selected ? 24 : 22;
+    ImageData img = CreateTransparentImage(width, height);
+    const ColorRGBA border = selected ? ColorRGBA{255, 209, 70, 255} : ColorRGBA{30, 25, 21, 235};
+    for (int x = 0; x < width; ++x) {
+        SetPixel(img, x, 0, border);
+        SetPixel(img, x, height - 1, border);
+    }
+    for (int y = 0; y < height; ++y) {
+        SetPixel(img, 0, y, border);
+        SetPixel(img, width - 1, y, border);
+    }
+    if (!selected) {
+        for (int slot = 1; slot < 9; ++slot) {
+            const int x = slot * 20 + 1;
+            for (int y = 1; y < height - 1; ++y) SetPixel(img, x, y, border);
+        }
+    }
+    return img;
+}
+
 ImageData ForgeStone(std::uint32_t seed) {
     ImageData img = CreateEmptyImage();
     const ColorRGBA baseDark{95, 95, 95, 255};
@@ -449,6 +527,10 @@ ImageData TextureForge::GenerateMissingTexture(int width, int height) {
     return img;
 }
 
+ImageData TextureForge::GenerateCrackTexture(int stage) {
+    return ForgeCrack(stage);
+}
+
 std::vector<std::string> TextureForge::GetLaunchTextureNames() {
     return {
         "stone",
@@ -511,6 +593,28 @@ std::size_t TextureForge::ForgeLaunchTextures(
         if (TextureLoader::WritePngToFile(outPath, img)) {
             ++writtenCount;
         }
+    }
+    return writtenCount;
+}
+
+std::size_t TextureForge::ForgeInteractionAssets(const std::filesystem::path& assetRoot, bool overwrite) {
+    const std::array<std::pair<std::filesystem::path, ImageData>, 3> uiAssets = {{
+        {"ui/crosshair.png", ForgeCrosshair()},
+        {"ui/hotbar.png", ForgeHotbarFrame(false)},
+        {"ui/hotbar_selection.png", ForgeHotbarFrame(true)},
+    }};
+
+    std::size_t writtenCount = 0;
+    const auto writeAsset = [&](const std::filesystem::path& relativePath, const ImageData& image) {
+        const std::filesystem::path outputPath = assetRoot / relativePath;
+        if (overwrite || !std::filesystem::exists(outputPath)) {
+            if (TextureLoader::WritePngToFile(outputPath, image)) ++writtenCount;
+        }
+    };
+    for (const auto& [relativePath, image] : uiAssets) writeAsset(relativePath, image);
+    for (int stage = 0; stage < 10; ++stage) {
+        writeAsset(std::filesystem::path("textures/misc") / ("crack_" + std::to_string(stage) + ".png"),
+                   ForgeCrack(stage));
     }
     return writtenCount;
 }

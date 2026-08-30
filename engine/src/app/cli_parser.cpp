@@ -113,6 +113,11 @@ AppCommandLineOptions CliParser::Parse(const std::vector<std::string>& args) con
             if (!value.empty()) {
                 options.dumpAtlasPath = std::string(value);
             }
+        } else if (key == "forge-interaction-assets") {
+            options.forgeInteractionAssets = true;
+            if (!value.empty()) {
+                options.forgeInteractionAssetsPath = std::string(value);
+            }
         }
     }
 
