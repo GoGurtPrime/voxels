@@ -216,10 +216,8 @@ void SDLPlatform::PollEvents(IPlatformEventListener* listener) {
                 continue;
         }
 
-        if (event.type == PlatformEventType::WindowClosed) {
-            if (m_defaultListener != nullptr) {
-                m_defaultListener->OnPlatformEvent(event);
-            }
+        if (event.type == PlatformEventType::None) {
+            continue;
         }
 
         std::vector<ListenerEntry> ordered = m_listeners;

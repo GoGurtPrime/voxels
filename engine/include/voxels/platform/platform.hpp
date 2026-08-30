@@ -46,6 +46,7 @@ struct WindowConfig {
 };
 
 enum class PlatformEventType {
+    None = 0,
     WindowClosed,
     WindowResized,
     WindowFocusGained,
@@ -68,7 +69,7 @@ enum class PlatformEventType {
 
 /// Native OS/window event normalized into an engine-agnostic representation.
 struct PlatformEvent {
-    PlatformEventType type = PlatformEventType::WindowClosed;
+    PlatformEventType type = PlatformEventType::None;
     int width = 0;
     int height = 0;
     int x = 0;
