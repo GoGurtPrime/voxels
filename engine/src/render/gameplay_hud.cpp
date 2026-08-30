@@ -144,19 +144,29 @@ void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target,
     constexpr float kLabelFadeSeconds = 1.2f;
     if (m_fontReady && !selectedItemLabel.empty() && selectedItemLabelAge < kLabelHoldSeconds + kLabelFadeSeconds) {
         const float alpha = selectedItemLabelAge <= kLabelHoldSeconds ? 1.0f : 1.0f - (selectedItemLabelAge - kLabelHoldSeconds) / kLabelFadeSeconds;
-        float width = 0.0f;
-        for (const unsigned char character : selectedItemLabel) {
-            if (character >= 32 && character < 128) width += m_glyphs[character - 32].xadvance * 0.0025f;
+        GLint viewport[4]{};
+        glGetIntegerv(GL_VIEWPORT, viewport);
+        if (viewport[2] <= 0 || viewport[3] <= 0) {
+            return;
         }
-        float cursorX = -width * 0.5f;
+        const float textScaleX = 2.0f / static_cast<float>(viewport[2]);
+        const float textScaleY = 2.0f / static_cast<float>(viewport[3]);
+        float advancePixels = 0.0f;
+        for (const unsigned char character : selectedItemLabel) {
+            if (character >= 32 && character < 128) advancePixels += m_glyphs[character - 32].xadvance;
+        }
+        constexpr float kLabelBaselineY = -0.91f;
+        float penX = -advancePixels * 0.5f;
+        float penY = 0.0f;
         std::vector<TextVertex> textVertices;
         for (const unsigned char character : selectedItemLabel) {
             if (character < 32 || character >= 128) continue;
             stbtt_aligned_quad quad{};
-            float pixelX = cursorX / 0.0025f; float pixelY = -0.91f / 0.0025f;
-            stbtt_GetBakedQuad(m_glyphs.data(), 512, 512, character - 32, &pixelX, &pixelY, &quad, 1);
-            cursorX = pixelX * 0.0025f;
-            const float left = quad.x0 * 0.0025f, right = quad.x1 * 0.0025f, glyphBottom = quad.y0 * 0.0025f, top = quad.y1 * 0.0025f;
+            stbtt_GetBakedQuad(m_glyphs.data(), 512, 512, character - 32, &penX, &penY, &quad, 1);
+            const float left = quad.x0 * textScaleX;
+            const float right = quad.x1 * textScaleX;
+            const float glyphBottom = kLabelBaselineY - quad.y1 * textScaleY;
+            const float top = kLabelBaselineY - quad.y0 * textScaleY;
             textVertices.insert(textVertices.end(), {{ {left, glyphBottom}, {quad.s0, quad.t1} }, {{right, glyphBottom}, {quad.s1, quad.t1}}, {{right, top}, {quad.s1, quad.t0}}, {{left, glyphBottom}, {quad.s0, quad.t1}}, {{right, top}, {quad.s1, quad.t0}}, {{left, top}, {quad.s0, quad.t0}}});
         }
         glUseProgram(m_textProgram); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, m_fontTexture);

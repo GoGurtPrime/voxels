@@ -149,9 +149,21 @@ void InGameState::Update(double deltaSeconds) {
 
     if (m_chunkRenderer) {
         auto& world = m_session.GetWorld();
+        const int chunkSize = static_cast<int>(world.GetChunkSize());
+        for (const Vec3I& position : m_session.GetEditedBlocks()) {
+            const ChunkCoordinate coordinate{static_cast<int>(std::floor(static_cast<float>(position.x) / chunkSize)),
+                                             static_cast<int>(std::floor(static_cast<float>(position.y) / chunkSize)),
+                                             static_cast<int>(std::floor(static_cast<float>(position.z) / chunkSize))};
+            const Vec3I local{((position.x % chunkSize) + chunkSize) % chunkSize,
+                               ((position.y % chunkSize) + chunkSize) % chunkSize,
+                               ((position.z % chunkSize) + chunkSize) % chunkSize};
+            m_chunkRenderer->MarkBlockEdited(coordinate, local, world.GetChunkSize());
+        }
+        m_session.ClearEditedBlocks();
         for (const auto& [coordinate, chunk] : world.GetChunks()) {
             (void)chunk;
-            if (!m_chunkRenderer->HasMesh(coordinate) && !m_chunkRenderer->IsDirty(coordinate)) {
+            if (!m_chunkRenderer->HasMesh(coordinate) && !m_chunkRenderer->IsDirty(coordinate) &&
+                !m_chunkRenderer->IsInFlight(coordinate)) {
                 m_chunkRenderer->MarkChunkDirty(coordinate);
             }
         }

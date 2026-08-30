@@ -78,6 +78,9 @@ public:
     [[nodiscard]] bool IsDirty(const voxels::ChunkCoordinate& coordinate) const noexcept {
         return m_dirty.contains(coordinate);
     }
+    [[nodiscard]] bool IsInFlight(const voxels::ChunkCoordinate& coordinate) const noexcept {
+        return m_inFlight.contains(coordinate);
+    }
     [[nodiscard]] std::size_t GetResidentMeshCount() const noexcept { return m_meshes.size(); }
     [[nodiscard]] bool HasMesh(const voxels::ChunkCoordinate& coordinate) const noexcept {
         return m_meshes.find(coordinate) != m_meshes.end();
