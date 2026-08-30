@@ -276,17 +276,18 @@ void LoadingScreenState::Update(double) {
         (void)coordinate;
         chunk->ClearDirty();
     }
-    if (const auto spawnChunk = m_world->GetChunks().find({0, 1, 0}); spawnChunk != m_world->GetChunks().end()) {
-        m_spawnPosition = FindSafeSpawn(*spawnChunk->second, 0, 0);
-        save.spawnX = static_cast<float>(m_spawnPosition.x) + 0.5f;
-        save.spawnY = static_cast<float>(m_spawnPosition.y) + 0.9f;
-        save.spawnZ = static_cast<float>(m_spawnPosition.z) + 0.5f;
-        m_context->saveManager->Save(save);
-    }
     if (!m_context->saveManager->LoadWorldState(m_saveName, *m_world) &&
         std::filesystem::exists(m_context->saveManager->GetSaveDirectory(m_saveName) / "regions")) {
         m_context->requestTransition(std::make_unique<ErrorState>(m_context, "World Load Failed", "The world region data could not be read."));
         return;
+    }
+    const Vec3 savedSpawn{save.spawnX, save.spawnY, save.spawnZ};
+    if (save.spawnY <= 0.0f || !IsSafePlayerSpawn(*m_world, savedSpawn)) {
+        m_spawnPosition = FindSafeSpawn(*m_world);
+        save.spawnX = static_cast<float>(m_spawnPosition.x) + 0.5f;
+        save.spawnY = static_cast<float>(m_spawnPosition.y) + 1.9f;
+        save.spawnZ = static_cast<float>(m_spawnPosition.z) + 0.5f;
+        m_context->saveManager->Save(save);
     }
     auto game = std::make_unique<InGameState>(m_context);
     ConfigureInGameState(*game, m_context, save);

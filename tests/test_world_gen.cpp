@@ -143,6 +143,36 @@ TEST_CASE("WorldGen.SpawnIsDeterministicAndUsesChunkOrigin", "[world][generation
     REQUIRE(spawnA.z < -16);
 }
 
+TEST_CASE("WorldGen.SafeWorldSpawnHasFlatSurfaceAndClearance", "[world][generation]") {
+    voxels::WorldOptions options{.seed = 20260830u};
+    voxels::World first;
+    voxels::World second;
+    first.Initialize(options);
+    second.Initialize(options);
+    voxels::WorldGenerator generator(options);
+    for (int z = -2; z <= 2; ++z) {
+        for (int x = -2; x <= 2; ++x) {
+            for (int y = 0; y <= 3; ++y) {
+                first.GetOrCreateChunk({x, y, z}) = generator.GenerateChunk({x, y, z});
+                second.GetOrCreateChunk({x, y, z}) = generator.GenerateChunk({x, y, z});
+            }
+        }
+    }
+    const voxels::Vec3I spawnA = voxels::FindSafeSpawn(first);
+    const voxels::Vec3I spawnB = voxels::FindSafeSpawn(second);
+    const voxels::Vec3 playerCenter{static_cast<float>(spawnA.x) + 0.5f, static_cast<float>(spawnA.y) + 1.9f,
+                                    static_cast<float>(spawnA.z) + 0.5f};
+    REQUIRE(spawnA == spawnB);
+    REQUIRE(voxels::IsSafePlayerSpawn(first, playerCenter));
+    for (int z = -1; z <= 1; ++z) {
+        for (int x = -1; x <= 1; ++x) {
+            REQUIRE(first.GetBlock({spawnA.x + x, spawnA.y, spawnA.z + z}) != static_cast<voxels::BlockId>(voxels::BlockType::Air));
+            REQUIRE(first.GetBlock({spawnA.x + x, spawnA.y + 1, spawnA.z + z}) == static_cast<voxels::BlockId>(voxels::BlockType::Air));
+            REQUIRE(first.GetBlock({spawnA.x + x, spawnA.y + 2, spawnA.z + z}) == static_cast<voxels::BlockId>(voxels::BlockType::Air));
+        }
+    }
+}
+
 TEST_CASE("WorldGen.InitialPlayableCapIsNotFlooded", "[world][generation][water]") {
     voxels::WorldOptions options{};
     options.seed = 12345u;

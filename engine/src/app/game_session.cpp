@@ -117,8 +117,8 @@ void GameSession::Initialize() {
     m_camera.position = glm::vec3(m_player.state.position.x,
                                   m_player.state.position.y + 0.72f,
                                   m_player.state.position.z);
-    m_camera.yaw = 0.0f;
-    m_camera.pitch = 0.0f;
+    m_camera.yaw = m_player.state.yaw;
+    m_camera.pitch = m_player.state.pitch;
     m_camera.fovY = glm::radians(70.0f);
     m_camera.aspect = 1280.0f / 720.0f;
     m_camera.nearPlane = 0.1f;

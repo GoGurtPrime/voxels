@@ -80,6 +80,10 @@ void InGameState::OnEnter() {
         m_session.SetPlayerSpawn(Vec3{m_activeSave.spawnX, m_activeSave.spawnY, m_activeSave.spawnZ});
     }
     m_session.Initialize();
+    if (hasSavedPlayer && !IsSafePlayerSpawn(m_session.GetWorld(), m_session.GetPlayer().state.position) &&
+        m_activeSave.spawnY > 0.0f) {
+        m_session.SetPlayerSpawn(Vec3{m_activeSave.spawnX, m_activeSave.spawnY, m_activeSave.spawnZ});
+    }
 
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Gameplay);
     else if (m_platform != nullptr) m_platform->SetRelativeMouseMode(true);
