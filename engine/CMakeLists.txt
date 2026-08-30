@@ -11,6 +11,7 @@ add_library(voxels_engine
     src/render/texture_atlas.cpp
     src/render/chunk_mesher.cpp
     src/render/chunk_renderer.cpp
+    src/render/model_registry.cpp
     src/render/gameplay_hud.cpp
     src/graphics/gl_renderer.cpp
     src/graphics/mock_renderer.cpp
@@ -32,6 +33,7 @@ add_library(voxels_engine
     src/audio/audio_engine.cpp
     src/assets/asset_manager.cpp
     src/assets/texture_loader.cpp
+    src/assets/vmdl_codec.cpp
     src/networking/packet.cpp
     src/networking/server.cpp
     src/networking/client.cpp

@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "voxels/render/chunk_vertex.hpp"
+#include "voxels/render/model_registry.hpp"
 #include "voxels/render/texture_atlas.hpp"
 #include "voxels/world/block.hpp"
 #include "voxels/world/chunk.hpp"
@@ -45,6 +46,7 @@ struct ChunkMeshData {
 [[nodiscard]] ChunkMeshData BuildChunkMesh(const Chunk& chunk,
                                             const ChunkNeighborhood& neighborhood,
                                             const BlockRegistry& registry,
-                                            const TextureAtlas& atlas);
+                                            const TextureAtlas& atlas,
+                                            const ModelRegistry* models = nullptr);
 
 } // namespace voxels::graphics

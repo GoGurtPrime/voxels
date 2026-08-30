@@ -21,6 +21,7 @@ add_executable(voxels_tests
     test_build_environment.cpp
     test_render_backend.cpp
     test_chunk_meshing.cpp
+    test_voxel_models.cpp
     test_block_catalogue.cpp
     test_ui_framework.cpp
     test_persistence.cpp

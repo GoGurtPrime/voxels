@@ -24,6 +24,7 @@
 #include "voxels/core/job_system.hpp"
 #include "voxels/render/camera.hpp"
 #include "voxels/render/chunk_mesher.hpp"
+#include "voxels/render/model_registry.hpp"
 #include "voxels/render/texture_atlas.hpp"
 #include "voxels/world/block.hpp"
 #include "voxels/world/geometry.hpp"
@@ -129,6 +130,7 @@ private:
     voxels::BlockRegistry& m_registry;
     voxels::TextureAtlas& m_atlas;
     voxels::JobSystem& m_jobSystem;
+    ModelRegistry m_models;
 
     GLuint m_program = 0;
     GLint m_uniformViewProj = -1;

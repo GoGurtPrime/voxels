@@ -157,7 +157,9 @@ glm::vec3 ChunkOrigin(const voxels::ChunkCoordinate& coordinate, std::uint32_t c
 } // namespace
 
 ChunkRenderer::ChunkRenderer(voxels::BlockRegistry& registry, voxels::TextureAtlas& atlas, voxels::JobSystem& jobSystem)
-    : m_registry(registry), m_atlas(atlas), m_jobSystem(jobSystem) {}
+    : m_registry(registry), m_atlas(atlas), m_jobSystem(jobSystem) {
+    m_models.LoadReferencedModels(m_registry, "assets");
+}
 
 ChunkRenderer::~ChunkRenderer() {
     Shutdown();
@@ -292,14 +294,15 @@ void ChunkRenderer::EnqueueDirtyMeshJobs(const voxels::World& world, const glm::
 
         voxels::BlockRegistry& registry = m_registry;
         voxels::TextureAtlas& atlas = m_atlas;
+        const ModelRegistry& models = m_models;
         const JobPriority priority = isEditPriority ? JobPriority::High : JobPriority::Normal;
         m_jobSystem.Enqueue([this, coordinate, revision, ownerSnapshot, neighborSnapshots, neighborhood, isEditPriority,
-                             &registry, &atlas]() mutable {
+                             &registry, &atlas, &models]() mutable {
             const auto start = std::chrono::steady_clock::now();
             for (std::size_t i = 0; i < neighborSnapshots.size(); ++i) {
                 neighborhood.neighbors[i] = neighborSnapshots[i].get();
             }
-            ChunkMeshData data = BuildChunkMesh(*ownerSnapshot, neighborhood, registry, atlas);
+            ChunkMeshData data = BuildChunkMesh(*ownerSnapshot, neighborhood, registry, atlas, &models);
             const double meshingMilliseconds =
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
             std::lock_guard<std::mutex> lock(m_completedMutex);

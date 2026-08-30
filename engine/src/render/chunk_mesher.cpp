@@ -59,14 +59,14 @@ bool ShouldEmitFace(BlockId id, const BlockDefinition* def, BlockId neighborId, 
     if (def == nullptr) {
         return false;
     }
-    const bool isAirLike = !def->isSolid && !def->isLiquid;
+    const bool isAirLike = def->renderType == "model" || (!def->isSolid && !def->isLiquid);
     if (isAirLike) {
         return false;
     }
     if (neighborDef == nullptr) {
         return true;
     }
-    const bool neighborAirLike = !neighborDef->isSolid && !neighborDef->isLiquid;
+    const bool neighborAirLike = neighborDef->renderType == "model" || (!neighborDef->isSolid && !neighborDef->isLiquid);
     if (neighborAirLike) {
         return true;
     }
@@ -86,7 +86,7 @@ bool ShouldEmitFace(BlockId id, const BlockDefinition* def, BlockId neighborId, 
 } // namespace
 
 ChunkMeshData BuildChunkMesh(const Chunk& chunk, const ChunkNeighborhood& neighborhood, const BlockRegistry& registry,
-                              const TextureAtlas& atlas) {
+                              const TextureAtlas& atlas, const ModelRegistry* models) {
     ChunkMeshData result;
 
     const int sx = static_cast<int>(chunk.GetWidth());
@@ -397,6 +397,27 @@ ChunkMeshData BuildChunkMesh(const Chunk& chunk, const ChunkNeighborhood& neighb
 
                     i += width;
                     idx += static_cast<std::size_t>(width);
+                }
+            }
+        }
+    }
+
+    if (models != nullptr) {
+        for (int z = 0; z < sz; ++z) {
+            for (int y = 0; y < sy; ++y) {
+                for (int x = 0; x < sx; ++x) {
+                    const BlockDefinition* definition = registry.GetDefinition(chunk.GetBlock(x, y, z));
+                    if (definition == nullptr || definition->renderType != "model" || !definition->modelId.has_value()) continue;
+                    const BakedModelMesh* baked = models->FindMesh(*definition->modelId);
+                    if (baked == nullptr) continue;
+                    const std::uint32_t baseIndex = static_cast<std::uint32_t>(opaqueVerts.size());
+                    for (ChunkVertex vertex : baked->vertices) {
+                        vertex.x = static_cast<std::uint16_t>(vertex.x + x * static_cast<int>(kChunkVertexPositionScale));
+                        vertex.y = static_cast<std::uint16_t>(vertex.y + y * static_cast<int>(kChunkVertexPositionScale));
+                        vertex.z = static_cast<std::uint16_t>(vertex.z + z * static_cast<int>(kChunkVertexPositionScale));
+                        opaqueVerts.push_back(vertex);
+                    }
+                    for (const std::uint32_t index : baked->indices) opaqueIdx.push_back(baseIndex + index);
                 }
             }
         }
