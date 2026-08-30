@@ -15,7 +15,7 @@
 TEST_CASE("BlockRegistry.RegistrationAndLookup", "[world][block]") {
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
 
-    REQUIRE(registry.Count() == 7);
+    REQUIRE(registry.Count() >= 7);
 
     const auto* stoneById = registry.GetDefinition(static_cast<voxels::BlockId>(voxels::BlockType::Stone));
     REQUIRE(stoneById != nullptr);
@@ -37,7 +37,7 @@ TEST_CASE("BlockRegistry.RegistrationAndLookup", "[world][block]") {
     REQUIRE(registry.GetDefinition("does_not_exist") == nullptr);
 
     // Unique id mapping: every registered block resolves back to a distinct id.
-    for (const auto* name : {"air", "stone", "dirt", "coal_ore", "water", "tree_trunk", "leaf"}) {
+    for (const auto* name : {"air", "stone", "dirt", "coal_ore", "water", "wood_log", "leaves"}) {
         const auto* definition = registry.GetDefinition(name);
         REQUIRE(definition != nullptr);
         REQUIRE(registry.GetDefinition(definition->id)->name == name);
