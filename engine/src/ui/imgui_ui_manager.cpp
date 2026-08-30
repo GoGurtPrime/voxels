@@ -22,6 +22,7 @@
 namespace voxels {
 namespace {
 constexpr float kBaseFontPixels = 18.0f;
+constexpr std::size_t kFrameHistoryCapacity = 120;
 constexpr ImVec4 kWarmAccent{0.82f, 0.52f, 0.19f, 1.0f};
 
 ImGuiKey ToImGuiKey(std::uint32_t key) {
@@ -118,7 +119,11 @@ void ImGuiUIManager::SetInputContext(InputContext context) {
 bool ImGuiUIManager::WantsMouseCapture() const noexcept { return m_context != InputContext::Gameplay || (m_initialized && ImGui::GetIO().WantCaptureMouse); }
 bool ImGuiUIManager::WantsKeyboardCapture() const noexcept { return m_context != InputContext::Gameplay || (m_initialized && ImGui::GetIO().WantCaptureKeyboard); }
 bool ImGuiUIManager::ConsumeFirstMouseDelta() noexcept { const bool discard = m_discardNextMouseDelta; m_discardNextMouseDelta = false; return discard; }
-void ImGuiUIManager::SetDebugMetrics(UIDebugMetrics metrics) { m_debugMetrics = std::move(metrics); }
+void ImGuiUIManager::SetDebugMetrics(UIDebugMetrics metrics) {
+    m_debugMetrics = std::move(metrics);
+    m_frameHistory.push_back(m_debugMetrics.frameMilliseconds);
+    if (m_frameHistory.size() > kFrameHistoryCapacity) m_frameHistory.erase(m_frameHistory.begin());
+}
 void ImGuiUIManager::ShowError(std::string title, std::string detail) { m_errorTitle = std::move(title); m_errorDetail = std::move(detail); }
 void ImGuiUIManager::ShowToast(std::string message, float durationSeconds) { m_toasts.push_back({std::move(message), std::max(durationSeconds, 0.1f)}); }
 
@@ -152,10 +157,12 @@ void ImGuiUIManager::RenderDebugOverlay() {
     ImGui::SetNextWindowPos({12.0f, 12.0f}, ImGuiCond_Always);
     if (ImGui::Begin("Debug Overlay", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar)) {
         ImGui::Text("%.1f FPS | %.2f ms", m_debugMetrics.framesPerSecond, m_debugMetrics.frameMilliseconds);
+        if (!m_frameHistory.empty()) ImGui::PlotLines("Frame time (ms)", m_frameHistory.data(), static_cast<int>(m_frameHistory.size()), 0, nullptr, 0.0f, 50.0f, {260.0f, 56.0f});
         ImGui::Text("Position %.1f, %.1f, %.1f | Chunk %d, %d, %d", m_debugMetrics.playerX, m_debugMetrics.playerY, m_debugMetrics.playerZ, m_debugMetrics.chunkX, m_debugMetrics.chunkY, m_debugMetrics.chunkZ);
         ImGui::Text("Chunks L/M/V: %zu / %zu / %zu", m_debugMetrics.loadedChunks, m_debugMetrics.meshedChunks, m_debugMetrics.visibleChunks);
         ImGui::Text("Draw calls: %zu | Triangles: %zu | Mesh queue: %zu", m_debugMetrics.drawCalls, m_debugMetrics.triangles, m_debugMetrics.meshQueueDepth);
         ImGui::Text("GL: %s", m_debugMetrics.glRenderer.c_str());
+        ImGui::Text("Driver: %s | %s", m_debugMetrics.glVendor.c_str(), m_debugMetrics.glVersion.c_str());
     }
     ImGui::End();
 }

@@ -32,7 +32,9 @@ struct UIDebugMetrics {
     std::size_t drawCalls = 0;
     std::size_t triangles = 0;
     std::size_t meshQueueDepth = 0;
+    std::string glVendor;
     std::string glRenderer;
+    std::string glVersion;
 };
 
 class ImGuiUIManager final : public IUIManager {
@@ -48,6 +50,7 @@ public:
     void SetInputContext(InputContext context);
     [[nodiscard]] bool ConsumeFirstMouseDelta() noexcept;
     void SetDebugMetrics(UIDebugMetrics metrics);
+    [[nodiscard]] const UIDebugMetrics& GetDebugMetrics() const noexcept { return m_debugMetrics; }
     void ToggleDebugOverlay() noexcept { m_debugOverlayVisible = !m_debugOverlayVisible; }
     void ShowError(std::string title, std::string detail);
     void ShowToast(std::string message, float durationSeconds = 3.0f);
@@ -62,6 +65,7 @@ private:
     IPlatform* m_platform = nullptr;
     UIDisplayMetrics m_metrics{};
     UIDebugMetrics m_debugMetrics{};
+    std::vector<float> m_frameHistory;
     std::vector<ToastMessage> m_toasts;
     std::string m_errorTitle;
     std::string m_errorDetail;

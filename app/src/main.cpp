@@ -79,6 +79,11 @@ private:
 
 constexpr double kFixedStepSeconds = 1.0 / 60.0;
 
+std::string GetOpenGLString(GLenum name) {
+    const auto* value = glGetString(name);
+    return value == nullptr ? "Unavailable" : reinterpret_cast<const char*>(value);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -275,6 +280,8 @@ int main(int argc, char** argv) {
         stateMachine.Render();
         uiManager.BeginFrame();
         voxels::UIDebugMetrics debugMetrics{};
+        debugMetrics.frameMilliseconds = static_cast<float>(deltaSeconds * 1000.0);
+        debugMetrics.framesPerSecond = deltaSeconds > 0.0 ? static_cast<float>(1.0 / deltaSeconds) : 0.0f;
         const auto& camera = renderer.GetCamera();
         debugMetrics.playerX = camera.position.x;
         debugMetrics.playerY = camera.position.y;
@@ -293,7 +300,9 @@ int main(int argc, char** argv) {
                 debugMetrics.meshQueueDepth = metrics.meshQueueDepth;
             }
         }
-        debugMetrics.glRenderer = "OpenGL 3.3 Core";
+        debugMetrics.glVendor = GetOpenGLString(GL_VENDOR);
+        debugMetrics.glRenderer = GetOpenGLString(GL_RENDERER);
+        debugMetrics.glVersion = GetOpenGLString(GL_VERSION);
         uiManager.SetDebugMetrics(std::move(debugMetrics));
         uiManager.EndFrame();
         renderer.EndFrame();

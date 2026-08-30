@@ -1,6 +1,6 @@
 /**
  * @file ui_manager.cpp
- * @brief Implementation of `ComputeUIScale` and the procedural `UIManager`.
+ * @brief Implementation of `ComputeUIScale` and the test-only `NullUIManager`.
  */
 
 #include "voxels/ui/ui_manager.hpp"
@@ -18,7 +18,7 @@ float ComputeUIScale(const UIDisplayMetrics& metrics, int baseWidth, int baseHei
     return std::min(scaleX, scaleY) * metrics.dpiScale;
 }
 
-bool UIManager::Initialize(IPlatform* platform, IRenderer* renderer) {
+bool NullUIManager::Initialize(IPlatform* platform, IRenderer* renderer) {
     m_platform = platform;
     m_renderer = renderer;
     if (m_platform) {
@@ -30,25 +30,25 @@ bool UIManager::Initialize(IPlatform* platform, IRenderer* renderer) {
     return true;
 }
 
-void UIManager::Shutdown() {
+void NullUIManager::Shutdown() {
     m_platform = nullptr;
     m_renderer = nullptr;
     m_initialized = false;
     m_frameActive = false;
 }
 
-void UIManager::BeginFrame() {
+void NullUIManager::BeginFrame() {
     if (!m_initialized) {
         return;
     }
     m_frameActive = true;
 }
 
-void UIManager::EndFrame() {
+void NullUIManager::EndFrame() {
     m_frameActive = false;
 }
 
-void UIManager::OnPlatformEvent(const PlatformEvent& event) {
+void NullUIManager::OnPlatformEvent(const PlatformEvent& event) {
     if (event.type == PlatformEventType::WindowResized) {
         m_metrics.windowWidth = event.width;
         m_metrics.windowHeight = event.height;

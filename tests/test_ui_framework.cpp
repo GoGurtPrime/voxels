@@ -42,3 +42,23 @@ TEST_CASE("Theme.AppliesConsistentTokenSetAndIsIdempotent", "[ui]") {
     REQUIRE(ImGui::GetStyle().FramePadding.x == Catch::Approx(firstPadding));
     ImGui::DestroyContext();
 }
+
+TEST_CASE("DebugOverlay.RetainsLiveFrameStats", "[ui]") {
+    voxels::ImGuiUIManager manager;
+    voxels::UIDebugMetrics metrics{};
+    metrics.frameMilliseconds = 16.67f;
+    metrics.framesPerSecond = 60.0f;
+    metrics.loadedChunks = 49;
+    metrics.glVendor = "Test Vendor";
+    metrics.glRenderer = "Test Renderer";
+    metrics.glVersion = "3.3";
+
+    manager.SetDebugMetrics(metrics);
+    const auto& retained = manager.GetDebugMetrics();
+    REQUIRE(retained.frameMilliseconds == Catch::Approx(16.67f));
+    REQUIRE(retained.framesPerSecond == Catch::Approx(60.0f));
+    REQUIRE(retained.loadedChunks == 49);
+    REQUIRE(retained.glVendor == "Test Vendor");
+    REQUIRE(retained.glRenderer == "Test Renderer");
+    REQUIRE(retained.glVersion == "3.3");
+}

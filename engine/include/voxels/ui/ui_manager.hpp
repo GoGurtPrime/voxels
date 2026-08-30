@@ -3,18 +3,11 @@
 /*
  * Scope: UI engine abstraction wired to the platform event loop and renderer pipeline.
  *
- * A real Dear ImGui backend depends on a concrete windowing/graphics implementation (SDL2 +
- * a GPU-backed `IRenderer`), neither of which is linked in every build configuration used by
- * this repository's headless CI/test environment. This header therefore defines the engine
- * side of the integration (`IUIManager`) plus a procedural `UIManager` implementation that
- * tracks display metrics and DPI/output scaling without depending on any ImGui headers,
- * mirroring the `IPlatform`/`HeadlessPlatform` and `IRenderer`/`MockRenderer` pattern already
- * used elsewhere in the engine. A real ImGui-backed manager can implement the same `IUIManager`
- * contract once a concrete graphics backend is wired in.
+ * The desktop runtime uses `ImGuiUIManager`; this header retains `NullUIManager` exclusively
+ * for headless tests that need an `IUIManager` without a window or OpenGL context.
  *
- * Relation to the rest of the codebase: `AppStateMachine` states call into an `IUIManager` to
- * begin/end UI frames each tick; `IPlatform::PollEvents` notifies it of resizes so it can
- * recompute layout scale for high-DPI displays and the fixed 640x480 Dreamcast output.
+ * Relation to the rest of the codebase: `AppStateMachine` states submit UI through an
+ * `IUIManager`; `ImGuiUIManager` is the shipping implementation.
  */
 
 #include "voxels/graphics/renderer.hpp"
@@ -46,13 +39,11 @@ public:
     [[nodiscard]] virtual bool IsFrameActive() const noexcept = 0;
 };
 
-/// Procedural (non-ImGui) UI manager. Tracks the platform's current window size via
-/// `OnPlatformEvent` and derives `GetUIScale()` from it; `BeginFrame`/`EndFrame` bracket a
-/// UI pass around the renderer's own frame so a real ImGui draw pass can be slotted in later
-/// without changing this class's public contract.
-class UIManager final : public IUIManager {
+/// Headless test implementation. It never renders and must not be constructed by the desktop
+/// application, which always uses `ImGuiUIManager`.
+class NullUIManager final : public IUIManager {
 public:
-    UIManager() = default;
+    NullUIManager() = default;
 
     bool Initialize(IPlatform* platform, IRenderer* renderer) override;
     void Shutdown() override;

@@ -190,7 +190,7 @@ TEST_CASE("Menus.LoadingScreenProgressIsMonotonic", "[app][menu]") {
     REQUIRE(model.GetProgress() == 1.0f);
 }
 
-TEST_CASE("UIManager.ScaleMatchesFixedDreamcastOutput", "[app][ui]") {
+TEST_CASE("NullUIManager.ScaleMatchesFixedDreamcastOutput", "[app][ui]") {
     voxels::UIDisplayMetrics metrics{};
     metrics.windowWidth = 640;
     metrics.windowHeight = 480;
@@ -199,8 +199,8 @@ TEST_CASE("UIManager.ScaleMatchesFixedDreamcastOutput", "[app][ui]") {
     REQUIRE(voxels::ComputeUIScale(metrics) == 1.0f);
 }
 
-TEST_CASE("UIManager.ScaleRespondsToHighDpiResize", "[app][ui]") {
-    voxels::UIManager manager;
+TEST_CASE("NullUIManager.ScaleRespondsToHighDpiResize", "[app][ui]") {
+    voxels::NullUIManager manager;
     REQUIRE(manager.Initialize(nullptr, nullptr));
     REQUIRE(manager.GetUIScale() > 0.0f);
 
