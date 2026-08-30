@@ -16,9 +16,11 @@
 #include <future>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "voxels/app/game_session.hpp"
+#include "voxels/audio/audio_engine.hpp"
 #include "voxels/app/menus.hpp"
 #include "voxels/app/save_manager.hpp"
 #include "voxels/core/job_system.hpp"
@@ -61,6 +63,8 @@ struct AppContext {
     TextureAtlas* textureAtlas = nullptr;
     SaveManager* saveManager = nullptr;
     GamePreferences* preferences = nullptr;
+    AudioEngine* audio = nullptr;
+    std::unordered_map<std::string, SoundHandle> soundBank;
     InGameState* activeGame = nullptr;
     std::function<void(std::unique_ptr<class IAppState>)> requestTransition;
     std::function<void(std::unique_ptr<class IAppState>)> requestPushOverlay;

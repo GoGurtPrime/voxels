@@ -117,6 +117,8 @@ struct AppCommandLineOptions {
     std::string dumpAtlasPath;
     bool forgeInteractionAssets = false;
     std::string forgeInteractionAssetsPath;
+    bool forgeAudioAssets = false;
+    std::string forgeAudioAssetsPath;
 };
 
 } // namespace voxels

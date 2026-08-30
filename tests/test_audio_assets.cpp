@@ -66,27 +66,16 @@ TEST_CASE("Audio.3DSpatialAttenuation", "[audio]") {
     REQUIRE(atForty < atTwenty);
 }
 
-TEST_CASE("Audio.ProceduralEngineLifecycleAndPlayback", "[audio]") {
-    voxels::ProceduralAudioEngine engine;
-    REQUIRE_FALSE(engine.IsInitialized());
-    REQUIRE(engine.Initialize());
-    REQUIRE(engine.IsInitialized());
-
+TEST_CASE("Audio.EngineFallsBackForMissingClip", "[audio]") {
+    voxels::NullAudioDevice device;
+    voxels::AudioEngine engine(device);
+    std::string error;
+    REQUIRE(engine.Initialize(error));
     const voxels::SoundHandle missingSound = engine.LoadSound("nonexistent_sound_file.wav");
     REQUIRE(missingSound.IsValid());
-    REQUIRE(engine.GetSoundBuffer(missingSound) != nullptr);
-
-    engine.SetMasterVolume(0.5f);
-    engine.SetSFXVolume(0.5f);
-    REQUIRE(engine.GetMasterVolume() == Catch::Approx(0.5f));
-    REQUIRE(engine.GetSFXVolume() == Catch::Approx(0.5f));
-
-    engine.PlaySound(missingSound, 1.0f, 1.0f, glm::vec3{0.0f, 0.0f, 0.0f});
-    REQUIRE(engine.GetPlaybackHistory().size() == 1);
-    REQUIRE(engine.GetPlaybackHistory().back().attenuatedVolume == Catch::Approx(0.25f));
-
+    REQUIRE(engine.GetMixer().GetClip(missingSound) != nullptr);
+    REQUIRE_FALSE(engine.GetMixer().GetClip(missingSound)->samples.empty());
     engine.Shutdown();
-    REQUIRE_FALSE(engine.IsInitialized());
 }
 
 TEST_CASE("AssetManager.PackingAndUnpacking", "[assets]") {

@@ -113,6 +113,10 @@ void GameSession::Initialize() {
         m_player.state.velocity = Vec3{0.0f};
         m_player.state.onGround = true;
     }
+    const Vec3I initialPlayerBlock{static_cast<int>(std::floor(m_player.state.position.x)),
+                                   static_cast<int>(std::floor(m_player.state.position.y)),
+                                   static_cast<int>(std::floor(m_player.state.position.z))};
+    m_wasInWater = m_world->GetBlock(initialPlayerBlock) == static_cast<BlockId>(BlockType::Water);
     m_lastSelectedStack = m_player.state.inventory.GetSelectedStack();
     m_camera.position = glm::vec3(m_player.state.position.x,
                                   m_player.state.position.y + 0.72f,
@@ -157,9 +161,37 @@ void GameSession::Update(float deltaSeconds) {
 
     if (m_input != nullptr) {
         const InputState input = m_input->GetInputState();
+        const bool wasGrounded = m_player.state.onGround;
         gameplay::CameraController controller;
         controller.Update(m_player, input, m_preferences, deltaSeconds);
+        if (input.jump && wasGrounded && !m_player.state.onGround) {
+            m_soundEvents.push_back({GameplaySoundEventType::Jump,
+                                     {static_cast<int>(std::floor(m_player.state.position.x)), static_cast<int>(std::floor(m_player.state.position.y)), static_cast<int>(std::floor(m_player.state.position.z))}});
+        }
+        const float fallVelocity = m_player.state.velocity.y;
         gameplay::Physics::Step(*m_world, m_player, deltaSeconds);
+        const Vec3I playerBlock{static_cast<int>(std::floor(m_player.state.position.x)),
+                                static_cast<int>(std::floor(m_player.state.position.y)),
+                                static_cast<int>(std::floor(m_player.state.position.z))};
+        const BlockId standingBlock = m_world->GetBlock({playerBlock.x, static_cast<int>(std::floor(m_player.state.position.y - gameplay::Physics::kPlayerHalfHeight - 0.05f)), playerBlock.z});
+        const float horizontalSpeed = std::sqrt(m_player.state.velocity.x * m_player.state.velocity.x + m_player.state.velocity.z * m_player.state.velocity.z);
+        if (m_player.state.onGround && horizontalSpeed > 0.25f) {
+            m_footstepSeconds += deltaSeconds;
+            if (m_footstepSeconds >= std::clamp(0.46f / horizontalSpeed, 0.22f, 0.55f)) {
+                m_soundEvents.push_back({GameplaySoundEventType::Footstep, playerBlock, standingBlock});
+                m_footstepSeconds = 0.0f;
+            }
+        } else {
+            m_footstepSeconds = 0.0f;
+        }
+        if (!wasGrounded && m_player.state.onGround && fallVelocity < -4.0f) {
+            m_soundEvents.push_back({GameplaySoundEventType::Land, playerBlock, standingBlock});
+        }
+        const bool inWater = m_world->GetBlock(playerBlock) == static_cast<BlockId>(BlockType::Water);
+        if (inWater != m_wasInWater) {
+            m_soundEvents.push_back({GameplaySoundEventType::Splash, playerBlock, static_cast<BlockId>(BlockType::Water)});
+            m_wasInWater = inWater;
+        }
         if (m_registry != nullptr) {
             m_target = m_blockInteraction.Target(*m_world, m_player, *m_registry);
             if (input.hotbarSlot >= 0) m_player.state.inventory.SetSelectedSlot(input.hotbarSlot);

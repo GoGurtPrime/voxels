@@ -14,7 +14,7 @@
 
 namespace voxels {
 
-enum class GameplaySoundEventType { Break, Place };
+enum class GameplaySoundEventType { Break, Place, Footstep, Jump, Land, Splash };
 
 struct GameplaySoundEvent {
     GameplaySoundEventType type = GameplaySoundEventType::Break;
@@ -81,6 +81,8 @@ private:
     bool m_hasBreakTarget = false;
     float m_breakProgress = 0.0f;
     float m_placeCooldown = 0.0f;
+    float m_footstepSeconds = 0.0f;
+    bool m_wasInWater = false;
     std::vector<Vec3I> m_editedBlocks;
     std::vector<GameplaySoundEvent> m_soundEvents;
     std::vector<Vec3I> m_particleBursts;

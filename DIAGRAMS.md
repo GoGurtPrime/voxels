@@ -465,12 +465,12 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     EV["Gameplay events<br/>break, place, footstep, jump, ambient"] --> Q["Sound event queue (main thread)"]
-    Q --> MIX["Mixer: resolve clip from AssetManager,<br/>apply 3D attenuation vs listener, volume from Preferences"]
+    Q --> MIX["Mixer: resolve preloaded WAV clip,<br/>apply 3D attenuation vs listener, volume from Preferences"]
     MIX --> RING["Lock-free ring buffer"]
     RING --> CB["SDL audio callback thread<br/>mix voices → device buffer"]
     CB --> OUT([Speakers])
     LIS["Camera transform → listener position/orientation"] --> MIX
-    MUS["Music track streamer — OGG decode on job worker"] --> MIX
+    MUS["Music loop — preloaded PCM; OGG streaming pending"] --> MIX
 ```
 
 The audio callback never allocates, never locks, and never touches game state directly.

@@ -9,15 +9,21 @@
  */
 
 #include <chrono>
+#include <array>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <memory>
 #include <thread>
+#include <unordered_map>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 #include "voxels/app/cli_parser.hpp"
 #include "voxels/app/state_machine.hpp"
+#include "voxels/audio/audio_engine.hpp"
 #include "voxels/core/job_system.hpp"
 #include "voxels/core/paths.hpp"
 #include "voxels/core/preferences.hpp"
@@ -96,6 +102,28 @@ std::string GetOpenGLString(GLenum name) {
     return value == nullptr ? "Unavailable" : reinterpret_cast<const char*>(value);
 }
 
+voxels::AudioCategory AudioCategoryFromString(const std::string& category) {
+    if (category == "music") return voxels::AudioCategory::Music;
+    if (category == "ambience") return voxels::AudioCategory::Ambience;
+    if (category == "ui") return voxels::AudioCategory::Ui;
+    return voxels::AudioCategory::Sfx;
+}
+
+std::unordered_map<std::string, voxels::SoundHandle> LoadSoundBank(voxels::AudioEngine& audio,
+                                                                     const std::filesystem::path& dataPath,
+                                                                     const std::filesystem::path& audioRoot) {
+    std::ifstream stream(dataPath);
+    if (!stream) return {};
+    nlohmann::json document;
+    try { stream >> document; } catch (const nlohmann::json::parse_error&) { return {}; }
+    std::unordered_map<std::string, voxels::SoundHandle> bank;
+    for (const auto& [soundId, spec] : document.at("sounds").items()) {
+        const std::filesystem::path clipPath = audioRoot / spec.at("file").get<std::string>();
+        bank.emplace(soundId, audio.LoadSound(clipPath, AudioCategoryFromString(spec.value("category", "sfx"))));
+    }
+    return bank;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -113,6 +141,18 @@ int main(int argc, char** argv) {
             return 1;
         }
         std::cout << "Forged " << count << " interaction assets under " << outputPath.string() << ".\n";
+        return 0;
+    }
+
+    if (options.forgeAudioAssets) {
+        const std::filesystem::path outputPath = options.forgeAudioAssetsPath.empty()
+            ? voxels::Paths::AssetsDir() / "audio" : std::filesystem::path(options.forgeAudioAssetsPath);
+        const std::size_t count = voxels::ForgeDefaultAudioAssets(outputPath, true);
+        if (count != 28) {
+            std::cerr << "Failed to forge all audio assets under " << outputPath.string() << ".\n";
+            return 1;
+        }
+        std::cout << "Forged " << count << " audio assets under " << outputPath.string() << ".\n";
         return 0;
     }
 
@@ -234,6 +274,21 @@ int main(int argc, char** argv) {
     voxels::InputManager inputManager;
     voxels::PreferencesManager preferencesManager(voxels::Paths::UserDataDir() / "settings.json", platform->GetContext().type);
     voxels::GamePreferences preferences = preferencesManager.Load();
+    std::unique_ptr<voxels::IAudioDevice> audioDevice = std::make_unique<voxels::SDLAudioDevice>();
+    auto audio = std::make_unique<voxels::AudioEngine>(*audioDevice);
+    std::string audioError;
+    if (!audio->Initialize(audioError)) {
+        audioDevice = std::make_unique<voxels::NullAudioDevice>();
+        audio = std::make_unique<voxels::AudioEngine>(*audioDevice);
+        audio->Initialize(audioError);
+    }
+    audio->ApplyVolumes(preferences.masterVolume, preferences.musicVolume, preferences.sfxVolume, 0.7f);
+    const std::filesystem::path audioRoot = voxels::Paths::AssetsDir() / "audio";
+    std::unordered_map<std::string, voxels::SoundHandle> soundBank =
+        LoadSoundBank(*audio, voxels::Paths::AssetsDir() / "data" / "sounds.json", audioRoot);
+    if (const auto menuMusic = soundBank.find("music/menu_theme"); menuMusic != soundBank.end()) {
+        audio->PlayMusic({menuMusic->second.id}, true);
+    }
     RemoveUnversionedSaves();
     voxels::SaveManager saveManager(voxels::Paths::SavesDir() / kSaveFormatDirectory);
     bool running = true;
@@ -247,11 +302,14 @@ int main(int argc, char** argv) {
     appContext.textureAtlas = &textureAtlas;
     appContext.saveManager = &saveManager;
     appContext.preferences = &preferences;
+    appContext.audio = audio.get();
+    appContext.soundBank = std::move(soundBank);
     appContext.requestTransition = [&stateMachine](std::unique_ptr<voxels::IAppState> state) { stateMachine.RequestTransition(std::move(state)); };
     appContext.requestPushOverlay = [&stateMachine](std::unique_ptr<voxels::IAppState> state) { stateMachine.RequestPushOverlay(std::move(state)); };
     appContext.requestPopOverlay = [&stateMachine]() { stateMachine.RequestPopOverlay(); };
     appContext.requestQuit = [&running]() { running = false; };
     stateMachine.Start(std::make_unique<voxels::MainMenuState>(&appContext));
+    if (!audio->IsAudible()) uiManager.ShowToast("Audio device unavailable; playing silently.");
 
     voxels::networking::GameServer localServer;
     voxels::networking::GameClient localClient;
@@ -339,6 +397,7 @@ int main(int argc, char** argv) {
         platform->UnregisterEventListener(&uiManager);
     }
     uiManager.Shutdown();
+    audio->Shutdown();
     voxels::SetGlobalRenderer(nullptr);
     renderer.Shutdown();
     engine.shutdown();

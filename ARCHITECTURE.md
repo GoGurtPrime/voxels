@@ -46,7 +46,7 @@ Anything less than the above is an unfinished product, regardless of unit test c
 | Physics / block interaction / camera math | Real | Fixed-step DDA targeting, hardness-based breaking, placement collision checks, stack inventory, hotbar input, and break/place event queue are wired into `GameSession`. |
 | Input manager | Real | SDL keyboard and relative mouse events feed the player action map in the desktop runtime. |
 | Networking (Asio UDP client/server) | Real | Ticks in `main.cpp` but carries no gameplay traffic. |
-| Audio | Partial | Generates PCM; **no output device, nothing is audible**. |
+| Audio | Partial | SDL2 float-stereo callback device, fixed 32-voice mixer, shipped generated WAV filler, JSON sound bank, WAV PCM decode/fallback synthesis, 3D attenuation/panning, and block/movement/water event routing are real. OGG streaming, cave ambience, and full UI audio remain unfinished. |
 | Asset manager / `.vpk` | Partial | Archive I/O + procedural placeholders; image decoders active. |
 | Platform / SDL2 | Real | Desktop build with real SDL2 window and GL 3.3 Core context. |
 | **Renderer** | Real | GL 3.3 Core renderer with textured block rendering via 2D array texture atlas. |

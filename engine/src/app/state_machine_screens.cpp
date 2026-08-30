@@ -392,6 +392,10 @@ void SettingsState::Render() {
     if (ui::MenuButton("Apply")) {
         *m_context->preferences = m_pending;
         if (m_context->activeGame != nullptr) m_context->activeGame->ApplyPreferences(m_pending);
+        if (m_context->audio != nullptr) {
+            m_context->audio->ApplyVolumes(m_pending.masterVolume, m_pending.musicVolume,
+                                           m_pending.sfxVolume, 0.7f);
+        }
         PreferencesManager manager(Paths::UserDataDir() / "settings.json", m_context->platform->GetContext().type);
         manager.Save(m_pending);
     }

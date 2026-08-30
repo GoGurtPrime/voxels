@@ -1,0 +1,32 @@
+{
+  "sounds": {
+    "sfx/break_stone": { "file": "break_stone.wav", "category": "sfx" },
+    "sfx/break_dirt": { "file": "break_dirt.wav", "category": "sfx" },
+    "sfx/break_grass": { "file": "break_grass.wav", "category": "sfx" },
+    "sfx/break_sand": { "file": "break_sand.wav", "category": "sfx" },
+    "sfx/break_gravel": { "file": "break_gravel.wav", "category": "sfx" },
+    "sfx/break_wood": { "file": "break_wood.wav", "category": "sfx" },
+    "sfx/break_glass": { "file": "break_glass.wav", "category": "sfx" },
+    "sfx/place_stone": { "file": "place_stone.wav", "category": "sfx" },
+    "sfx/place_dirt": { "file": "place_dirt.wav", "category": "sfx" },
+    "sfx/place_grass": { "file": "place_grass.wav", "category": "sfx" },
+    "sfx/place_sand": { "file": "place_sand.wav", "category": "sfx" },
+    "sfx/place_gravel": { "file": "place_gravel.wav", "category": "sfx" },
+    "sfx/place_wood": { "file": "place_wood.wav", "category": "sfx" },
+    "sfx/place_glass": { "file": "place_glass.wav", "category": "sfx" },
+    "sfx/step_stone": { "file": "step_stone.wav", "category": "sfx" },
+    "sfx/step_dirt": { "file": "step_dirt.wav", "category": "sfx" },
+    "sfx/step_grass": { "file": "step_grass.wav", "category": "sfx" },
+    "sfx/step_sand": { "file": "step_sand.wav", "category": "sfx" },
+    "sfx/step_gravel": { "file": "step_gravel.wav", "category": "sfx" },
+    "sfx/step_wood": { "file": "step_wood.wav", "category": "sfx" },
+    "sfx/step_glass": { "file": "step_glass.wav", "category": "sfx" },
+    "sfx/step_water": { "file": "step_water.wav", "category": "sfx" },
+    "sfx/jump": { "file": "jump.wav", "category": "sfx" },
+    "sfx/land": { "file": "land.wav", "category": "sfx" },
+    "sfx/splash": { "file": "splash.wav", "category": "sfx" },
+    "ui/click": { "file": "ui_click.wav", "category": "ui" },
+    "ui/hover": { "file": "ui_hover.wav", "category": "ui" },
+    "music/menu_theme": { "file": "menu_theme.wav", "category": "music" }
+  }
+}

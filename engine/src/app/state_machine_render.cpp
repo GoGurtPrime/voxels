@@ -185,6 +185,32 @@ void InGameState::Update(double deltaSeconds) {
     }
 
     m_session.Update(static_cast<float>(deltaSeconds));
+    if (m_context != nullptr && m_context->audio != nullptr && m_registry != nullptr) {
+        const Camera& listener = m_session.GetCamera();
+        const float cosPitch = std::cos(listener.pitch);
+        const glm::vec3 listenerForward{-std::sin(listener.yaw) * cosPitch, std::sin(listener.pitch),
+                                        -std::cos(listener.yaw) * cosPitch};
+        m_context->audio->SetListener(listener.position, listenerForward);
+        for (const GameplaySoundEvent& event : m_session.GetSoundEvents()) {
+            const BlockDefinition* definition = m_registry->GetDefinition(event.blockId);
+            if (definition == nullptr && event.type != GameplaySoundEventType::Jump && event.type != GameplaySoundEventType::Land && event.type != GameplaySoundEventType::Splash) continue;
+            std::string soundId;
+            switch (event.type) {
+                case GameplaySoundEventType::Break: soundId = definition->sounds.breakSound; break;
+                case GameplaySoundEventType::Place: soundId = definition->sounds.placeSound; break;
+                case GameplaySoundEventType::Footstep: soundId = definition->sounds.stepSound; break;
+                case GameplaySoundEventType::Jump: soundId = "sfx/jump"; break;
+                case GameplaySoundEventType::Land: soundId = "sfx/land"; break;
+                case GameplaySoundEventType::Splash: soundId = "sfx/splash"; break;
+            }
+            const auto found = m_context->soundBank.find(soundId);
+            if (found != m_context->soundBank.end()) {
+                m_context->audio->PlaySound(found->second, 1.0f, 1.0f,
+                                            glm::vec3{event.position.x, event.position.y, event.position.z});
+            }
+        }
+        m_session.ClearSoundEvents();
+    }
     if (m_context != nullptr && m_context->input != nullptr) {
         const bool screenshotActive = m_context->input->IsActionActive("Screenshot");
         if (screenshotActive && !m_screenshotPressed && m_context->renderer != nullptr && m_context->saveManager != nullptr) {
