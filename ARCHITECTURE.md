@@ -39,7 +39,7 @@ Anything less than the above is an unfinished product, regardless of unit test c
 | :--- | :--- | :--- |
 | Core (logger, prefs, math, paths) | Real | Usable as-is. |
 | World storage (chunk, RLE serialization, raycast, block registry) | Real | 16³ chunk sections in a sparse map; data-driven catalogue (`blocks.json`) with 14 launch blocks. |
-| World generation (Perlin 2D/3D, shape → caves → vegetation → skylight) | Real | Deterministic, seeded, phase-pluggable. Vertical chunk sections beyond the one generated at load are not yet stitched together (item 12). |
+| World generation (biomes, terrain, caves, ores, vegetation → skylight) | Partial | Global-coordinate deterministic sampling provides blended biome selection, mountains, oceans, caves, coal/iron, boundary-complete trees, bedrock, and a `--gen-preview` map. Runtime chunk generation is worker-scheduled and applied on the main thread. Cross-chunk light propagation and versioned legacy generators remain item 12 work. |
 | Textures & Atlas | Real | STB decoders, `TextureLoader`, `TextureForge`, `TextureAtlas` (GL_TEXTURE_2D_ARRAY), `--dump-atlas`. |
 | Chunk mesher (`render/chunk_mesher.cpp`) | Real | Neighbour-aware, greedy-merged, AO + sky/block light + transparent-range split; consumed by `ChunkRenderer` and **reaches the GPU every frame**. |
 | `ChunkRenderer` (`render/chunk_renderer.cpp`) | Real | Job-scheduled meshing, budgeted upload, frustum-culled opaque/transparent draw. Wired into `InGameState`. |
@@ -156,7 +156,7 @@ Every state receives an `AppContext&` holding non-owning references to the servi
 - `ChunkRenderer::MarkBlockEdited` marks the owning chunk dirty plus any neighbour whose boundary the edit touched (interior edits dirty 1 chunk, corner edits dirty at most 4); not yet called by gameplay code since block breaking/placing is work item 07.
 
 ### 6.3 Generation
-- `GenerationPipeline` is an ordered list of `IGenerationPhase`: **Shape → Caves → Ore → Vegetation → Lighting**. Phases are pure functions of `(seed, chunkCoord, chunkData)` so generation is deterministic and parallelizable.
+- `GenerationPipeline` samples **Shape → Caves → Ore → Vegetation → Lighting** from global coordinates and phase-derived seed domains. Detached chunk values may be built by workers, but insertion into `World` occurs on the main thread, preserving the no-worker-`Chunk`-mutation rule.
 - `SpawnCalculator` finds the highest non-water solid surface within a search radius and returns a position where the player AABB is unobstructed.
 
 ### 6.4 Gameplay

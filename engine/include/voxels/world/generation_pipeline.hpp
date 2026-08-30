@@ -22,6 +22,22 @@
 
 namespace voxels {
 
+enum class Biome : std::uint8_t {
+    Plains,
+    Forest,
+    Hills,
+    Mountains,
+    Desert,
+    Beach,
+    Ocean
+};
+
+struct TerrainColumn {
+    int surfaceY = 0;
+    Biome biome = Biome::Plains;
+    float biomeBlend = 0.0f;
+};
+
 using GenerationStep = std::function<void()>;
 
 class IGenerationPhase {
@@ -48,11 +64,14 @@ struct GenerationPipeline {
 
 class WorldGenerator {
 public:
+    static constexpr std::uint32_t kGeneratorVersion = 2;
+
     WorldGenerator();
     explicit WorldGenerator(const WorldOptions& options);
 
     void AddPhase(std::unique_ptr<IGenerationPhase> phase);
     [[nodiscard]] Chunk GenerateChunk(const ChunkCoordinate& coordinate) const;
+    [[nodiscard]] TerrainColumn SampleColumn(int worldX, int worldZ) const noexcept;
 
     [[nodiscard]] const WorldOptions& GetOptions() const noexcept { return m_options; }
 

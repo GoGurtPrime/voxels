@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 
 #include "voxels/world/generation_pipeline.hpp"
 #include "voxels/world/spawn_calculator.hpp"
@@ -134,15 +135,24 @@ void GameSession::EnsureChunkResidentAroundPlayer() {
     if (m_world == nullptr) {
         return;
     }
+    ApplyCompletedChunkJobs();
     const int cx = static_cast<int>(std::floor(m_player.state.position.x / 16.0f));
     const int cz = static_cast<int>(std::floor(m_player.state.position.z / 16.0f));
-    WorldGenerator generator(m_worldOptions);
+    const std::size_t maxQueued = m_jobSystem == nullptr ? 0 : std::max<std::size_t>(1, m_jobSystem->WorkerCount() * 2);
     for (int z = -1; z <= 1; ++z) {
         for (int x = -1; x <= 1; ++x) {
             for (int y = 0; y < 3; ++y) {
                 const ChunkCoordinate coord{cx + x, y, cz + z};
-                if (!m_world->HasChunk(coord)) {
-                    m_world->GetOrCreateChunk(coord) = generator.GenerateChunk(coord);
+                const bool queued = std::any_of(m_pendingChunkJobs.begin(), m_pendingChunkJobs.end(), [&coord](const PendingChunkJob& pending) {
+                    return pending.coordinate == coord;
+                });
+                if (!m_world->HasChunk(coord) && !queued && m_jobSystem != nullptr && m_pendingChunkJobs.size() < maxQueued) {
+                    const WorldOptions options = m_worldOptions;
+                    m_pendingChunkJobs.push_back({coord, m_jobSystem->EnqueueWithResult([options, coord] {
+                        return WorldGenerator(options).GenerateChunk(coord);
+                    })});
+                } else if (!m_world->HasChunk(coord) && m_jobSystem == nullptr) {
+                    m_world->GetOrCreateChunk(coord) = WorldGenerator(m_worldOptions).GenerateChunk(coord);
                 }
             }
             const ChunkCoordinate capCoord{cx + x, 3, cz + z};
@@ -150,6 +160,23 @@ void GameSession::EnsureChunkResidentAroundPlayer() {
                 m_world->GetOrCreateChunk(capCoord);
             }
         }
+    }
+}
+
+void GameSession::ApplyCompletedChunkJobs() {
+    if (m_world == nullptr) return;
+    auto pending = m_pendingChunkJobs.begin();
+    while (pending != m_pendingChunkJobs.end()) {
+        if (pending->result.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            ++pending;
+            continue;
+        }
+        if (!m_world->HasChunk(pending->coordinate)) {
+            m_world->GetOrCreateChunk(pending->coordinate) = pending->result.get();
+        } else {
+            pending->result.get();
+        }
+        pending = m_pendingChunkJobs.erase(pending);
     }
 }
 
@@ -271,8 +298,13 @@ void GameSession::Update(float deltaSeconds) {
 }
 
 void GameSession::Shutdown() noexcept {
+    for (PendingChunkJob& pending : m_pendingChunkJobs) {
+        if (pending.result.valid()) pending.result.wait();
+    }
+    m_pendingChunkJobs.clear();
     m_initialized = false;
     m_input = nullptr;
+    m_jobSystem = nullptr;
     m_world = nullptr;
     m_ownedWorld.reset();
     m_player = Player{};

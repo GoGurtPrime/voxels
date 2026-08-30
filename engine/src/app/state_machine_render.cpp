@@ -65,10 +65,12 @@ void MainMenuState::Update(double deltaSeconds) {
 }
 
 void InGameState::OnEnter() {
+    if (m_jobSystem == nullptr) m_jobSystem = std::make_unique<JobSystem>();
     if (m_preparedWorld != nullptr) m_session.AdoptWorld(std::move(m_preparedWorld));
     m_session.SetWorldOptions(m_options);
     m_session.SetInputManager(m_inputManager);
     m_session.SetBlockRegistry(m_registry);
+    m_session.SetJobSystem(m_jobSystem.get());
     if (m_context != nullptr && m_context->preferences != nullptr) m_session.SetPreferences(*m_context->preferences);
     if (m_context != nullptr) m_context->activeGame = this;
     PlayerState loadedPlayer{};
@@ -89,7 +91,6 @@ void InGameState::OnEnter() {
     else if (m_platform != nullptr) m_platform->SetRelativeMouseMode(true);
 
     if (m_registry != nullptr && m_atlas != nullptr) {
-        if (m_jobSystem == nullptr) m_jobSystem = std::make_unique<JobSystem>();
         if (m_chunkRenderer == nullptr) {
             m_chunkRenderer = std::make_unique<graphics::ChunkRenderer>(*m_registry, *m_atlas, *m_jobSystem);
             m_chunkRenderer->SetUploadBudget(16, 4.0);

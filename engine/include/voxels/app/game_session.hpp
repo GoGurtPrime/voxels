@@ -1,8 +1,11 @@
 #pragma once
 
+#include <future>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "voxels/core/job_system.hpp"
 #include "voxels/core/game_types.hpp"
 #include "voxels/gameplay/camera_controller.hpp"
 #include "voxels/gameplay/block_interaction.hpp"
@@ -32,6 +35,7 @@ public:
     void SetWorldOptions(const WorldOptions& options) noexcept;
     void SetInputManager(InputManager* inputManager) noexcept;
     void SetBlockRegistry(const BlockRegistry* registry) noexcept;
+    void SetJobSystem(JobSystem* jobSystem) noexcept { m_jobSystem = jobSystem; }
     void SetPlayerSpawn(const Vec3& spawn);
     void SetPlayerSpawn(const Vec3I& spawn);
     void RestorePlayerState(const PlayerState& state) noexcept;
@@ -61,10 +65,17 @@ public:
 
 private:
     void EnsureChunkResidentAroundPlayer();
+    void ApplyCompletedChunkJobs();
+
+    struct PendingChunkJob {
+        ChunkCoordinate coordinate{};
+        std::future<Chunk> result;
+    };
 
     std::unique_ptr<World> m_ownedWorld;
     World* m_world = nullptr;
     InputManager* m_input = nullptr;
+    JobSystem* m_jobSystem = nullptr;
     Player m_player{};
     Camera m_camera{};
     GamePreferences m_preferences{};
@@ -89,6 +100,7 @@ private:
     gameplay::ItemStack m_lastSelectedStack{};
     std::string m_selectedItemLabel;
     float m_selectedItemLabelAge = 0.0f;
+    std::vector<PendingChunkJob> m_pendingChunkJobs;
 };
 
 } // namespace voxels

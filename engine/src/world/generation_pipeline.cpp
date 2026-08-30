@@ -1,222 +1,175 @@
+/**
+ * @file generation_pipeline.cpp
+ * @brief Deterministic, globally sampled terrain generation phases.
+ *
+ * @details Each phase derives output solely from the world seed and world-space coordinates,
+ *          so output is independent of generation order and worker count. See ARCHITECTURE.md 6.3.
+ */
+
 #include "voxels/world/generation_pipeline.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 #include "voxels/world/block.hpp"
-#include "voxels/world/noise.hpp"
 
 namespace voxels {
-
 namespace {
 constexpr int kChunkSize = 16;
-constexpr int kWaterLevel = 24;
+constexpr int kSeaLevel = 48;
+constexpr BlockId kAir = static_cast<BlockId>(BlockType::Air);
+constexpr BlockId kStone = static_cast<BlockId>(BlockType::Stone);
+constexpr BlockId kDirt = static_cast<BlockId>(BlockType::Dirt);
+constexpr BlockId kGrass = static_cast<BlockId>(BlockType::Grass);
+constexpr BlockId kSand = static_cast<BlockId>(BlockType::Sand);
+constexpr BlockId kWater = static_cast<BlockId>(BlockType::Water);
+constexpr BlockId kCoal = static_cast<BlockId>(BlockType::Coal);
+constexpr BlockId kIron = static_cast<BlockId>(BlockType::Iron);
+constexpr BlockId kWood = static_cast<BlockId>(BlockType::Wood);
+constexpr BlockId kLeaf = static_cast<BlockId>(BlockType::Leaf);
+constexpr BlockId kBedrock = static_cast<BlockId>(BlockType::Bedrock);
 
-class TerrainShapePhase : public IGenerationPhase {
-public:
-    explicit TerrainShapePhase(Noise noise) : m_noise(std::move(noise)) {}
+[[nodiscard]] std::uint64_t Mix(std::uint64_t value) noexcept {
+    value ^= value >> 30U;
+    value *= 0xbf58476d1ce4e5b9ULL;
+    value ^= value >> 27U;
+    value *= 0x94d049bb133111ebULL;
+    return value ^ (value >> 31U);
+}
 
-    void Execute(Chunk& chunk) override {
-        const int width = static_cast<int>(chunk.GetWidth());
-        const int depth = static_cast<int>(chunk.GetDepth());
-        const int height = static_cast<int>(chunk.GetHeight());
-        const int chunkX = chunk.GetCoordinate().x * kChunkSize;
-        const int chunkZ = chunk.GetCoordinate().z * kChunkSize;
-        const int chunkYOrigin = chunk.GetCoordinate().y * height;
+[[nodiscard]] std::uint64_t PhaseSeed(std::uint64_t seed, std::uint64_t phase) noexcept {
+    return Mix(seed ^ (phase * 0x9e3779b97f4a7c15ULL));
+}
 
-        for (int z = 0; z < depth; ++z) {
-            for (int x = 0; x < width; ++x) {
-                const double nx = static_cast<double>(chunkX + x) * 0.12;
-                const double nz = static_cast<double>(chunkZ + z) * 0.12;
-                const double terrain = m_noise.Fractal2D(nx, nz, 5, 0.55, 2.0);
-                const int baseHeight = static_cast<int>(std::round(terrain * 18.0 + 28.0));
-                const bool surfaceIsUnderwater = baseHeight <= kWaterLevel;
+[[nodiscard]] double SmoothStep(double edge0, double edge1, double value) noexcept {
+    const double normalized = std::clamp((value - edge0) / (edge1 - edge0), 0.0, 1.0);
+    return normalized * normalized * (3.0 - 2.0 * normalized);
+}
 
-                for (int y = 0; y < height; ++y) {
-                    const int worldY = chunkYOrigin + y;
-                    if (worldY <= 2) {
-                        chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Stone));
-                    } else if (worldY <= baseHeight) {
-                        if (worldY > baseHeight - 3) {
-                            const bool isTopLayer = worldY == baseHeight;
-                            if (isTopLayer && surfaceIsUnderwater) {
-                                chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Sand));
-                            } else if (isTopLayer) {
-                                chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Grass));
-                            } else {
-                                chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Dirt));
-                            }
-                        } else {
-                            chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Stone));
-                        }
-                    } else if (worldY <= kWaterLevel) {
-                        chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Water));
-                    } else {
-                        chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Air));
-                    }
-                }
-            }
-        }
+[[nodiscard]] bool IsSolidTerrain(BlockId block) noexcept {
+    return block != kAir && block != kWater && block != kLeaf;
+}
+
+[[nodiscard]] TerrainColumn SampleColumnForSeed(std::uint64_t seed, int worldX, int worldZ) noexcept {
+    const double x = static_cast<double>(worldX);
+    const double z = static_cast<double>(worldZ);
+    const Noise climate(PhaseSeed(seed, 1));
+    const Noise terrain(PhaseSeed(seed, 2));
+    const Noise peaks(PhaseSeed(seed, 3));
+    const Noise cells(PhaseSeed(seed, 4));
+    const double continentalness = terrain.DomainWarped2D(x * 0.0035, z * 0.0035, 0.019, 8.0);
+    const double erosion = terrain.Fractal2D(x * 0.012, z * 0.012, 3, 0.55, 2.0);
+    const double temperature = climate.Fractal2D(x * 0.005, z * 0.005, 3, 0.58, 2.0);
+    const double humidity = climate.Fractal2D(x * 0.006 + 83.0, z * 0.006 - 29.0, 3, 0.58, 2.0);
+    const double cellEdge = cells.Cellular2D(x * 0.012, z * 0.012);
+    const double mountainWeight = SmoothStep(0.44, 0.73, peaks.Ridged2D(x * 0.009, z * 0.009, 4, 0.53, 2.0)) *
+                                 SmoothStep(0.36, 0.70, continentalness * 0.5 + 0.5);
+    Biome biome = Biome::Plains;
+    if (continentalness < -0.22) biome = Biome::Ocean;
+    else if (continentalness < -0.10) biome = Biome::Beach;
+    else if (temperature > 0.61 && humidity < 0.47) biome = Biome::Desert;
+    else if (mountainWeight > 0.58) biome = Biome::Mountains;
+    else if (humidity > 0.58) biome = Biome::Forest;
+    else if (erosion < 0.39) biome = Biome::Hills;
+
+    const double rolling = terrain.Fractal2D(x * 0.021, z * 0.021, 4, 0.52, 2.0) * 13.0 - 6.5;
+    const double mountains = mountainWeight * (30.0 + peaks.Ridged2D(x * 0.016, z * 0.016, 3, 0.55, 2.0) * 36.0);
+    double height = static_cast<double>(kSeaLevel) + rolling + mountains - (1.0 - erosion) * 5.0;
+    if (biome == Biome::Ocean) height = kSeaLevel - 8.0 + rolling * 0.22;
+    if (biome == Biome::Beach) height = kSeaLevel + rolling * 0.16;
+    if (biome == Biome::Desert) height += 2.0;
+    return {std::clamp(static_cast<int>(std::lround(height)), 5, 118), biome,
+            static_cast<float>(SmoothStep(0.12, 0.34, cellEdge))};
+}
+
+[[nodiscard]] bool IsCave(std::uint64_t seed, int x, int y, int z, int surfaceY) noexcept {
+    if (y < 4 || y >= surfaceY - 3 || (surfaceY <= kSeaLevel && y < kSeaLevel)) return false;
+    const Noise worm(PhaseSeed(seed, 5));
+    const Noise cavern(PhaseSeed(seed, 6));
+    const double tunnel = worm.Ridged3D(x * 0.035, y * 0.052, z * 0.035, 3, 0.55, 2.0);
+    const double cavernValue = cavern.Ridged3D(x * 0.016, y * 0.021, z * 0.016, 3, 0.55, 2.0);
+    return tunnel > 0.79 || (y < 38 && cavernValue > 0.84);
+}
+
+[[nodiscard]] BlockId OreFor(std::uint64_t seed, int x, int y, int z) noexcept {
+    const Noise coal(PhaseSeed(seed, 7));
+    const Noise iron(PhaseSeed(seed, 8));
+    if (y >= 22 && y <= 72 && coal.Ridged3D(x * 0.13, y * 0.13, z * 0.13, 2, 0.58, 2.0) > 0.78) return kCoal;
+    if (y >= 7 && y <= 48 && iron.Ridged3D(x * 0.16, y * 0.16, z * 0.16, 2, 0.58, 2.0) > 0.83) return kIron;
+    return kStone;
+}
+
+void PlaceTree(Chunk& chunk, int worldX, int worldZ, const TerrainColumn& column, std::uint64_t seed) {
+    if (column.biome != Biome::Forest && column.biome != Biome::Plains && column.biome != Biome::Hills) return;
+    const Noise placement(PhaseSeed(seed, 9));
+    const double density = column.biome == Biome::Forest ? 0.71 : column.biome == Biome::Hills ? 0.82 : 0.89;
+    if (placement.Cellular2D(worldX * 0.12, worldZ * 0.12) < density) return;
+    const int height = 4 + static_cast<int>(Mix(static_cast<std::uint64_t>(worldX) ^ (static_cast<std::uint64_t>(worldZ) << 32U) ^ seed) % 3U);
+    const ChunkCoordinate coordinate = chunk.GetCoordinate();
+    for (int dz = -2; dz <= 2; ++dz) for (int dx = -2; dx <= 2; ++dx) for (int dy = -1; dy <= 2; ++dy) {
+        if (dx * dx + dz * dz + dy * dy > 6) continue;
+        const int localX = worldX + dx - coordinate.x * kChunkSize;
+        const int localY = column.surfaceY + height + dy - coordinate.y * kChunkSize;
+        const int localZ = worldZ + dz - coordinate.z * kChunkSize;
+        if (chunk.InBounds(localX, localY, localZ) && chunk.GetBlock(localX, localY, localZ) == kAir) chunk.SetBlock(localX, localY, localZ, kLeaf);
     }
-
-private:
-    Noise m_noise;
-};
-
-class CavePhase : public IGenerationPhase {
-public:
-    explicit CavePhase(Noise noise) : m_noise(std::move(noise)) {}
-
-    void Execute(Chunk& chunk) override {
-        const int width = static_cast<int>(chunk.GetWidth());
-        const int depth = static_cast<int>(chunk.GetDepth());
-        const int height = static_cast<int>(chunk.GetHeight());
-
-        for (int z = 0; z < depth; ++z) {
-            for (int y = 0; y < height; ++y) {
-                for (int x = 0; x < width; ++x) {
-                    const double caveValue = m_noise.Evaluate3D(
-                        static_cast<double>(x) * 0.35 + 7.0,
-                        static_cast<double>(y) * 0.35 + 11.0,
-                        static_cast<double>(z) * 0.35 + 13.0);
-                    if (chunk.GetBlock(x, y, z) == static_cast<BlockId>(BlockType::Stone) && caveValue > 0.62 && y < 40) {
-                        chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Air));
-                    }
-                }
-            }
-        }
+    const int localX = worldX - coordinate.x * kChunkSize;
+    const int localZ = worldZ - coordinate.z * kChunkSize;
+    for (int y = 1; y <= height; ++y) {
+        const int localY = column.surfaceY + y - coordinate.y * kChunkSize;
+        if (chunk.InBounds(localX, localY, localZ) && chunk.GetBlock(localX, localY, localZ) == kAir) chunk.SetBlock(localX, localY, localZ, kWood);
     }
-
-private:
-    Noise m_noise;
-};
-
-class VegetationPhase : public IGenerationPhase {
-public:
-    explicit VegetationPhase(Noise noise) : m_noise(std::move(noise)) {}
-
-    void Execute(Chunk& chunk) override {
-        const int width = static_cast<int>(chunk.GetWidth());
-        const int depth = static_cast<int>(chunk.GetDepth());
-        const int height = static_cast<int>(chunk.GetHeight());
-
-        for (int z = 0; z < depth; ++z) {
-            for (int x = 0; x < width; ++x) {
-                int surface = height - 1;
-                while (surface > 0 && chunk.GetBlock(x, surface, z) == static_cast<BlockId>(BlockType::Air)) {
-                    --surface;
-                }
-                if (surface <= 0 || (chunk.GetBlock(x, surface, z) != static_cast<BlockId>(BlockType::Dirt) &&
-                                     chunk.GetBlock(x, surface, z) != static_cast<BlockId>(BlockType::Grass))) {
-                    continue;
-                }
-
-                const double treeNoise = m_noise.Fractal2D(
-                    static_cast<double>(x + chunk.GetCoordinate().x * kChunkSize) * 0.65,
-                    static_cast<double>(z + chunk.GetCoordinate().z * kChunkSize) * 0.65,
-                    2,
-                    0.7,
-                    2.5);
-                if (treeNoise > 0.68 && surface > 4 && surface < height - 3) {
-                    for (int y = surface + 1; y <= surface + 4 && y < height; ++y) {
-                        if (chunk.GetBlock(x, y, z) == static_cast<BlockId>(BlockType::Air)) {
-                            chunk.SetBlock(x, y, z, static_cast<BlockId>(BlockType::Wood));
-                        }
-                    }
-                    for (int oy = 0; oy < 3; ++oy) {
-                        for (int ox = -2; ox <= 2; ++ox) {
-                            for (int oz = -2; oz <= 2; ++oz) {
-                                const int px = x + ox;
-                                const int pz = z + oz;
-                                const int py = surface + 4 + oy;
-                                if (px >= 0 && px < width && pz >= 0 && pz < depth && py >= 0 && py < height) {
-                                    const double distance = std::sqrt(static_cast<double>(ox * ox + oz * oz + oy * oy));
-                                    if (distance <= 2.2 && chunk.GetBlock(px, py, pz) == static_cast<BlockId>(BlockType::Air)) {
-                                        chunk.SetBlock(px, py, pz, static_cast<BlockId>(BlockType::Leaf));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-private:
-    Noise m_noise;
-};
-
-/// Simple chunk-local top-down skylight fill: each column is lit at full brightness from the
-/// chunk's top down to (and including) the first opaque block; everything below stays dark.
-/// This is a deliberately cheap approximation - it does not propagate sky light across chunk
-/// boundaries (e.g. an underground chunk sitting below a solid chunk above it) - full multi-chunk
-/// light propagation is out of scope for work item 05 and belongs to work item 12.
-class SkylightPhase : public IGenerationPhase {
-public:
-    void Execute(Chunk& chunk) override {
-        const int width = static_cast<int>(chunk.GetWidth());
-        const int depth = static_cast<int>(chunk.GetDepth());
-        const int height = static_cast<int>(chunk.GetHeight());
-
-        for (int z = 0; z < depth; ++z) {
-            for (int x = 0; x < width; ++x) {
-                bool lit = true;
-                for (int y = height - 1; y >= 0; --y) {
-                    const BlockId block = chunk.GetBlock(x, y, z);
-                    if (lit) {
-                        chunk.SetSkyLight(x, y, z, 15);
-                        if (block != static_cast<BlockId>(BlockType::Air) &&
-                            block != static_cast<BlockId>(BlockType::Water)) {
-                            lit = false; // this block itself is lit; everything strictly below is not
-                        }
-                    }
-                }
-            }
-        }
-    }
-};
+}
 } // namespace
 
 WorldGenerator::WorldGenerator() : WorldGenerator(WorldOptions{}) {}
+WorldGenerator::WorldGenerator(const WorldOptions& options) : m_options(options), m_noise(PhaseSeed(options.seed, 0)) {}
 
-WorldGenerator::WorldGenerator(const WorldOptions& options) : m_options(options), m_noise(options.seed + 1u) {}
-
-void WorldGenerator::AddPhase(std::unique_ptr<IGenerationPhase> phase) {
-    if (phase) {
-        m_phases.push_back(std::move(phase));
-    }
-}
+void WorldGenerator::AddPhase(std::unique_ptr<IGenerationPhase> phase) { if (phase) m_phases.push_back(std::move(phase)); }
+TerrainColumn WorldGenerator::SampleColumn(int worldX, int worldZ) const noexcept { return SampleColumnForSeed(m_options.seed, worldX, worldZ); }
 
 Chunk WorldGenerator::GenerateChunk(const ChunkCoordinate& coordinate) const {
     Chunk chunk(coordinate, kChunkSize, kChunkSize, kChunkSize);
-
     if (!m_phases.empty()) {
-        for (const auto& phase : m_phases) {
-            if (phase) {
-                phase->Execute(chunk);
-            }
-        }
+        for (const auto& phase : m_phases) if (phase) phase->Execute(chunk);
         return chunk;
     }
-
-    TerrainShapePhase terrainPhase(Noise(m_options.seed + 11u));
-    terrainPhase.Execute(chunk);
-
-    if (!m_options.peaceful) {
-        CavePhase cavePhase(Noise(m_options.seed + 27u));
-        cavePhase.Execute(chunk);
+    const int originX = coordinate.x * kChunkSize;
+    const int originY = coordinate.y * kChunkSize;
+    const int originZ = coordinate.z * kChunkSize;
+    for (int z = 0; z < kChunkSize; ++z) for (int x = 0; x < kChunkSize; ++x) {
+        const int worldX = originX + x;
+        const int worldZ = originZ + z;
+        const TerrainColumn column = SampleColumn(worldX, worldZ);
+        for (int y = 0; y < kChunkSize; ++y) {
+            const int worldY = originY + y;
+            BlockId block = kAir;
+            if (worldY == 0) block = kBedrock;
+            else if (worldY <= column.surfaceY) {
+                if (worldY == column.surfaceY) block = (column.biome == Biome::Desert || column.biome == Biome::Beach || column.biome == Biome::Ocean) ? kSand : kGrass;
+                else if (worldY >= column.surfaceY - 3) block = (column.biome == Biome::Desert || column.biome == Biome::Beach || column.biome == Biome::Ocean) ? kSand : kDirt;
+                else block = OreFor(m_options.seed, worldX, worldY, worldZ);
+                if (!m_options.peaceful && IsCave(m_options.seed, worldX, worldY, worldZ, column.surfaceY)) block = kAir;
+            } else if (worldY <= kSeaLevel) block = kWater;
+            chunk.SetBlock(x, y, z, block);
+        }
     }
-
     if (!m_options.sandboxMode) {
-        VegetationPhase vegetationPhase(Noise(m_options.seed + 51u));
-        vegetationPhase.Execute(chunk);
+        for (int anchorZ = originZ - 2; anchorZ < originZ + kChunkSize + 2; ++anchorZ) {
+            for (int anchorX = originX - 2; anchorX < originX + kChunkSize + 2; ++anchorX) {
+                PlaceTree(chunk, anchorX, anchorZ, SampleColumn(anchorX, anchorZ), m_options.seed);
+            }
+        }
     }
-
-    SkylightPhase skylightPhase;
-    skylightPhase.Execute(chunk);
-
+    for (int z = 0; z < kChunkSize; ++z) for (int x = 0; x < kChunkSize; ++x) {
+        bool skyVisible = true;
+        for (int y = kChunkSize - 1; y >= 0; --y) {
+            const BlockId block = chunk.GetBlock(x, y, z);
+            chunk.SetSkyLight(x, y, z, skyVisible ? 15 : 0);
+            if (IsSolidTerrain(block)) skyVisible = false;
+        }
+    }
     return chunk;
 }
-
 } // namespace voxels

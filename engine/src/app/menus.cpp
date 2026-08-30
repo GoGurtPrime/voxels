@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cctype>
 
+#include "voxels/world/generation_pipeline.hpp"
+
 namespace voxels {
 
 std::uint64_t SeedFromText(std::string_view text) noexcept {
@@ -36,6 +38,7 @@ GameSave WorldCreationController::BuildGameSave(const std::string& playerName) c
     save.worldName = m_worldName;
     save.playerName = playerName;
     save.seed = static_cast<WorldSeed>(m_options.seed);
+    save.generatorVersion = WorldGenerator::kGeneratorVersion;
     save.publicVisibility = m_options.isPublic;
     return save;
 }

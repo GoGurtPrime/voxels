@@ -156,4 +156,45 @@ double Noise::Ridged2D(double x, double y, int octaves, double persistence, doub
     return total / normalizer;
 }
 
+double Noise::Ridged3D(double x, double y, double z, int octaves, double persistence, double lacunarity) const noexcept {
+    double amplitude = 1.0;
+    double frequency = 1.0;
+    double total = 0.0;
+    double normalizer = 0.0;
+    for (int octave = 0; octave < octaves; ++octave) {
+        total += amplitude * (1.0 - std::abs(Evaluate3D(x * frequency, y * frequency, z * frequency)));
+        normalizer += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+    return normalizer == 0.0 ? 0.0 : total / normalizer;
+}
+
+double Noise::DomainWarped2D(double x, double y, double warpFrequency, double warpStrength) const noexcept {
+    const double warpX = Evaluate2D(x * warpFrequency + 19.7, y * warpFrequency - 43.1) * warpStrength;
+    const double warpY = Evaluate2D(x * warpFrequency - 71.3, y * warpFrequency + 11.9) * warpStrength;
+    return Evaluate2D(x + warpX, y + warpY);
+}
+
+double Noise::Cellular2D(double x, double y) const noexcept {
+    const int cellX = static_cast<int>(std::floor(x));
+    const int cellY = static_cast<int>(std::floor(y));
+    double nearest = 2.0;
+    for (int offsetY = -1; offsetY <= 1; ++offsetY) {
+        for (int offsetX = -1; offsetX <= 1; ++offsetX) {
+            const int candidateX = cellX + offsetX;
+            const int candidateY = cellY + offsetY;
+            const std::uint64_t hash = HashSeeded(
+                static_cast<std::uint64_t>(candidateX) * 0x9e3779b97f4a7c15ULL ^
+                static_cast<std::uint64_t>(candidateY) * 0xc2b2ae3d27d4eb4fULL, m_seed);
+            const double featureX = static_cast<double>(candidateX) + static_cast<double>(hash & 0xffffU) / 65536.0;
+            const double featureY = static_cast<double>(candidateY) + static_cast<double>((hash >> 16U) & 0xffffU) / 65536.0;
+            const double dx = featureX - x;
+            const double dy = featureY - y;
+            nearest = std::min(nearest, std::sqrt(dx * dx + dy * dy));
+        }
+    }
+    return Clamp(1.0 - nearest, 0.0, 1.0);
+}
+
 } // namespace voxels

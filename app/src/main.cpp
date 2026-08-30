@@ -23,6 +23,7 @@
 
 #include "voxels/app/cli_parser.hpp"
 #include "voxels/app/state_machine.hpp"
+#include "voxels/assets/texture_loader.hpp"
 #include "voxels/audio/audio_engine.hpp"
 #include "voxels/core/job_system.hpp"
 #include "voxels/core/paths.hpp"
@@ -37,6 +38,7 @@
 #include "voxels/render/texture_forge.hpp"
 #include "voxels/ui/imgui_ui_manager.hpp"
 #include "voxels/world/block.hpp"
+#include "voxels/world/generation_pipeline.hpp"
 
 namespace {
 
@@ -124,12 +126,64 @@ std::unordered_map<std::string, voxels::SoundHandle> LoadSoundBank(voxels::Audio
     return bank;
 }
 
+std::array<std::uint8_t, 3> PreviewColor(voxels::Biome biome) {
+    switch (biome) {
+        case voxels::Biome::Forest: return {48, 115, 52};
+        case voxels::Biome::Hills: return {107, 145, 62};
+        case voxels::Biome::Mountains: return {118, 120, 126};
+        case voxels::Biome::Desert: return {207, 177, 87};
+        case voxels::Biome::Beach: return {225, 207, 136};
+        case voxels::Biome::Ocean: return {42, 112, 178};
+        case voxels::Biome::Plains: return {91, 157, 70};
+    }
+    return {255, 0, 255};
+}
+
+bool WriteGenerationPreview(std::uint64_t seed, const std::filesystem::path& outputPath) {
+    constexpr int kChunksPerSide = 8;
+    constexpr int kPixelsPerChunk = 16;
+    constexpr int kSize = kChunksPerSide * kPixelsPerChunk;
+    voxels::ImageData image;
+    image.width = kSize;
+    image.height = kSize;
+    image.channels = 4;
+    image.pixels.resize(static_cast<std::size_t>(kSize * kSize * 4));
+    const voxels::WorldGenerator generator({.seed = seed});
+    for (int z = 0; z < kSize; ++z) {
+        for (int x = 0; x < kSize; ++x) {
+            const voxels::TerrainColumn column = generator.SampleColumn(x - kSize / 2, z - kSize / 2);
+            const auto color = PreviewColor(column.biome);
+            const float shade = 0.60f + static_cast<float>(column.surfaceY) / 295.0f;
+            const std::size_t offset = static_cast<std::size_t>((z * kSize + x) * 4);
+            image.pixels[offset] = static_cast<std::uint8_t>(static_cast<float>(color[0]) * shade);
+            image.pixels[offset + 1] = static_cast<std::uint8_t>(static_cast<float>(color[1]) * shade);
+            image.pixels[offset + 2] = static_cast<std::uint8_t>(static_cast<float>(color[2]) * shade);
+            image.pixels[offset + 3] = 255;
+        }
+    }
+    std::error_code error;
+    if (outputPath.has_parent_path()) std::filesystem::create_directories(outputPath.parent_path(), error);
+    return !error && voxels::TextureLoader::WritePngToFile(outputPath, image);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     const std::vector<std::string> args(argv + 1, argv + argc);
     const voxels::CliParser cliParser;
     const voxels::AppCommandLineOptions options = cliParser.Parse(args);
+
+    if (options.genPreview) {
+        const std::filesystem::path outputPath = options.genPreviewPath.empty()
+            ? voxels::Paths::LogsDir() / "generation_preview.png"
+            : std::filesystem::path(options.genPreviewPath);
+        if (!WriteGenerationPreview(options.seedOverride ? options.seed : 0, outputPath)) {
+            std::cerr << "Failed to write generation preview to " << outputPath.string() << ".\n";
+            return 1;
+        }
+        std::cout << "Generation preview written to " << outputPath.string() << ".\n";
+        return 0;
+    }
 
     if (options.forgeInteractionAssets) {
         const std::filesystem::path outputPath = options.forgeInteractionAssetsPath.empty()

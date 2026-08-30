@@ -8,6 +8,12 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
+#include <future>
+#include <unordered_map>
+
+#include "voxels/core/job_system.hpp"
 #include "voxels/world/generation_pipeline.hpp"
 #include "voxels/world/spawn_calculator.hpp"
 #include "voxels/world/world.hpp"
@@ -183,6 +189,52 @@ TEST_CASE("WorldGen.InitialPlayableCapIsNotFlooded", "[world][generation][water]
         for (std::uint32_t x = 0; x < upperChunk.GetWidth(); ++x) {
             REQUIRE(upperChunk.GetBlock(static_cast<int>(x), 15, static_cast<int>(z)) ==
                     static_cast<voxels::BlockId>(voxels::BlockType::Air));
+        }
+    }
+}
+
+TEST_CASE("Gen.DeterminismHoldsAcrossWorkerCountsAndOrder", "[world][generation]") {
+    const voxels::WorldOptions options{.seed = 0x9f73a48bu};
+    const std::array<voxels::ChunkCoordinate, 12> coordinates = {{{-2, 0, -1}, {-1, 1, 0}, {0, 2, 1}, {1, 3, -2},
+                                                                     {2, 4, 2}, {-3, 5, 3}, {3, 6, -3}, {-4, 7, 4},
+                                                                     {4, 0, -4}, {-5, 1, 5}, {5, 2, -5}, {0, 3, 0}}};
+    const voxels::WorldGenerator generator(options);
+    std::unordered_map<voxels::ChunkCoordinate, std::vector<std::uint8_t>, voxels::ChunkCoordinateHash> baseline;
+    for (const auto& coordinate : coordinates) baseline.emplace(coordinate, generator.GenerateChunk(coordinate).SerializeRLE());
+
+    for (const std::size_t workerCount : {std::size_t{1}, std::size_t{2}, std::size_t{8}, std::size_t{16}}) {
+        voxels::JobSystem jobs(workerCount);
+        std::vector<std::future<voxels::Chunk>> futures;
+        futures.reserve(coordinates.size());
+        for (auto coordinate = coordinates.rbegin(); coordinate != coordinates.rend(); ++coordinate) {
+            futures.push_back(jobs.EnqueueWithResult([options, coordinate = *coordinate] {
+                return voxels::WorldGenerator(options).GenerateChunk(coordinate);
+            }));
+        }
+        for (auto& future : futures) {
+            const voxels::Chunk chunk = future.get();
+            REQUIRE(chunk.SerializeRLE() == baseline.at(chunk.GetCoordinate()));
+        }
+        jobs.Shutdown();
+    }
+}
+
+TEST_CASE("Gen.BiomesAndBedrockAreStable", "[world][generation]") {
+    const voxels::WorldGenerator generator({.seed = 773849u});
+    for (int z = -128; z <= 128; z += 8) {
+        for (int x = -128; x <= 128; x += 8) {
+            const voxels::TerrainColumn first = generator.SampleColumn(x, z);
+            const voxels::TerrainColumn second = generator.SampleColumn(x, z);
+            REQUIRE(first.surfaceY == second.surfaceY);
+            REQUIRE(first.biome == second.biome);
+            REQUIRE(first.surfaceY >= 5);
+            REQUIRE(first.surfaceY <= 118);
+        }
+    }
+    for (int x = -2; x <= 2; ++x) {
+        const voxels::Chunk chunk = generator.GenerateChunk({x, 0, 0});
+        for (int z = 0; z < 16; ++z) for (int localX = 0; localX < 16; ++localX) {
+            REQUIRE(chunk.GetBlock(localX, 0, z) == static_cast<voxels::BlockId>(voxels::BlockType::Bedrock));
         }
     }
 }

@@ -315,11 +315,11 @@ Hysteresis: load radius = render distance, unload radius = render distance + 2, 
 ```mermaid
 flowchart TD
     SEED["World seed (u64) + WorldOptions"] --> HASH["Deterministic per-chunk hash<br/>seed ⊕ chunkX ⊕ chunkY ⊕ chunkZ"]
-    HASH --> P1["Phase 1 — Shape<br/>fractal Perlin 2D heightmap → stone/dirt/sand, sea level fill with water"]
-    P1 --> P2["Phase 2 — Caves<br/>3D Perlin threshold carve below surface, never breaches sea floor"]
-    P2 --> P3["Phase 3 — Ore<br/>seeded blue-noise clusters, depth-weighted"]
-    P3 --> P4["Phase 4 — Vegetation<br/>trees on grass/dirt surface, deterministic per-column RNG"]
-    P4 --> P5["Phase 5 — Lighting<br/>skylight column propagation + block light flood fill"]
+    HASH --> P1["Phase 1 — Shape<br/>global-domain warped noise + climate biome sample → terrain and sea fill"]
+    P1 --> P2["Phase 2 — Caves<br/>global 3D ridged tunnel/cavern fields, protected below ocean floors"]
+    P2 --> P3["Phase 3 — Ore<br/>global 3D depth-banded coal/iron cluster fields"]
+    P3 --> P4["Phase 4 — Vegetation<br/>world-coordinate tree anchors sampled by every affected chunk"]
+    P4 --> P5["Phase 5 — Lighting<br/>skylight assigned to detached chunk data"]
     P5 --> DONE["Chunk ready → Decoded"]
 
     DONE --> SPAWN{"Is this the spawn search?"}
@@ -328,7 +328,7 @@ flowchart TD
     SPAWN -- no --> IDLE([done])
 ```
 
-**Determinism contract:** running the pipeline twice with the same seed and chunk coordinate must produce byte-identical chunk data, regardless of thread count or generation order. This is enforced by automated test.
+**Determinism contract:** running the pipeline twice with the same seed and chunk coordinate must produce byte-identical chunk data, regardless of thread count or generation order. Worker jobs return detached chunks; only the main thread inserts ready chunks into `World`. This is enforced by automated test.
 
 ---
 

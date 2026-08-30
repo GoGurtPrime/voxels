@@ -119,6 +119,8 @@ struct AppCommandLineOptions {
     std::string forgeInteractionAssetsPath;
     bool forgeAudioAssets = false;
     std::string forgeAudioAssetsPath;
+    bool genPreview = false;
+    std::string genPreviewPath;
 };
 
 } // namespace voxels

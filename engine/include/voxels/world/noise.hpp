@@ -27,6 +27,12 @@ public:
                                  int octaves = 4,
                                  double persistence = 0.5,
                                  double lacunarity = 2.0) const noexcept;
+    [[nodiscard]] double Ridged3D(double x, double y, double z,
+                                  int octaves = 4,
+                                  double persistence = 0.5,
+                                  double lacunarity = 2.0) const noexcept;
+    [[nodiscard]] double DomainWarped2D(double x, double y, double warpFrequency, double warpStrength) const noexcept;
+    [[nodiscard]] double Cellular2D(double x, double y) const noexcept;
 
 private:
     std::uint64_t m_seed;
