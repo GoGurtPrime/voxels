@@ -344,9 +344,11 @@ ChunkMeshData BuildChunkMesh(const Chunk& chunk, const ChunkNeighborhood& neighb
                         std::array<std::uint8_t, 2>{widthUv, heightUv},
                         std::array<std::uint8_t, 2>{0, heightUv}};
                     if (cell.face == Face::PosX || cell.face == Face::NegX) {
-                        // X-facing masks are built as Y-by-Z rectangles. Swap their UV axes so
-                        // texture V follows world height and vertical textures remain upright.
-                        uvs = {{{0, 0}, {0, widthUv}, {heightUv, widthUv}, {heightUv, 0}}};
+                        // PNG rows upload to OpenGL bottom-first. Rotate vertical faces so the
+                        // authored top row (the grass fringe) maps to the physical top edge.
+                        uvs = {{{0, widthUv}, {0, 0}, {heightUv, 0}, {heightUv, widthUv}}};
+                    } else if (cell.face == Face::PosZ || cell.face == Face::NegZ) {
+                        uvs = {{{0, heightUv}, {widthUv, heightUv}, {widthUv, 0}, {0, 0}}};
                     } else if (cell.face == Face::PosY || cell.face == Face::NegY) {
                         // Horizontal masks are built as Z-by-X rectangles; keep U east-west.
                         uvs = {{{0, 0}, {0, widthUv}, {heightUv, widthUv}, {heightUv, 0}}};

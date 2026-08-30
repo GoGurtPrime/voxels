@@ -176,7 +176,7 @@ TEST_CASE("Mesher.TransparentBlocksGoToTransparentRangeOnly", "[render][mesher]"
     REQUIRE(mesh.vertices.size() == 24);
 }
 
-TEST_CASE("Mesher.SideTexturesKeepWorldHeightOnTextureV", "[render][mesher][uv]") {
+TEST_CASE("Mesher.SideTexturesKeepAuthoredTopAtWorldTop", "[render][mesher][uv]") {
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
     voxels::TextureAtlas atlas = MakeAtlas(registry);
     voxels::Chunk chunk({0, 0, 0}, 3, 3, 3);
@@ -184,20 +184,27 @@ TEST_CASE("Mesher.SideTexturesKeepWorldHeightOnTextureV", "[render][mesher][uv]"
 
     const auto mesh = voxels::graphics::BuildChunkMesh(chunk, {}, registry, atlas);
     for (const voxels::Face face : {voxels::Face::PosX, voxels::Face::NegX, voxels::Face::PosZ, voxels::Face::NegZ}) {
-        std::uint16_t minY = UINT16_MAX;
-        std::uint16_t minV = UINT8_MAX;
+        std::uint16_t minX = UINT16_MAX, maxX = 0, minY = UINT16_MAX, maxY = 0, minZ = UINT16_MAX, maxZ = 0;
         for (const auto& vertex : mesh.vertices) {
             if (vertex.faceIndex == static_cast<std::uint8_t>(face)) {
+                minX = std::min(minX, vertex.x);
+                maxX = std::max(maxX, vertex.x);
                 minY = std::min(minY, vertex.y);
-                minV = std::min(minV, static_cast<std::uint16_t>(vertex.v));
+                maxY = std::max(maxY, vertex.y);
+                minZ = std::min(minZ, vertex.z);
+                maxZ = std::max(maxZ, vertex.z);
             }
         }
         for (const auto& vertex : mesh.vertices) {
             if (vertex.faceIndex == static_cast<std::uint8_t>(face)) {
-                REQUIRE(vertex.v == (vertex.y - minY) / static_cast<std::uint16_t>(voxels::graphics::kChunkVertexPositionScale));
+                if (face == voxels::Face::PosX || face == voxels::Face::NegX) {
+                    REQUIRE(vertex.u == (vertex.z - minZ) / static_cast<std::uint16_t>(voxels::graphics::kChunkVertexPositionScale));
+                } else {
+                    REQUIRE(vertex.u == (vertex.x - minX) / static_cast<std::uint16_t>(voxels::graphics::kChunkVertexPositionScale));
+                }
+                REQUIRE(vertex.v == (maxY - vertex.y) / static_cast<std::uint16_t>(voxels::graphics::kChunkVertexPositionScale));
             }
         }
-        REQUIRE(minV == 0);
     }
 }
 
