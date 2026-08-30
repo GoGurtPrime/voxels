@@ -407,7 +407,7 @@ flowchart LR
         APPDIR --> M1["AssetManager mounts packs at boot"]
         M1 --> M2["Resolution order:<br/>1. loose assets/ (dev override)<br/>2. mounted .vpk<br/>3. procedural placeholder + WARN + ASSET_REQUESTS entry"]
         M2 --> M3["TextureAtlas built from block face textures"]
-        M2 --> M4["VmdlCodec → model meshes for stairs, doors, items, creatures"]
+        M2 --> M4["VmdlCodec → ModelRegistry → cached culled micro-voxel meshes"]
         M2 --> M5["Sound bank → AudioMixer"]
         M3 --> M6["ChunkRenderer + model renderer"]
         M4 --> M6

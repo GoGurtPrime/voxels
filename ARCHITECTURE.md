@@ -182,6 +182,8 @@ Authoring (editor) → `.vmdl` models + textures + audio → **bundler** → `.v
 
 - `.vpk` layout: magic `VPK1`, header (version, entry count, TOC offset), TOC entries (`path`, `offset`, `size`, `uncompressedSize`, `crc32`, `type`), then blobs. Entry ordering is deterministic so packs are byte-reproducible.
 - Block definitions (`blocks.json` inside the pack) map `block_id → { display_name, solid, transparent, atlas faces, optional model_id, hardness, sounds }`. This is the seam that associates an editor-authored model with a block type.
+- `.vmdl` v1 is little-endian: `VMDL` magic, `u16 version`, `u16 flags`, three grid dimensions, pivot and bounds vectors, palette/voxel/element/attachment counts, metadata offset, and CRC-32. Palette entries are RGBA8 plus atlas layer/emissive/flags; grid values are canonical `{u16 run,u16 paletteIndex}` RLE in x-fastest order where zero is empty. Variable-length elements and attachments precede UTF-8 JSON metadata. The CRC covers the immutable payload after the 65-byte header; unsupported versions, count mismatches, malformed ranges, and invalid palette indices are rejected.
+- `ModelRegistry` loads each `render_type: "model"` asset once, bakes culled micro-voxel faces into `ChunkVertex` buffers, and `ChunkRenderer` appends that data at model-block coordinates during normal chunk meshing. Missing/corrupt models produce a visible fallback mesh and warning rather than a crash.
 
 ### 6.7 Networking
 - UDP over Asio. Packet types: `C2S_Handshake`/`Input`/`BlockEdit`, `S2C_Accept`/`ChunkData`/`EntityState`/`BlockEdit`/`Disconnect`.
