@@ -20,6 +20,7 @@
 #include "voxels/app/state_machine.hpp"
 #include "voxels/core/job_system.hpp"
 #include "voxels/engine.hpp"
+#include "voxels/graphics/gl_renderer.hpp"
 #include "voxels/networking/client.hpp"
 #include "voxels/networking/server.hpp"
 #include "voxels/platform/platform.hpp"
@@ -111,6 +112,15 @@ int main(int argc, char** argv) {
         }
     }
 
+    voxels::graphics::GLRenderer renderer;
+    if (!renderer.Initialize()) {
+        std::cerr << "Voxels GL renderer failed to initialize." << std::endl;
+        engine.shutdown();
+        return 1;
+    }
+
+    voxels::SetGlobalRenderer(&renderer);
+
     voxels::AppStateMachine stateMachine;
     stateMachine.Start(std::make_unique<voxels::BootState>());
     stateMachine.TransitionTo(std::make_unique<voxels::MainMenuState>());
@@ -162,6 +172,8 @@ int main(int argc, char** argv) {
     localClient.Disconnect();
     localServer.Stop();
     std::cout << "Voxels app loop exited after " << frameCount << " frames.\n";
+    voxels::SetGlobalRenderer(nullptr);
+    renderer.Shutdown();
     engine.shutdown();
     return 0;
 }

@@ -16,6 +16,7 @@ add_executable(voxels_tests
     test_runtime_integration.cpp
     test_mvp_playthrough.cpp
     test_build_environment.cpp
+    test_render_backend.cpp
 )
 
 target_link_libraries(voxels_tests

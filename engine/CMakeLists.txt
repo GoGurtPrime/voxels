@@ -6,7 +6,10 @@ add_library(voxels_engine
     src/platform/headless_platform.cpp
     src/platform/platform_factory.cpp
     src/rendering.cpp
+    src/render/camera.cpp
+    src/graphics/gl_renderer.cpp
     src/graphics/mock_renderer.cpp
+    src/app/state_machine_render.cpp
     src/input.cpp
     src/world/block.cpp
     src/world/chunk.cpp

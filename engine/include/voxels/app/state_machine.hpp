@@ -18,6 +18,7 @@
 
 #include "voxels/app/menus.hpp"
 #include "voxels/app/save_manager.hpp"
+#include "voxels/graphics/gl_renderer.hpp"
 #include "voxels/world/world.hpp"
 #include "voxels/world/world_options.hpp"
 
@@ -59,6 +60,11 @@ public:
 class MainMenuState final : public IAppState {
 public:
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::MainMenu; }
+    void Update(double deltaSeconds) override;
+    void Render() override;
+
+private:
+    float m_elapsedSeconds = 0.0f;
 };
 
 class WorldSelectState final : public IAppState {
@@ -97,6 +103,12 @@ private:
 class InGameState final : public IAppState {
 public:
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::InGame; }
+    void Update(double deltaSeconds) override;
+    void Render() override;
+
+private:
+    float m_elapsedSeconds = 0.0f;
+    Camera m_camera{};
 };
 
 class PauseMenuState final : public IAppState {
@@ -107,6 +119,8 @@ public:
 /// Owns exactly one active `IAppState` at a time and guarantees `OnExit`/`OnEnter` are called
 /// in that order on every transition. Keeps a chronological log of transitions (state id plus
 /// "Enter"/"Exit") to make lifecycle ordering directly verifiable in tests.
+void SetGlobalRenderer(voxels::graphics::GLRenderer* renderer) noexcept;
+
 class AppStateMachine {
 public:
     struct TransitionRecord {
