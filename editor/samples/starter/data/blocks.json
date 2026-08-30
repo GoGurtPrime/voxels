@@ -1,0 +1,6 @@
+{
+  "blocks": [
+    {"id":"air","numeric_id":0,"solid":false,"opaque":false,"model_id":null},
+    {"id":"authored_block","display_name":"Authored Block","numeric_id":1,"solid":true,"opaque":true,"hardness":1,"render_type":"model","model_id":"models/authored_block.vmdl"}
+  ]
+}

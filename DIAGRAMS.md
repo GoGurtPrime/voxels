@@ -389,7 +389,7 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph AUTHOR["voxels_editor — authoring"]
-        A1["Sub-voxel model editor<br/>16×16×16 micro-voxel grid"] --> A2["Palette + texture assignment per face/voxel"]
+        A1["Sub-voxel model editor<br/>16×16×16 micro-voxel grid + slice editing<br/>undo/redo and recovery"] --> A2["Palette + texture assignment per face/voxel"]
         A2 --> A3["Pivot, collision bounds, attachment points"]
         A3 --> A4["Export .vmdl"]
         T1["Texture import: 16×16 or 32×32 PNG"] --> T2["Atlas preview + UV assignment"]
