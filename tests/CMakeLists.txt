@@ -15,6 +15,7 @@ add_executable(voxels_tests
     test_gameplay.cpp
     test_runtime_integration.cpp
     test_mvp_playthrough.cpp
+    test_build_environment.cpp
 )
 
 target_link_libraries(voxels_tests
@@ -24,6 +25,13 @@ target_link_libraries(voxels_tests
 )
 
 target_compile_features(voxels_tests PRIVATE cxx_std_20)
+
+add_custom_command(TARGET voxels_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/app/assets"
+        "$<TARGET_FILE_DIR:voxels_tests>/assets"
+    COMMENT "Staging app assets next to the test executable"
+)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(voxels_tests PRIVATE -Wall -Wextra -Wpedantic)

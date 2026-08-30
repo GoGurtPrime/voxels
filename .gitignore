@@ -1,4 +1,5 @@
 /build/
+/out/
 **/CMakeFiles/
 CMakeCache.txt
 *.vcxproj*
@@ -26,3 +27,7 @@ Thumbs.db
 !.vscode/tasks.json
 !.vscode/c_cpp_properties.json
 !.vscode/settings.json
+
+# Keep shipped content tracked in the repository; only generated build copies should be ignored.
+/bin/
+

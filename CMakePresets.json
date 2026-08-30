@@ -7,21 +7,70 @@
     },
     "configurePresets": [
         {
-            "name": "default",
-            "displayName": "Default (vcpkg)",
-            "description": "Configures with the vcpkg toolchain when VCPKG_ROOT is set, so SDL2/GLM/etc. resolve via vcpkg.",
+            "name": "windows-debug",
+            "displayName": "Windows Debug",
+            "generator": "Visual Studio 17 2022",
             "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
-                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "VOXELS_BUILD_APP": "ON",
+                "VOXELS_BUILD_EDITOR": "ON",
+                "VOXELS_BUILD_TESTS": "ON",
+                "VOXELS_ENABLE_VULKAN": "OFF",
+                "VOXELS_ENABLE_DX12": "OFF",
+                "VOXELS_ENABLE_METAL": "OFF",
+                "VOXELS_ENABLE_DREAMCAST": "OFF"
             }
         },
         {
-            "name": "debug",
-            "displayName": "Debug (vcpkg)",
-            "inherits": "default",
+            "name": "windows-release",
+            "displayName": "Windows Release",
+            "inherits": "windows-debug",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "linux-debug",
+            "displayName": "Linux Debug",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "VOXELS_BUILD_APP": "ON",
+                "VOXELS_BUILD_EDITOR": "ON",
+                "VOXELS_BUILD_TESTS": "ON",
+                "VOXELS_ENABLE_VULKAN": "OFF",
+                "VOXELS_ENABLE_DX12": "OFF",
+                "VOXELS_ENABLE_METAL": "OFF",
+                "VOXELS_ENABLE_DREAMCAST": "OFF"
+            }
+        },
+        {
+            "name": "macos-debug",
+            "displayName": "macOS Debug",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "VOXELS_BUILD_APP": "ON",
+                "VOXELS_BUILD_EDITOR": "ON",
+                "VOXELS_BUILD_TESTS": "ON",
+                "VOXELS_ENABLE_VULKAN": "OFF",
+                "VOXELS_ENABLE_DX12": "OFF",
+                "VOXELS_ENABLE_METAL": "OFF",
+                "VOXELS_ENABLE_DREAMCAST": "OFF"
             }
         }
+    ],
+    "buildPresets": [
+        { "name": "windows-debug", "configurePreset": "windows-debug" },
+        { "name": "windows-release", "configurePreset": "windows-release" },
+        { "name": "linux-debug", "configurePreset": "linux-debug" },
+        { "name": "macos-debug", "configurePreset": "macos-debug" }
+    ],
+    "testPresets": [
+        { "name": "windows-debug", "configurePreset": "windows-debug", "output": { "outputOnFailure": true } },
+        { "name": "windows-release", "configurePreset": "windows-release", "output": { "outputOnFailure": true } },
+        { "name": "linux-debug", "configurePreset": "linux-debug", "output": { "outputOnFailure": true } },
+        { "name": "macos-debug", "configurePreset": "macos-debug", "output": { "outputOnFailure": true } }
     ]
 }

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.21)
 
 add_library(voxels_engine
     src/engine.cpp
@@ -18,6 +18,7 @@ add_library(voxels_engine
     src/core/logger.cpp
     src/core/preferences.cpp
     src/core/math.cpp
+    src/core/paths.cpp
     src/audio/audio_engine.cpp
     src/assets/asset_manager.cpp
     src/networking/packet.cpp
@@ -40,6 +41,8 @@ target_include_directories(voxels_engine
 
 target_compile_features(voxels_engine PUBLIC cxx_std_20)
 
+target_compile_options(voxels_engine PRIVATE ${VOXELS_WARNING_FLAGS})
+
 if(TARGET SDL2::SDL2)
     target_link_libraries(voxels_engine PUBLIC SDL2::SDL2)
     target_sources(voxels_engine PRIVATE src/platform/sdl_platform.cpp)
@@ -48,6 +51,14 @@ endif()
 
 if(TARGET glm::glm)
     target_link_libraries(voxels_engine PUBLIC glm::glm)
+endif()
+
+if(TARGET voxels_imgui)
+    target_link_libraries(voxels_engine PUBLIC voxels_imgui)
+endif()
+
+if(TARGET voxels_glad)
+    target_link_libraries(voxels_engine PUBLIC voxels_glad)
 endif()
 
 if(TARGET asio::asio)

@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.21)
 
-project(VoxelsEngine VERSION 0.1.0 LANGUAGES CXX)
+project(VoxelsEngine VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,26 +10,34 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(VOXELS_BUILD_APP "Build the game application target" ON)
 option(VOXELS_BUILD_EDITOR "Build the editor target" ON)
 option(VOXELS_BUILD_TESTS "Build automated unit test suites" ON)
-option(VOXELS_ENABLE_VULKAN "Enable the Vulkan renderer backend" ON)
+option(VOXELS_ENABLE_VULKAN "Enable the Vulkan renderer backend" OFF)
 option(VOXELS_ENABLE_DX12 "Enable the DirectX 12 renderer backend" OFF)
 option(VOXELS_ENABLE_METAL "Enable the Metal renderer backend" OFF)
 option(VOXELS_ENABLE_DREAMCAST "Enable the Dreamcast renderer backend" OFF)
+option(VOXELS_WARNINGS_AS_ERRORS "Treat warnings as errors for first-party targets" ON)
 
+add_compile_definitions(VOXELS_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+add_compile_definitions(VOXELS_BINARY_DIR="${CMAKE_BINARY_DIR}")
+
+set(VOXELS_WARNING_FLAGS "")
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options(-Wall -Wextra -Wpedantic)
+    set(VOXELS_WARNING_FLAGS -Wall -Wextra -Wpedantic)
 elseif(MSVC)
-    add_compile_options(/W4)
+    set(VOXELS_WARNING_FLAGS /W4)
+endif()
+if(VOXELS_WARNINGS_AS_ERRORS)
+    if(MSVC)
+        list(APPEND VOXELS_WARNING_FLAGS /WX)
+    else()
+        list(APPEND VOXELS_WARNING_FLAGS -Werror)
+    endif()
 endif()
 
-# Dependency discovery is intentionally lightweight during the architectural phase.
-# When the project is ready for production builds, these can be resolved through either
-# a package manager or FetchContent for SDL2, GLM, ImGui, and Asio.
-find_package(glm QUIET)
-find_package(SDL2 QUIET)
-find_package(asio QUIET)
+include(FetchContent)
+find_package(Python REQUIRED COMPONENTS Interpreter)
 
+find_package(glm QUIET)
 if(NOT TARGET glm::glm)
-    include(FetchContent)
     FetchContent_Declare(
         glm
         GIT_REPOSITORY https://github.com/g-truc/glm.git
@@ -37,11 +45,87 @@ if(NOT TARGET glm::glm)
     )
     FetchContent_MakeAvailable(glm)
 endif()
+
+find_package(SDL2 CONFIG QUIET)
 if(NOT TARGET SDL2::SDL2)
-    message(STATUS "SDL2 not found; the platform layer remains abstract and can be configured per target.")
+    FetchContent_Declare(
+        SDL2
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG        release-2.30.7
+    )
+    set(SDL_SHARED ON CACHE BOOL "Build SDL2 shared library" FORCE)
+    set(SDL_STATIC OFF CACHE BOOL "Disable SDL2 static library" FORCE)
+    set(SDL_TEST OFF CACHE BOOL "Disable SDL2 test targets" FORCE)
+    FetchContent_MakeAvailable(SDL2)
 endif()
+if(NOT TARGET SDL2::SDL2)
+    message(FATAL_ERROR "SDL2 is a required desktop dependency for VoxelsEngine. The build cannot continue without a real windowing/backend stack.")
+endif()
+
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG        docking
+)
+FetchContent_MakeAvailable(imgui)
+
+if(NOT TARGET voxels_imgui)
+    add_library(voxels_imgui STATIC
+        ${imgui_SOURCE_DIR}/imgui.cpp
+        ${imgui_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+        ${imgui_SOURCE_DIR}/imgui_demo.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+    target_include_directories(voxels_imgui SYSTEM PUBLIC
+        ${imgui_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends
+    )
+    target_link_libraries(voxels_imgui PUBLIC SDL2::SDL2)
+endif()
+
+find_package(glad CONFIG QUIET)
+if(NOT TARGET glad_gl_core_33)
+    execute_process(
+        COMMAND "${Python_EXECUTABLE}" -m pip install --user glad
+        RESULT_VARIABLE GLAD_PIP_RESULT
+        OUTPUT_VARIABLE GLAD_PIP_OUTPUT
+        ERROR_VARIABLE GLAD_PIP_ERROR
+    )
+    if(NOT GLAD_PIP_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to install the Python 'glad' package required to generate the OpenGL loader. Output: ${GLAD_PIP_OUTPUT}\nError: ${GLAD_PIP_ERROR}")
+    endif()
+
+    set(GLAD_GENERATED_DIR "${CMAKE_BINARY_DIR}/glad_gl_core_33")
+    file(MAKE_DIRECTORY "${GLAD_GENERATED_DIR}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env "PYTHONUTF8=1" "${Python_EXECUTABLE}" -m glad --generator c --profile core --out-path "${GLAD_GENERATED_DIR}" --api "gl=3.3" --reproducible --no-loader
+        RESULT_VARIABLE GLAD_GENERATE_RESULT
+        OUTPUT_VARIABLE GLAD_GENERATE_OUTPUT
+        ERROR_VARIABLE GLAD_GENERATE_ERROR
+    )
+    if(NOT GLAD_GENERATE_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to generate the OpenGL 3.3 glad loader. Output: ${GLAD_GENERATE_OUTPUT}\nError: ${GLAD_GENERATE_ERROR}")
+    endif()
+
+    add_library(glad_gl_core_33 STATIC
+        "${GLAD_GENERATED_DIR}/src/glad.c"
+    )
+    target_include_directories(glad_gl_core_33 PUBLIC
+        "${GLAD_GENERATED_DIR}/include"
+        "${GLAD_GENERATED_DIR}/include/KHR"
+    )
+endif()
+if(NOT TARGET glad_gl_core_33)
+    message(FATAL_ERROR "glad is a required OpenGL loader dependency for the desktop build.")
+endif()
+add_library(voxels_glad INTERFACE)
+target_link_libraries(voxels_glad INTERFACE glad_gl_core_33)
+
+find_package(asio QUIET)
 if(NOT TARGET asio::asio)
-    include(FetchContent)
     FetchContent_Declare(
         asio
         GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
@@ -75,7 +159,6 @@ if(VOXELS_BUILD_TESTS)
 
     find_package(Catch2 3 QUIET)
     if(NOT Catch2_FOUND)
-        include(FetchContent)
         FetchContent_Declare(
             Catch2
             GIT_REPOSITORY https://github.com/catchorg/Catch2.git
