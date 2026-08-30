@@ -5,7 +5,26 @@
 
 #include "voxels/app/menus.hpp"
 
+#include <algorithm>
+#include <cctype>
+
 namespace voxels {
+
+std::uint64_t SeedFromText(std::string_view text) noexcept {
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const unsigned char character : text) {
+        hash ^= character;
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+bool IsFilesystemSafeWorldName(std::string_view name) noexcept {
+    if (name.empty() || name.size() > 48 || name == "." || name == "..") return false;
+    return std::all_of(name.begin(), name.end(), [](unsigned char character) {
+        return std::isalnum(character) || character == ' ' || character == '_' || character == '-';
+    });
+}
 
 void MainMenuModel::RefreshSaves(const ISaveManager& saveManager) {
     m_saves = saveManager.ListSaves();

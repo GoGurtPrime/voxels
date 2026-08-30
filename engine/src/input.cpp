@@ -80,6 +80,15 @@ void InputManager::InjectKeyEvent(int code, bool pressed, int player) {
 void InputManager::InjectMouseDelta(float x, float y, int player) { if (auto* channel = Channel(player)) { channel->mouseX += x; channel->mouseY += y; } }
 void InputManager::InjectMouseButtonEvent(int button, bool pressed, int player) { if (auto* channel = Channel(player)) channel->mouseButtons[button] = pressed; }
 void InputManager::InjectMouseWheel(int deltaY, int player) { if (auto* channel = Channel(player)) channel->mouseWheelY += deltaY; }
+void InputManager::ClearGameplayInput(int player) {
+    if (auto* channel = Channel(player)) {
+        channel->keys.clear();
+        channel->mouseButtons.clear();
+        channel->mouseX = 0.0f;
+        channel->mouseY = 0.0f;
+        channel->mouseWheelY = 0;
+    }
+}
 void InputManager::InjectAxisEvent(InputAxis axis, float value, int player) { if (auto* channel = Channel(player)) channel->axes[axis] = ApplyAxisSettings(value, channel->axisSettings[axis]); }
 void InputManager::InjectControllerConnection(int player, bool connected) { if (auto* channel = Channel(player)) channel->state = connected ? PlayerSlotState::Connected : PlayerSlotState::Disconnected; }
 

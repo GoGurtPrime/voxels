@@ -117,7 +117,7 @@ void ImGuiUIManager::SetInputContext(InputContext context) {
 }
 
 bool ImGuiUIManager::WantsMouseCapture() const noexcept { return m_context != InputContext::Gameplay || (m_initialized && ImGui::GetIO().WantCaptureMouse); }
-bool ImGuiUIManager::WantsKeyboardCapture() const noexcept { return m_context != InputContext::Gameplay || (m_initialized && ImGui::GetIO().WantCaptureKeyboard); }
+bool ImGuiUIManager::WantsKeyboardCapture() const noexcept { return m_context != InputContext::Gameplay; }
 bool ImGuiUIManager::ConsumeFirstMouseDelta() noexcept { const bool discard = m_discardNextMouseDelta; m_discardNextMouseDelta = false; return discard; }
 void ImGuiUIManager::SetDebugMetrics(UIDebugMetrics metrics) {
     m_debugMetrics = std::move(metrics);

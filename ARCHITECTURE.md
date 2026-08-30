@@ -51,7 +51,7 @@ Anything less than the above is an unfinished product, regardless of unit test c
 | Platform / SDL2 | Real | Desktop build with real SDL2 window and GL 3.3 Core context. |
 | **Renderer** | Real | GL 3.3 Core renderer with textured block rendering via 2D array texture atlas. |
 | **UI** | Partial | Dear ImGui + SDL2/OpenGL 3 desktop backend is real: DPI-scaled fonts, themed widgets, input arbitration, modal errors, transient notifications, and F3 metrics overlay render after the HUD. Engine-rendered HUD draws crosshair, hotbar selection, held-item silhouette, selected-item label, targeted block outline, texture-backed progressive mining cracks, and break particles. Menu screen behavior remains item 09. |
-| **App states** | Partial | `BootState`, `MainMenuState` render a clear sky (no menu UI yet - item 08/09). `InGameState` owns a `GameSession` with first-person WASD/mouse-look, jumping, collision, generated terrain, and `ChunkRenderer` rendering. |
+| **App states** | Partial | The desktop app now starts at a rendered ImGui main menu with world selection/creation, loading, pause, settings, error screens, and safe overlay transitions. New worlds persist metadata and regenerate deterministically from their seed; full region/player persistence remains item 10. `InGameState` owns a `GameSession` with first-person WASD/mouse-look, jumping, collision, generated terrain, and `ChunkRenderer` rendering. |
 | Editor | Stub | Prints one line and exits. |
 | App assets | Real | 15 launch block textures (16×16 PNG), `blocks.json`, server/default configs, shaders. |
 

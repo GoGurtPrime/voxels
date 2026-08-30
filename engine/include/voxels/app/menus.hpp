@@ -44,6 +44,7 @@ public:
     void SetAlwaysSunny(bool value) noexcept { m_options.alwaysSunny = value; }
     void SetSandboxMode(bool value) noexcept { m_options.sandboxMode = value; }
     void SetPublic(bool isPublic) noexcept { m_options.isPublic = isPublic; }
+    void SetRenderDistance(int value) noexcept { m_options.renderDistanceChunks = value; }
 
     [[nodiscard]] const std::string& GetWorldName() const noexcept { return m_worldName; }
     [[nodiscard]] const WorldOptions& GetWorldOptions() const noexcept { return m_options; }
@@ -54,6 +55,9 @@ private:
     std::string m_worldName;
     WorldOptions m_options;
 };
+
+[[nodiscard]] std::uint64_t SeedFromText(std::string_view text) noexcept;
+[[nodiscard]] bool IsFilesystemSafeWorldName(std::string_view name) noexcept;
 
 /// Actions exposed by the pause menu; the app layer maps these onto state machine transitions.
 enum class PauseMenuAction {

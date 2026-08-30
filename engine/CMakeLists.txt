@@ -42,6 +42,7 @@ add_library(voxels_engine
     src/app/state_machine.cpp
     src/app/save_manager.cpp
     src/app/menus.cpp
+    src/app/state_machine_screens.cpp
     src/ui/ui_manager.cpp
     src/ui/imgui_ui_manager.cpp
 )

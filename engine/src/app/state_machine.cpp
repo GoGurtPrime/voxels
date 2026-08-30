@@ -42,6 +42,8 @@ std::string_view ToString(AppStateId id) noexcept {
         case AppStateId::LoadingScreen: return "LoadingScreen";
         case AppStateId::InGame: return "InGame";
         case AppStateId::PauseMenu: return "PauseMenu";
+        case AppStateId::Settings: return "Settings";
+        case AppStateId::Error: return "Error";
     }
     return "Unknown";
 }
@@ -55,6 +57,11 @@ void AppStateMachine::Start(std::unique_ptr<IAppState> state) {
 }
 
 void AppStateMachine::TransitionTo(std::unique_ptr<IAppState> state) {
+    while (!m_overlays.empty()) {
+        m_overlays.back()->OnExit();
+        m_log.push_back({m_overlays.back()->GetId(), false});
+        m_overlays.pop_back();
+    }
     if (m_current) {
         m_current->OnExit();
         m_log.push_back({m_current->GetId(), false});
@@ -66,19 +73,50 @@ void AppStateMachine::TransitionTo(std::unique_ptr<IAppState> state) {
     }
 }
 
+void AppStateMachine::RequestTransition(std::unique_ptr<IAppState> state) {
+    m_pending = std::move(state);
+}
+
+void AppStateMachine::PushOverlay(std::unique_ptr<IAppState> state) {
+    if (!state) return;
+    m_log.push_back({state->GetId(), true});
+    state->OnEnter();
+    m_overlays.push_back(std::move(state));
+}
+
+void AppStateMachine::RequestPushOverlay(std::unique_ptr<IAppState> state) {
+    m_pendingOverlay = std::move(state);
+}
+
+void AppStateMachine::PopOverlay() {
+    if (m_overlays.empty()) return;
+    m_overlays.back()->OnExit();
+    m_log.push_back({m_overlays.back()->GetId(), false});
+    m_overlays.pop_back();
+}
+
+void AppStateMachine::RequestPopOverlay() {
+    m_popOverlayRequested = true;
+}
+
 void AppStateMachine::Update(double deltaSeconds) {
-    if (m_current) {
-        m_current->Update(deltaSeconds);
+    IAppState* active = m_overlays.empty() ? m_current.get() : m_overlays.back().get();
+    if (active) active->Update(deltaSeconds);
+    if (m_pending) TransitionTo(std::move(m_pending));
+    if (m_popOverlayRequested) {
+        m_popOverlayRequested = false;
+        PopOverlay();
     }
+    if (m_pendingOverlay) PushOverlay(std::move(m_pendingOverlay));
 }
 
 void AppStateMachine::Render() {
-    if (m_current) {
-        m_current->Render();
-    }
+    if (m_current) m_current->Render();
+    for (const auto& overlay : m_overlays) overlay->Render();
 }
 
 void AppStateMachine::Shutdown() {
+    while (!m_overlays.empty()) PopOverlay();
     if (m_current) {
         m_current->OnExit();
         m_log.push_back({m_current->GetId(), false});

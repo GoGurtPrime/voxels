@@ -20,6 +20,7 @@
 #include "voxels/app/state_machine.hpp"
 #include "voxels/core/job_system.hpp"
 #include "voxels/core/paths.hpp"
+#include "voxels/core/preferences.hpp"
 #include "voxels/engine.hpp"
 #include "voxels/graphics/gl_renderer.hpp"
 #include "voxels/input/input_manager.hpp"
@@ -219,24 +220,26 @@ int main(int argc, char** argv) {
 
     voxels::SetGlobalRenderer(&renderer);
 
-    voxels::AppStateMachine stateMachine;
-    stateMachine.Start(std::make_unique<voxels::BootState>());
-    stateMachine.TransitionTo(std::make_unique<voxels::MainMenuState>());
-
-    // No real menu UI exists yet (Dear ImGui lands in work item 08/09), so the shipping path
-    // drops straight into a generated, rendered world so it is directly observable on launch.
-    voxels::WorldOptions worldOptions;
-    if (options.seedOverride) {
-        worldOptions.seed = static_cast<std::uint64_t>(options.seed);
-    }
     voxels::InputManager inputManager;
-    auto inGameState = std::make_unique<voxels::InGameState>();
-    inGameState->SetBlockRegistry(&blockRegistry);
-    inGameState->SetTextureAtlas(&textureAtlas);
-    inGameState->SetWorldOptions(worldOptions);
-    inGameState->SetInputManager(&inputManager);
-    inGameState->SetPlatform(platform);
-    stateMachine.TransitionTo(std::move(inGameState));
+    voxels::PreferencesManager preferencesManager(voxels::Paths::UserDataDir() / "settings.json", platform->GetContext().type);
+    voxels::GamePreferences preferences = preferencesManager.Load();
+    voxels::SaveManager saveManager(voxels::Paths::UserDataDir() / "saves");
+    bool running = true;
+    voxels::AppStateMachine stateMachine;
+    voxels::AppContext appContext{};
+    appContext.platform = platform;
+    appContext.renderer = &renderer;
+    appContext.ui = &uiManager;
+    appContext.input = &inputManager;
+    appContext.blockRegistry = &blockRegistry;
+    appContext.textureAtlas = &textureAtlas;
+    appContext.saveManager = &saveManager;
+    appContext.preferences = &preferences;
+    appContext.requestTransition = [&stateMachine](std::unique_ptr<voxels::IAppState> state) { stateMachine.RequestTransition(std::move(state)); };
+    appContext.requestPushOverlay = [&stateMachine](std::unique_ptr<voxels::IAppState> state) { stateMachine.RequestPushOverlay(std::move(state)); };
+    appContext.requestPopOverlay = [&stateMachine]() { stateMachine.RequestPopOverlay(); };
+    appContext.requestQuit = [&running]() { running = false; };
+    stateMachine.Start(std::make_unique<voxels::MainMenuState>(&appContext));
 
     voxels::networking::GameServer localServer;
     voxels::networking::GameClient localClient;
@@ -246,7 +249,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    bool running = true;
     WindowEventListener windowListener(running, renderer, inputManager, uiManager);
     if (platform != nullptr) {
         platform->RegisterEventListener(&uiManager, 1000);
@@ -277,8 +279,8 @@ int main(int argc, char** argv) {
             stateMachine.Update(kFixedStepSeconds);
         }
 
-        stateMachine.Render();
         uiManager.BeginFrame();
+        stateMachine.Render();
         voxels::UIDebugMetrics debugMetrics{};
         debugMetrics.frameMilliseconds = static_cast<float>(deltaSeconds * 1000.0);
         debugMetrics.framesPerSecond = deltaSeconds > 0.0 ? static_cast<float>(1.0 / deltaSeconds) : 0.0f;

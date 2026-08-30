@@ -12,6 +12,7 @@
  */
 
 #include <memory>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -37,13 +38,34 @@ enum class AppStateId {
     WorldCreation,
     LoadingScreen,
     InGame,
-    PauseMenu
+    PauseMenu,
+    Settings,
+    Error
 };
 
 class WorldCreationController;
 class PauseMenuController;
 class LoadingScreenModel;
 class IPlatform;
+class ImGuiUIManager;
+class SaveManager;
+class InGameState;
+
+struct AppContext {
+    IPlatform* platform = nullptr;
+    graphics::GLRenderer* renderer = nullptr;
+    ImGuiUIManager* ui = nullptr;
+    InputManager* input = nullptr;
+    BlockRegistry* blockRegistry = nullptr;
+    TextureAtlas* textureAtlas = nullptr;
+    SaveManager* saveManager = nullptr;
+    GamePreferences* preferences = nullptr;
+    InGameState* activeGame = nullptr;
+    std::function<void(std::unique_ptr<class IAppState>)> requestTransition;
+    std::function<void(std::unique_ptr<class IAppState>)> requestPushOverlay;
+    std::function<void()> requestPopOverlay;
+    std::function<void()> requestQuit;
+};
 
 [[nodiscard]] std::string_view ToString(AppStateId id) noexcept;
 
@@ -51,22 +73,29 @@ class IPlatform;
 /// hooks they need; all hooks are optional no-ops by default.
 class IAppState {
 public:
+    explicit IAppState(AppContext* context = nullptr) : m_context(context) {}
     virtual ~IAppState() = default;
     [[nodiscard]] virtual AppStateId GetId() const noexcept = 0;
     virtual void OnEnter() {}
     virtual void OnExit() {}
     virtual void Update(double deltaSeconds) { (void)deltaSeconds; }
     virtual void Render() {}
+
+protected:
+    AppContext* m_context = nullptr;
 };
 
 class BootState final : public IAppState {
 public:
+    using IAppState::IAppState;
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::Boot; }
 };
 
 class MainMenuState final : public IAppState {
 public:
+    using IAppState::IAppState;
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::MainMenu; }
+    void OnEnter() override;
     void Update(double deltaSeconds) override;
     void Render() override;
 
@@ -77,16 +106,37 @@ private:
 
 class WorldSelectState final : public IAppState {
 public:
+    using IAppState::IAppState;
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::WorldSelect; }
+    void OnEnter() override;
+    void Update(double deltaSeconds) override;
+    void Render() override;
+
+private:
+    std::vector<SaveSlot> m_saves;
+    int m_selectedSave = -1;
+    bool m_confirmDelete = false;
+    std::string m_deleteConfirmation;
 };
 
 class WorldCreationState final : public IAppState {
 public:
+    using IAppState::IAppState;
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::WorldCreation; }
+    void OnEnter() override;
+    void Update(double deltaSeconds) override;
+    void Render() override;
+
+private:
+    WorldCreationController* GetController() noexcept;
+    std::unique_ptr<WorldCreationController> m_controller;
+    std::string m_seedText;
+    std::string m_error;
 };
 
 class LoadingScreenState final : public IAppState {
 public:
+    using IAppState::IAppState;
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::LoadingScreen; }
 
     void SetSaveManager(ISaveManager& manager) noexcept { m_saveManager = &manager; }
@@ -94,6 +144,9 @@ public:
     void SetWorldOptions(WorldOptions options) noexcept { m_options = std::move(options); }
 
     void RunGeneration();
+    void OnEnter() override;
+    void Update(double deltaSeconds) override;
+    void Render() override;
     [[nodiscard]] const World& GetWorld() const noexcept { return m_world; }
     [[nodiscard]] Vec3I GetSpawnPosition() const noexcept { return m_spawnPosition; }
     [[nodiscard]] GenerationPhase GetPhase() const noexcept { return m_phase; }
@@ -106,6 +159,7 @@ private:
     World m_world;
     GenerationPhase m_phase = GenerationPhase::Shape;
     Vec3I m_spawnPosition{0, 1, 0};
+    bool m_generationComplete = false;
 };
 
 /// The real playable gameplay state: generates a bounded voxel world and renders it through
@@ -114,6 +168,7 @@ private:
 /// a slow automatic flythrough camera so the generated world is directly observable.
 class InGameState final : public IAppState {
 public:
+    using IAppState::IAppState;
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::InGame; }
 
     void SetBlockRegistry(BlockRegistry* registry) noexcept { m_registry = registry; }
@@ -122,6 +177,8 @@ public:
     void SetInputManager(InputManager* inputManager) noexcept { m_inputManager = inputManager; }
     void SetPlayerCamera(Camera* camera) noexcept { m_cameraOverride = camera; }
     void SetPlatform(IPlatform* platform) noexcept { m_platform = platform; }
+    void SetActiveSave(GameSave save) { m_activeSave = std::move(save); }
+    void ApplyPreferences(const GamePreferences& preferences) noexcept { m_session.SetPreferences(preferences); }
 
     void OnEnter() override;
     void OnExit() override;
@@ -147,11 +204,46 @@ private:
     std::unique_ptr<graphics::GameplayHudRenderer> m_hudRenderer;
     float m_elapsedSeconds = 0.0f;
     bool m_worldGenerated = false;
+    GameSave m_activeSave{};
 };
 
 class PauseMenuState final : public IAppState {
 public:
+    PauseMenuState(AppContext* context = nullptr, GameSave activeSave = {})
+        : IAppState(context), m_activeSave(std::move(activeSave)) {}
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::PauseMenu; }
+    void OnEnter() override;
+    void Update(double deltaSeconds) override;
+    void Render() override;
+
+private:
+    GameSave m_activeSave;
+};
+
+class SettingsState final : public IAppState {
+public:
+    explicit SettingsState(AppContext* context) : IAppState(context) {}
+    [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::Settings; }
+    void OnEnter() override;
+    void Update(double deltaSeconds) override;
+    void Render() override;
+
+private:
+    GamePreferences m_pending{};
+};
+
+class ErrorState final : public IAppState {
+public:
+    ErrorState(AppContext* context, std::string title, std::string detail)
+        : IAppState(context), m_title(std::move(title)), m_detail(std::move(detail)) {}
+    [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::Error; }
+    void OnEnter() override;
+    void Update(double deltaSeconds) override;
+    void Render() override;
+
+private:
+    std::string m_title;
+    std::string m_detail;
 };
 
 /// Owns exactly one active `IAppState` at a time and guarantees `OnExit`/`OnEnter` are called
@@ -172,6 +264,12 @@ public:
     /// Exits the current state (if any) and enters `state`, in that order.
     void TransitionTo(std::unique_ptr<IAppState> state);
 
+    void RequestTransition(std::unique_ptr<IAppState> state);
+    void PushOverlay(std::unique_ptr<IAppState> state);
+    void RequestPushOverlay(std::unique_ptr<IAppState> state);
+    void PopOverlay();
+    void RequestPopOverlay();
+
     void Update(double deltaSeconds);
     void Render();
 
@@ -185,6 +283,10 @@ public:
 
 private:
     std::unique_ptr<IAppState> m_current;
+    std::unique_ptr<IAppState> m_pending;
+    std::vector<std::unique_ptr<IAppState>> m_overlays;
+    std::unique_ptr<IAppState> m_pendingOverlay;
+    bool m_popOverlayRequested = false;
     std::vector<TransitionRecord> m_log;
 };
 

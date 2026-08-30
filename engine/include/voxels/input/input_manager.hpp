@@ -70,6 +70,7 @@ public:
     void InjectMouseDelta(float x, float y, int player = 0);
     void InjectMouseButtonEvent(int button, bool pressed, int player = 0);
     void InjectMouseWheel(int deltaY, int player = 0);
+    void ClearGameplayInput(int player = 0);
     void InjectAxisEvent(InputAxis axis, float value, int player = 0);
     void InjectControllerConnection(int player, bool connected);
     void InjectGamepadButton(int player, int buttonCode, bool pressed);

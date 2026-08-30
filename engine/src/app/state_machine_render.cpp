@@ -41,20 +41,12 @@ void MainMenuState::Update(double deltaSeconds) {
     m_camera.fovY = glm::radians(60.0f);
 }
 
-void MainMenuState::Render() {
-    // Real menu UI (ImGui) lands in work item 08; for now this just proves the render loop and
-    // GL context are alive with a clear sky - no test-scene geometry is drawn here anymore
-    // (removed per work_items/05, task 8: the temporary render-test scene from work item 03).
-    if (g_renderer == nullptr) {
-        return;
-    }
-    g_renderer->BeginFrame({0.58f, 0.72f, 0.88f, 1.0f});
-}
-
 void InGameState::OnEnter() {
     m_session.SetWorldOptions(m_options);
     m_session.SetInputManager(m_inputManager);
     m_session.SetBlockRegistry(m_registry);
+    if (m_context != nullptr && m_context->preferences != nullptr) m_session.SetPreferences(*m_context->preferences);
+    if (m_context != nullptr) m_context->activeGame = this;
     m_session.Initialize();
 
     if (m_platform != nullptr) {
@@ -62,12 +54,12 @@ void InGameState::OnEnter() {
     }
 
     if (m_registry != nullptr && m_atlas != nullptr) {
-        if (m_jobSystem == nullptr) {
-            m_jobSystem = std::make_unique<JobSystem>(2);
-        }
+        if (m_jobSystem == nullptr) m_jobSystem = std::make_unique<JobSystem>();
         if (m_chunkRenderer == nullptr) {
             m_chunkRenderer = std::make_unique<graphics::ChunkRenderer>(*m_registry, *m_atlas, *m_jobSystem);
             m_chunkRenderer->SetUploadBudget(16, 4.0);
+            const std::size_t workerCount = m_jobSystem->WorkerCount();
+            m_chunkRenderer->SetBackgroundMeshQueueLimit(workerCount > 1 ? workerCount - 1 : 1);
         }
         if (m_hudRenderer == nullptr) m_hudRenderer = std::make_unique<graphics::GameplayHudRenderer>();
     }
@@ -79,6 +71,7 @@ void InGameState::OnEnter() {
         m_inputManager->BindAction("MoveRight", InputBinding{"MoveRight", static_cast<int>('d'), static_cast<int>('D'), InputDeviceType::Keyboard});
         m_inputManager->BindAction("Jump", InputBinding{"Jump", static_cast<int>(' '), 0, InputDeviceType::Keyboard});
         m_inputManager->BindAction("Sprint", InputBinding{"Sprint", 1073742049, 0, InputDeviceType::Keyboard});
+        m_inputManager->BindAction("Pause", InputBinding{"Pause", 27, 0, InputDeviceType::Keyboard});
         m_inputManager->BindAction("DestroyBlock", InputBinding{"DestroyBlock", 1, 0, InputDeviceType::Mouse});
         m_inputManager->BindAction("PlaceBlock", InputBinding{"PlaceBlock", 3, 0, InputDeviceType::Mouse});
         for (int slot = 0; slot < 9; ++slot) {
@@ -101,10 +94,6 @@ void InGameState::OnEnter() {
             m_chunkRenderer->MarkBlockEdited(coordinate, local, world.GetChunkSize());
         }
         m_session.ClearEditedBlocks();
-        for (const auto& [coordinate, chunk] : world.GetChunks()) {
-            (void)chunk;
-            m_chunkRenderer->MarkChunkDirty(coordinate);
-        }
         m_chunkRenderer->EnqueueDirtyMeshJobs(world, m_session.GetCamera().position);
         m_chunkRenderer->UploadCompletedMeshes();
     }
@@ -112,6 +101,7 @@ void InGameState::OnEnter() {
 }
 
 void InGameState::OnExit() {
+        if (m_context != nullptr && m_context->activeGame == this) m_context->activeGame = nullptr;
     if (m_platform != nullptr) {
         m_platform->SetRelativeMouseMode(false);
     }
@@ -140,6 +130,12 @@ void InGameState::GenerateInitialWorld() {
 
 void InGameState::Update(double deltaSeconds) {
     m_elapsedSeconds += static_cast<float>(deltaSeconds);
+
+    if (m_context != nullptr && m_context->input != nullptr && m_context->input->IsActionActive("Pause") &&
+        m_context->requestPushOverlay) {
+        m_context->requestPushOverlay(std::make_unique<PauseMenuState>(m_context, m_activeSave));
+        return;
+    }
 
     m_session.Update(static_cast<float>(deltaSeconds));
     if (m_cameraOverride != nullptr) {
