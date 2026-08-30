@@ -169,6 +169,18 @@ int main(int argc, char** argv) {
     stateMachine.Start(std::make_unique<voxels::BootState>());
     stateMachine.TransitionTo(std::make_unique<voxels::MainMenuState>());
 
+    // No real menu UI exists yet (Dear ImGui lands in work item 08/09), so the shipping path
+    // drops straight into a generated, rendered world so it is directly observable on launch.
+    voxels::WorldOptions worldOptions;
+    if (options.seedOverride) {
+        worldOptions.seed = static_cast<std::uint64_t>(options.seed);
+    }
+    auto inGameState = std::make_unique<voxels::InGameState>();
+    inGameState->SetBlockRegistry(&blockRegistry);
+    inGameState->SetTextureAtlas(&textureAtlas);
+    inGameState->SetWorldOptions(worldOptions);
+    stateMachine.TransitionTo(std::move(inGameState));
+
     voxels::networking::GameServer localServer;
     voxels::networking::GameClient localClient;
     if (!localServer.Start("127.0.0.1", 0) || !localClient.Connect("127.0.0.1", localServer.Port())) {
@@ -218,6 +230,11 @@ int main(int argc, char** argv) {
     localClient.Disconnect();
     localServer.Stop();
     std::cout << "Voxels app loop exited after " << frameCount << " frames.\n";
+    // Exit the active state (releasing any GPU resources it owns, e.g. InGameState's
+    // ChunkRenderer) while the GL context is still alive, before the renderer/platform below
+    // tear it down. Destroying stateMachine after engine.shutdown() would call GL delete
+    // functions against an already-destroyed context.
+    stateMachine.Shutdown();
     voxels::SetGlobalRenderer(nullptr);
     renderer.Shutdown();
     engine.shutdown();

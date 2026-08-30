@@ -78,6 +78,14 @@ void AppStateMachine::Render() {
     }
 }
 
+void AppStateMachine::Shutdown() {
+    if (m_current) {
+        m_current->OnExit();
+        m_log.push_back({m_current->GetId(), false});
+        m_current.reset();
+    }
+}
+
 void LoadingScreenState::RunGeneration() {
     if (m_saveManager && !m_saveName.empty()) {
         GameSave loadedSave{};
