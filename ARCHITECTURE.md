@@ -39,9 +39,10 @@ Anything less than the above is an unfinished product, regardless of unit test c
 | :--- | :--- | :--- |
 | Core (logger, prefs, math, paths) | Real | Usable as-is. |
 | World storage (chunk, RLE serialization, raycast, block registry) | Real | 16³ chunk sections in a sparse map; data-driven catalogue (`blocks.json`) with 14 launch blocks. |
-| World generation (Perlin 2D/3D, shape → caves → vegetation) | Real | Deterministic, seeded, phase-pluggable. |
+| World generation (Perlin 2D/3D, shape → caves → vegetation → skylight) | Real | Deterministic, seeded, phase-pluggable. Vertical chunk sections beyond the one generated at load are not yet stitched together (item 12). |
 | Textures & Atlas | Real | STB decoders, `TextureLoader`, `TextureForge`, `TextureAtlas` (GL_TEXTURE_2D_ARRAY), `--dump-atlas`. |
-| Greedy mesher (`world/geometry.cpp`) | Real (CPU) | Produces merged quads; **never reaches the GPU**. |
+| Chunk mesher (`render/chunk_mesher.cpp`) | Real | Neighbour-aware, greedy-merged, AO + sky/block light + transparent-range split; consumed by `ChunkRenderer` and **reaches the GPU every frame**. |
+| `ChunkRenderer` (`render/chunk_renderer.cpp`) | Real | Job-scheduled meshing, budgeted upload, frustum-culled opaque/transparent draw. Wired into `InGameState`. |
 | Physics / block interaction / camera math | Real | **Never called from the running game loop.** |
 | Input manager | Real | **Not bound to the player or the UI.** |
 | Networking (Asio UDP client/server) | Real | Ticks in `main.cpp` but carries no gameplay traffic. |
@@ -50,7 +51,7 @@ Anything less than the above is an unfinished product, regardless of unit test c
 | Platform / SDL2 | Real | Desktop build with real SDL2 window and GL 3.3 Core context. |
 | **Renderer** | Real | GL 3.3 Core renderer with textured block rendering via 2D array texture atlas. |
 | **UI** | **Absent** | `UIManager` computes a DPI scale and nothing else. Dear ImGui is not a dependency of this project. |
-| **App states** | Partial | `BootState`, `MainMenuState`, `InGameState` render real 3D block-textured viewport. |
+| **App states** | Partial | `BootState`, `MainMenuState` render a clear sky (no menu UI yet - item 08/09). `InGameState` generates a bounded voxel world and renders it through `ChunkRenderer` with an automatic flythrough camera (a real player controller is item 06). |
 | Editor | Stub | Prints one line and exits. |
 | App assets | Real | 15 launch block textures (16×16 PNG), `blocks.json`, server/default configs, shaders. |
 
@@ -149,9 +150,10 @@ Every state receives an `AppContext&` holding non-owning references to the servi
 
 ### 6.2 World & Meshing
 - `World` owns sparse `Chunk` sections plus the block registry.
-- The mesher consumes a chunk and its six neighbours and emits `ChunkMeshData { vertices, indices, opaqueRange, transparentRange }`. It never touches GPU types.
-- `ChunkRenderer` owns the `chunkCoord → GpuMesh` cache, the dirty rebuild queue, frustum culling, and draw submission.
-- Any block edit marks the owning chunk dirty, plus any neighbour whose boundary faces changed.
+- `render/chunk_mesher.cpp` consumes a chunk and its six neighbours and emits `ChunkMeshData { vertices, indices, opaqueIndexCount, transparentIndexCount, provisional }`. It lives under `render/` (not `world/`) because it also depends on `TextureAtlas`; `world/` itself still never includes `graphics/`.
+- `ChunkRenderer` owns the `chunkCoord → GpuChunkMesh` cache, the dirty rebuild queue (mesh jobs run on `JobSystem` workers per ADR-008; only GPU upload/draw happen on the render thread), frustum culling, and draw submission (opaque front-to-back, then transparent back-to-front).
+- A neighbour that is not yet resident is treated as occluding (no face drawn) rather than exposing a face, and the mesh is marked `provisional` so it is automatically re-queued once the neighbour loads - this avoids ever drawing a "wall of faces" at an unloaded seam.
+- `ChunkRenderer::MarkBlockEdited` marks the owning chunk dirty plus any neighbour whose boundary the edit touched (interior edits dirty 1 chunk, corner edits dirty at most 4); not yet called by gameplay code since block breaking/placing is work item 07.
 
 ### 6.3 Generation
 - `GenerationPipeline` is an ordered list of `IGenerationPhase`: **Shape → Caves → Ore → Vegetation → Lighting**. Phases are pure functions of `(seed, chunkCoord, chunkData)` so generation is deterministic and parallelizable.
