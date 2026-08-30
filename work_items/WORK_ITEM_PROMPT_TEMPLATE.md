@@ -16,9 +16,9 @@ Read these before writing any code, in this order:
   2. ARCHITECTURE.md       — system design, ADRs, current honest state of the codebase
   3. DIAGRAMS.md           — process, state machine, render, and pipeline flows
   4. work_items/README.md  — the roadmap and where this item sits in it
-  5. work_items/14_asset_pack_format_and_bundler.md.md — the active work item, which is your entire scope
+  5. work_items/15_voxel_editor_tool.md — the active work item, which is your entire scope
 
-Implement work item 14 completely.
+Implement work item 15 completely.
 
 Non-negotiable rules for this session:
   - The Anti-Shell Rule (AGENT_RULES.md §2) is in force. No empty state classes, no no-op
