@@ -47,6 +47,8 @@ struct GamePreferences {
     int renderDistance = 8;
     int simulationDistance = 4;
     float fieldOfView = 90.0f;
+    float mouseSensitivity = 1.0f;
+    bool invertY = false;
     int antiAliasingSamples = 4;
     ShadowQuality shadowQuality = ShadowQuality::Medium;
     float masterVolume = 1.0f;

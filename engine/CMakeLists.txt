@@ -22,6 +22,9 @@ add_library(voxels_engine
     src/networking/packet.cpp
     src/networking/server.cpp
     src/networking/client.cpp
+    src/gameplay/physics.cpp
+    src/gameplay/camera_controller.cpp
+    src/gameplay/block_interaction.cpp
     src/app/cli_parser.cpp
     src/app/state_machine.cpp
     src/app/save_manager.cpp

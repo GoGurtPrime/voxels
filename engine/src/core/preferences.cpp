@@ -81,6 +81,14 @@ struct JsonValue {
         return fallback;
     }
 
+    [[nodiscard]] bool GetBool(const std::string& key, bool fallback) const {
+        const auto it = objectValue.find(key);
+        if (it != objectValue.end() && it->second.type == Type::Bool) {
+            return it->second.boolValue;
+        }
+        return fallback;
+    }
+
     [[nodiscard]] int GetInt(const std::string& key, int fallback) const {
         const auto it = objectValue.find(key);
         if (it != objectValue.end() && it->second.type == Type::Number) {
@@ -274,6 +282,8 @@ std::string PreferencesManager::ToJson(const GamePreferences& preferences) {
     out << "  \"renderDistance\": " << preferences.renderDistance << ",\n";
     out << "  \"simulationDistance\": " << preferences.simulationDistance << ",\n";
     out << "  \"fieldOfView\": " << preferences.fieldOfView << ",\n";
+    out << "  \"mouseSensitivity\": " << preferences.mouseSensitivity << ",\n";
+    out << "  \"invertY\": " << (preferences.invertY ? "true" : "false") << ",\n";
     out << "  \"antiAliasingSamples\": " << preferences.antiAliasingSamples << ",\n";
     out << "  \"shadowQuality\": ";
     WriteJsonString(out, ToString(preferences.shadowQuality));
@@ -312,6 +322,8 @@ GamePreferences PreferencesManager::FromJson(const std::string& json) {
     preferences.renderDistance = root.GetInt("renderDistance", preferences.renderDistance);
     preferences.simulationDistance = root.GetInt("simulationDistance", preferences.simulationDistance);
     preferences.fieldOfView = root.GetFloat("fieldOfView", preferences.fieldOfView);
+    preferences.mouseSensitivity = root.GetFloat("mouseSensitivity", preferences.mouseSensitivity);
+    preferences.invertY = root.GetBool("invertY", preferences.invertY);
     preferences.antiAliasingSamples = root.GetInt("antiAliasingSamples", preferences.antiAliasingSamples);
     preferences.shadowQuality = ShadowQualityFromString(root.GetString("shadowQuality", "Medium"));
     preferences.masterVolume = root.GetFloat("masterVolume", preferences.masterVolume);

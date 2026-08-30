@@ -12,6 +12,7 @@ add_executable(voxels_tests
     test_audio_assets.cpp
     test_app_lifecycle.cpp
     test_networking.cpp
+    test_gameplay.cpp
 )
 
 target_link_libraries(voxels_tests
