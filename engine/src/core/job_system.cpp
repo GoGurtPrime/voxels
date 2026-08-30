@@ -49,13 +49,19 @@ void JobSystem::Shutdown() {
 }
 
 void JobSystem::WorkerLoop() {
-    while (m_running.load()) {
+    // Loop on queue-empty AND not-running (rather than just not-running) so Shutdown() always
+    // drains every already-queued job instead of racing worker threads and silently dropping
+    // whatever was still queued when m_running flipped false.
+    while (true) {
         std::function<void()> job;
         {
             std::unique_lock<std::mutex> lock(m_mutex);
             m_cv.wait(lock, [this] { return !m_jobs.empty() || !m_running.load(); });
-            if (!m_running.load() && m_jobs.empty()) {
-                return;
+            if (m_jobs.empty()) {
+                if (!m_running.load()) {
+                    return;
+                }
+                continue;
             }
             job = std::move(m_jobs.front());
             m_jobs.pop();
