@@ -22,10 +22,11 @@ std::string ToKeyValue(const PlayerState& state) {
     out << "yaw=" << state.yaw << '\n';
     out << "pitch=" << state.pitch << '\n';
     out << "onGround=" << (state.onGround ? 1 : 0) << '\n';
-    out << "selectedHotbarSlot=" << state.selectedHotbarSlot << '\n';
+    out << "selectedHotbarSlot=" << state.inventory.GetSelectedSlot() << '\n';
     out << "health=" << state.health << '\n';
-    for (std::size_t i = 0; i < state.inventory.size(); ++i) {
-        out << "inventory[" << i << "]=" << static_cast<unsigned int>(state.inventory[i]) << '\n';
+    for (std::size_t i = 0; i < state.inventory.Slots().size(); ++i) {
+        const gameplay::ItemStack& stack = state.inventory.GetSlot(i);
+        out << "inventory[" << i << "]=" << static_cast<unsigned int>(stack.blockId) << "," << stack.count << '\n';
     }
     return out.str();
 }
@@ -59,7 +60,7 @@ bool FromKeyValue(PlayerState& state, const std::string& text) {
         } else if (key == "onGround") {
             state.onGround = value == "1";
         } else if (key == "selectedHotbarSlot") {
-            state.selectedHotbarSlot = std::stoi(value);
+            state.inventory.SetSelectedSlot(std::stoi(value));
         } else if (key == "health") {
             state.health = std::stof(value);
         } else if (key.rfind("inventory[", 0) == 0) {
@@ -67,8 +68,11 @@ bool FromKeyValue(PlayerState& state, const std::string& text) {
             if (end != std::string::npos) {
                 const std::string idx = key.substr(10, end - 10);
                 const std::size_t index = static_cast<std::size_t>(std::stoul(idx));
-                if (index < state.inventory.size()) {
-                    state.inventory[index] = static_cast<BlockId>(static_cast<std::uint16_t>(std::stoul(value)));
+                if (index < state.inventory.Slots().size()) {
+                    const auto comma = value.find(',');
+                    const BlockId blockId = static_cast<BlockId>(static_cast<std::uint16_t>(std::stoul(value.substr(0, comma))));
+                    const int count = comma == std::string::npos ? (blockId == 0 ? 0 : 1) : std::stoi(value.substr(comma + 1));
+                    state.inventory.GetSlot(index) = {blockId, count};
                 }
             }
         }

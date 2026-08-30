@@ -74,3 +74,25 @@ TEST_CASE("Input.RebindingMoveForwardChangesResultingIntent", "[player][input]")
     REQUIRE(rebound.moveForward);
     REQUIRE_FALSE(rebound.moveBackward);
 }
+
+TEST_CASE("GameSession.SelectedItemLabelTracksSelectedSlotContents", "[player][inventory]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::InputManager input;
+    input.BindAction("Hotbar2", voxels::InputBinding{"", static_cast<int>('2'), 0, voxels::InputDeviceType::Keyboard});
+
+    voxels::GameSession session(&world);
+    session.SetBlockRegistry(&registry);
+    session.SetInputManager(&input);
+    session.Initialize();
+    session.GetPlayer().state.inventory.GetSlot(1) = {static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1};
+
+    input.InjectKeyEvent(static_cast<int>('2'), true);
+    session.Update(1.0f / 60.0f);
+    REQUIRE(session.GetSelectedItemLabel() == "Dirt");
+    REQUIRE(session.GetSelectedItemLabelAge() == Catch::Approx(0.0f));
+
+    input.InjectKeyEvent(static_cast<int>('2'), false);
+    session.Update(0.5f);
+    REQUIRE(session.GetSelectedItemLabelAge() == Catch::Approx(0.5f));
+}

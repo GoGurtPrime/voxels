@@ -9,9 +9,8 @@
 
 #pragma once
 
-#include <array>
-
 #include "voxels/core/game_types.hpp"
+#include "voxels/gameplay/inventory.hpp"
 #include "voxels/core/math.hpp"
 #include "voxels/world/block.hpp"
 
@@ -23,9 +22,8 @@ struct PlayerState {
     float yaw = 0.0f;
     float pitch = 0.0f;
     bool onGround = false;
-    int selectedHotbarSlot = 0;
     float health = 100.0f;
-    std::array<BlockId, 10> inventory{};
+    gameplay::Inventory inventory{};
 
     [[nodiscard]] bool operator==(const PlayerState&) const noexcept = default;
 };

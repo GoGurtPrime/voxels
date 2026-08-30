@@ -167,6 +167,7 @@ void ChunkRenderer::SetUploadBudget(std::uint32_t maxChunksPerFrame, double maxM
 }
 
 void ChunkRenderer::MarkChunkDirty(const voxels::ChunkCoordinate& coordinate) {
+    ++m_revisions[coordinate];
     m_dirty.insert(coordinate);
 }
 
@@ -218,18 +219,19 @@ void ChunkRenderer::EnqueueDirtyMeshJobs(const voxels::World& world, const glm::
         }
 
         std::shared_ptr<voxels::Chunk> owner = ownerIt->second;
+        const std::uint64_t revision = m_revisions[coordinate];
         m_dirty.erase(coordinate);
         m_inFlight.insert(coordinate);
 
         voxels::BlockRegistry& registry = m_registry;
         voxels::TextureAtlas& atlas = m_atlas;
-        m_jobSystem.Enqueue([this, coordinate, owner, neighborOwners, neighborhood, &registry, &atlas]() mutable {
+        m_jobSystem.Enqueue([this, coordinate, revision, owner, neighborOwners, neighborhood, &registry, &atlas]() mutable {
             for (std::size_t i = 0; i < neighborOwners.size(); ++i) {
                 neighborhood.neighbors[i] = neighborOwners[i].get();
             }
             ChunkMeshData data = BuildChunkMesh(*owner, neighborhood, registry, atlas);
             std::lock_guard<std::mutex> lock(m_completedMutex);
-            m_completed.push_back(PendingMeshResult{coordinate, std::move(data)});
+            m_completed.push_back(PendingMeshResult{coordinate, std::move(data), revision});
         });
     }
 }
@@ -351,6 +353,12 @@ void ChunkRenderer::UploadCompletedMeshes() {
     std::uint32_t uploaded = 0;
     for (std::size_t i = 0; i < batch.size(); ++i) {
         m_inFlight.erase(batch[i].coordinate);
+
+        if (batch[i].revision != m_revisions[batch[i].coordinate]) {
+            // A block edit happened while this job ran; preserve its dirty state and discard stale geometry.
+            m_dirty.insert(batch[i].coordinate);
+            continue;
+        }
 
         const auto elapsedMs =
             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();

@@ -38,18 +38,36 @@ bool OverlapsPlayer(const Player& player, const Vec3I& blockPos) {
 
 Vec3 ForwardVector(float yaw, float pitch) {
     const float cosPitch = std::cos(pitch);
-    return {std::sin(yaw) * cosPitch, std::sin(pitch), std::cos(yaw) * cosPitch};
+    return {-std::sin(yaw) * cosPitch, std::sin(pitch), -std::cos(yaw) * cosPitch};
 }
 
 } // namespace
 
 BlockInteraction::BlockInteraction(float reachDistance) : m_reachDistance(reachDistance) {}
 
+RaycastHit BlockInteraction::Target(const World& world, const Player& player, const BlockRegistry& registry,
+                                    bool targetLiquids) const {
+    const Vec3 dir = ForwardVector(player.state.yaw, player.state.pitch);
+    const Vec3 eye{player.state.position.x, player.state.position.y + 0.72f, player.state.position.z};
+    RaycastHit hit = world.Raycast(eye, dir, m_reachDistance);
+    while (hit.hit && !targetLiquids) {
+        const BlockDefinition* definition = registry.GetDefinition(world.GetBlock(hit.blockPosition));
+        if (definition == nullptr || !definition->isLiquid) return hit;
+        const float nextDistance = hit.distance + 0.001f;
+        if (nextDistance >= m_reachDistance) return {};
+        const Vec3 nextOrigin{eye.x + dir.x * nextDistance, eye.y + dir.y * nextDistance, eye.z + dir.z * nextDistance};
+        hit = world.Raycast(nextOrigin, dir, m_reachDistance - nextDistance);
+        hit.distance += nextDistance;
+    }
+    return hit;
+}
+
 InteractionResult BlockInteraction::BreakBlock(World& world, const Player& player,
                                               float reachDistanceOverride) const {
     const float reachDistance = reachDistanceOverride > 0.0f ? reachDistanceOverride : m_reachDistance;
     const Vec3 dir = ForwardVector(player.state.yaw, player.state.pitch);
-    const RaycastHit hit = world.Raycast(player.state.position, dir, reachDistance);
+    const Vec3 eye{player.state.position.x, player.state.position.y + 0.72f, player.state.position.z};
+    const RaycastHit hit = world.Raycast(eye, dir, reachDistance);
     if (!hit.hit) {
         return {};
     }
@@ -73,7 +91,8 @@ InteractionResult BlockInteraction::PlaceBlock(World& world, const Player& playe
                                               float reachDistanceOverride) const {
     const float reachDistance = reachDistanceOverride > 0.0f ? reachDistanceOverride : m_reachDistance;
     const Vec3 dir = ForwardVector(player.state.yaw, player.state.pitch);
-    RaycastHit hit = world.Raycast(player.state.position, dir, reachDistance);
+    const Vec3 eye{player.state.position.x, player.state.position.y + 0.72f, player.state.position.z};
+    RaycastHit hit = world.Raycast(eye, dir, reachDistance);
     if (!hit.hit && m_lastTarget != Vec3I{}) {
         hit.blockPosition = m_lastTarget;
         hit.face = m_lastFace;
@@ -93,9 +112,9 @@ InteractionResult BlockInteraction::PlaceBlock(World& world, const Player& playe
         case Face::NegZ: placement.z -= 1; break;
     }
 
-    const BlockId blockId = player.state.inventory[player.state.selectedHotbarSlot] != 0
-                                ? player.state.inventory[player.state.selectedHotbarSlot]
-                                : static_cast<BlockId>(BlockType::Dirt);
+    const ItemStack& heldStack = player.state.inventory.GetSelectedStack();
+    const BlockId blockId = heldStack.IsEmpty() ? static_cast<BlockId>(BlockType::Air) : heldStack.blockId;
+    if (blockId == static_cast<BlockId>(BlockType::Air)) return {};
     if (world.GetBlock(placement) != static_cast<BlockId>(BlockType::Air)) {
         return {};
     }

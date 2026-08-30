@@ -23,6 +23,7 @@
 #include "voxels/graphics/gl_renderer.hpp"
 #include "voxels/input/input_manager.hpp"
 #include "voxels/render/chunk_renderer.hpp"
+#include "voxels/render/gameplay_hud.hpp"
 #include "voxels/world/generation_pipeline.hpp"
 #include "voxels/world/world.hpp"
 #include "voxels/world/world_options.hpp"
@@ -143,6 +144,7 @@ private:
     GameSession m_session;
     std::unique_ptr<JobSystem> m_jobSystem;
     std::unique_ptr<graphics::ChunkRenderer> m_chunkRenderer;
+    std::unique_ptr<graphics::GameplayHudRenderer> m_hudRenderer;
     float m_elapsedSeconds = 0.0f;
     bool m_worldGenerated = false;
 };

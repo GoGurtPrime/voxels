@@ -23,8 +23,10 @@ struct InteractionResult {
 
 class BlockInteraction {
 public:
-    explicit BlockInteraction(float reachDistance = 6.0f);
+    explicit BlockInteraction(float reachDistance = 5.0f);
 
+    [[nodiscard]] RaycastHit Target(const World& world, const Player& player, const BlockRegistry& registry,
+                                    bool targetLiquids = false) const;
     [[nodiscard]] InteractionResult BreakBlock(World& world, const Player& player, float reachDistanceOverride = -1.0f) const;
     [[nodiscard]] InteractionResult PlaceBlock(World& world, const Player& player, float reachDistanceOverride = -1.0f) const;
 

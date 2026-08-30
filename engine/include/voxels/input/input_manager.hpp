@@ -38,6 +38,10 @@ struct InputState {
     bool jump = false;
     bool sprint = false;
     bool pause = false;
+    bool destroyBlock = false;
+    bool placeBlock = false;
+    int hotbarSlot = -1;
+    int mouseWheelY = 0;
     float mouseX = 0.0f;
     float mouseY = 0.0f;
 };
@@ -64,6 +68,8 @@ public:
 
     void InjectKeyEvent(int keyCode, bool pressed, int player = 0);
     void InjectMouseDelta(float x, float y, int player = 0);
+    void InjectMouseButtonEvent(int button, bool pressed, int player = 0);
+    void InjectMouseWheel(int deltaY, int player = 0);
     void InjectAxisEvent(InputAxis axis, float value, int player = 0);
     void InjectControllerConnection(int player, bool connected);
     void InjectGamepadButton(int player, int buttonCode, bool pressed);
@@ -79,10 +85,12 @@ private:
         PlayerSlotState state = PlayerSlotState::Connected;
         std::map<int, bool> keys;
         std::map<int, bool> buttons;
+        std::map<int, bool> mouseButtons;
         std::map<InputAxis, float> axes;
         std::map<InputAxis, AxisSettings> axisSettings;
         float mouseX = 0.0f;
         float mouseY = 0.0f;
+        int mouseWheelY = 0;
     };
 
     [[nodiscard]] PlayerChannel* Channel(int player);

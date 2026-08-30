@@ -55,6 +55,7 @@ void MainMenuState::Render() {
 void InGameState::OnEnter() {
     m_session.SetWorldOptions(m_options);
     m_session.SetInputManager(m_inputManager);
+    m_session.SetBlockRegistry(m_registry);
     m_session.Initialize();
 
     if (m_platform != nullptr) {
@@ -69,6 +70,7 @@ void InGameState::OnEnter() {
             m_chunkRenderer = std::make_unique<graphics::ChunkRenderer>(*m_registry, *m_atlas, *m_jobSystem);
             m_chunkRenderer->SetUploadBudget(16, 4.0);
         }
+        if (m_hudRenderer == nullptr) m_hudRenderer = std::make_unique<graphics::GameplayHudRenderer>();
     }
 
     if (m_inputManager != nullptr) {
@@ -78,6 +80,11 @@ void InGameState::OnEnter() {
         m_inputManager->BindAction("MoveRight", InputBinding{"MoveRight", static_cast<int>('d'), static_cast<int>('D'), InputDeviceType::Keyboard});
         m_inputManager->BindAction("Jump", InputBinding{"Jump", static_cast<int>(' '), 0, InputDeviceType::Keyboard});
         m_inputManager->BindAction("Sprint", InputBinding{"Sprint", 1073742049, 0, InputDeviceType::Keyboard});
+        m_inputManager->BindAction("DestroyBlock", InputBinding{"DestroyBlock", 1, 0, InputDeviceType::Mouse});
+        m_inputManager->BindAction("PlaceBlock", InputBinding{"PlaceBlock", 3, 0, InputDeviceType::Mouse});
+        for (int slot = 0; slot < 9; ++slot) {
+            m_inputManager->BindAction("Hotbar" + std::to_string(slot + 1), InputBinding{"", static_cast<int>('1') + slot, 0, InputDeviceType::Keyboard});
+        }
     }
     if (m_cameraOverride != nullptr) {
         *m_cameraOverride = m_session.GetCamera();
@@ -85,6 +92,16 @@ void InGameState::OnEnter() {
 
     if (m_chunkRenderer) {
         auto& world = m_session.GetWorld();
+        const int chunkSize = static_cast<int>(world.GetChunkSize());
+        for (const Vec3I& position : m_session.GetEditedBlocks()) {
+            const ChunkCoordinate coordinate{static_cast<int>(std::floor(static_cast<float>(position.x) / chunkSize)),
+                                             static_cast<int>(std::floor(static_cast<float>(position.y) / chunkSize)),
+                                             static_cast<int>(std::floor(static_cast<float>(position.z) / chunkSize))};
+            const Vec3I local{((position.x % chunkSize) + chunkSize) % chunkSize, ((position.y % chunkSize) + chunkSize) % chunkSize,
+                               ((position.z % chunkSize) + chunkSize) % chunkSize};
+            m_chunkRenderer->MarkBlockEdited(coordinate, local, world.GetChunkSize());
+        }
+        m_session.ClearEditedBlocks();
         for (const auto& [coordinate, chunk] : world.GetChunks()) {
             (void)chunk;
             m_chunkRenderer->MarkChunkDirty(coordinate);
@@ -105,7 +122,9 @@ void InGameState::OnExit() {
     if (m_chunkRenderer) {
         m_chunkRenderer->Shutdown();
     }
+    if (m_hudRenderer) m_hudRenderer->Shutdown();
     m_chunkRenderer.reset();
+    m_hudRenderer.reset();
     m_jobSystem.reset();
     m_session.Shutdown();
     m_worldGenerated = false;
@@ -150,6 +169,11 @@ void InGameState::Render() {
     g_renderer->BeginFrame({0.58f, 0.72f, 0.88f, 1.0f});
     if (m_chunkRenderer) {
         m_chunkRenderer->Render(camera);
+    }
+    if (m_hudRenderer) {
+        m_hudRenderer->Render(camera, m_session.GetTarget(), m_session.GetBreakProgress(), m_session.GetPlayer().state.inventory,
+                              m_session.GetSelectedItemLabel(), m_session.GetSelectedItemLabelAge(), m_session.GetParticleBursts());
+        m_session.ClearParticleBursts();
     }
     g_renderer->EndFrame();
 }

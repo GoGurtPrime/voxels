@@ -11,6 +11,7 @@ add_library(voxels_engine
     src/render/texture_atlas.cpp
     src/render/chunk_mesher.cpp
     src/render/chunk_renderer.cpp
+    src/render/gameplay_hud.cpp
     src/graphics/gl_renderer.cpp
     src/graphics/mock_renderer.cpp
     src/app/state_machine_render.cpp

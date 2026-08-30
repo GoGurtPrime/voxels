@@ -29,7 +29,11 @@ const InputManager::PlayerChannel* InputManager::Channel(int player) const {
 }
 
 void InputManager::Update() {
-    for (auto& player : m_players) { player.mouseX = 0.0f; player.mouseY = 0.0f; }
+    for (auto& player : m_players) {
+        player.mouseX = 0.0f;
+        player.mouseY = 0.0f;
+        player.mouseWheelY = 0;
+    }
 }
 
 InputState InputManager::GetInputState() const {
@@ -43,8 +47,16 @@ InputState InputManager::GetInputState() const {
     state.jump = IsActionActive("Jump");
     state.sprint = IsActionActive("Sprint");
     state.pause = IsActionActive("Pause");
+    state.destroyBlock = IsActionActive("DestroyBlock");
+    state.placeBlock = IsActionActive("PlaceBlock");
+    for (int slot = 0; slot < 9; ++slot) {
+        if (IsActionActive("Hotbar" + std::to_string(slot + 1))) {
+            state.hotbarSlot = slot;
+        }
+    }
     state.mouseX = player->mouseX;
     state.mouseY = player->mouseY;
+    state.mouseWheelY = player->mouseWheelY;
     return state;
 }
 
@@ -66,6 +78,8 @@ void InputManager::InjectKeyEvent(int code, bool pressed, int player) {
     }
 }
 void InputManager::InjectMouseDelta(float x, float y, int player) { if (auto* channel = Channel(player)) { channel->mouseX += x; channel->mouseY += y; } }
+void InputManager::InjectMouseButtonEvent(int button, bool pressed, int player) { if (auto* channel = Channel(player)) channel->mouseButtons[button] = pressed; }
+void InputManager::InjectMouseWheel(int deltaY, int player) { if (auto* channel = Channel(player)) channel->mouseWheelY += deltaY; }
 void InputManager::InjectAxisEvent(InputAxis axis, float value, int player) { if (auto* channel = Channel(player)) channel->axes[axis] = ApplyAxisSettings(value, channel->axisSettings[axis]); }
 void InputManager::InjectControllerConnection(int player, bool connected) { if (auto* channel = Channel(player)) channel->state = connected ? PlayerSlotState::Connected : PlayerSlotState::Disconnected; }
 
@@ -82,6 +96,7 @@ bool InputManager::IsActionActive(const std::string& actionName, int player) con
     const auto binding = std::find_if(m_bindings.begin(), m_bindings.end(), [&](const auto& item) { return item.actionName == actionName; });
     if (binding == m_bindings.end()) return false;
     if (binding->deviceType == InputDeviceType::Gamepad) return channel->buttons.contains(binding->primaryCode) && channel->buttons.at(binding->primaryCode);
+    if (binding->deviceType == InputDeviceType::Mouse) return channel->mouseButtons.contains(binding->primaryCode) && channel->mouseButtons.at(binding->primaryCode);
     const bool primaryActive = channel->keys.contains(binding->primaryCode) && channel->keys.at(binding->primaryCode);
     const bool secondaryActive = binding->secondaryCode != 0 && channel->keys.contains(binding->secondaryCode) && channel->keys.at(binding->secondaryCode);
     return primaryActive || secondaryActive;

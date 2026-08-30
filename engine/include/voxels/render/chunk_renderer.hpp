@@ -99,6 +99,7 @@ private:
     struct PendingMeshResult {
         voxels::ChunkCoordinate coordinate;
         ChunkMeshData data;
+        std::uint64_t revision = 0;
     };
 
     bool EnsureProgram();
@@ -120,6 +121,7 @@ private:
     std::unordered_map<voxels::ChunkCoordinate, GpuChunkMesh, voxels::ChunkCoordinateHash> m_meshes;
     std::unordered_set<voxels::ChunkCoordinate, voxels::ChunkCoordinateHash> m_dirty;
     std::unordered_set<voxels::ChunkCoordinate, voxels::ChunkCoordinateHash> m_inFlight;
+    std::unordered_map<voxels::ChunkCoordinate, std::uint64_t, voxels::ChunkCoordinateHash> m_revisions;
 
     std::mutex m_completedMutex;
     std::vector<PendingMeshResult> m_completed;

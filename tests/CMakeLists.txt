@@ -13,6 +13,7 @@ add_executable(voxels_tests
     test_app_lifecycle.cpp
     test_networking.cpp
     test_gameplay.cpp
+    test_block_interaction.cpp
     test_runtime_integration.cpp
     test_player_and_streaming.cpp
     test_mvp_playthrough.cpp

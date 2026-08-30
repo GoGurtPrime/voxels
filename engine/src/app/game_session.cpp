@@ -38,6 +38,10 @@ void GameSession::SetInputManager(InputManager* inputManager) noexcept {
     m_input = inputManager;
 }
 
+void GameSession::SetBlockRegistry(const BlockRegistry* registry) noexcept {
+    m_registry = registry;
+}
+
 void GameSession::SetPlayerSpawn(const Vec3& spawn) {
     m_spawnPosition = spawn;
     m_spawnExplicitlySet = true;
@@ -95,6 +99,7 @@ void GameSession::Initialize() {
     m_player.state.position = m_spawnPosition;
     m_player.state.velocity = Vec3{0.0f};
     m_player.state.onGround = true;
+    m_lastSelectedStack = m_player.state.inventory.GetSelectedStack();
     m_camera.position = glm::vec3(m_player.state.position.x,
                                   m_player.state.position.y + 0.72f,
                                   m_player.state.position.z);
@@ -141,6 +146,62 @@ void GameSession::Update(float deltaSeconds) {
         gameplay::CameraController controller;
         controller.Update(m_player, input, m_preferences, deltaSeconds);
         gameplay::Physics::Step(*m_world, m_player, deltaSeconds);
+        if (m_registry != nullptr) {
+            m_target = m_blockInteraction.Target(*m_world, m_player, *m_registry);
+            if (input.hotbarSlot >= 0) m_player.state.inventory.SetSelectedSlot(input.hotbarSlot);
+            if (input.mouseWheelY != 0) m_player.state.inventory.CycleSelectedSlot(input.mouseWheelY > 0 ? -1 : 1);
+            m_placeCooldown = std::max(0.0f, m_placeCooldown - deltaSeconds);
+            if (input.destroyBlock && m_target.hit) {
+                const BlockDefinition* definition = m_registry->GetDefinition(m_world->GetBlock(m_target.blockPosition));
+                if (definition != nullptr && definition->hardness >= 0.0f) {
+                    if (m_breakTarget != m_target.blockPosition) {
+                        m_breakTarget = m_target.blockPosition;
+                        m_breakProgress = 0.0f;
+                    }
+                    m_breakProgress += m_worldOptions.sandboxMode ? 1.0f : deltaSeconds / std::max(0.05f, definition->hardness);
+                    if (m_breakProgress >= 1.0f) {
+                        const gameplay::InteractionResult result = m_blockInteraction.BreakBlock(*m_world, m_player);
+                        if (result.success) {
+                            for (const BlockDrop& drop : definition->drops) {
+                                const BlockDefinition* dropDefinition = m_registry->GetDefinition(drop.item);
+                                if (dropDefinition != nullptr) {
+                                    const int overflow = m_player.state.inventory.AddItem(dropDefinition->id, drop.count);
+                                    (void)overflow;
+                                }
+                            }
+                            m_editedBlocks.push_back(result.targetPosition);
+                            m_soundEvents.push_back({GameplaySoundEventType::Break, result.targetPosition, result.blockId});
+                            if (m_preferences.particles) m_particleBursts.push_back(result.targetPosition);
+                        }
+                        m_breakProgress = 0.0f;
+                    }
+                }
+            } else {
+                m_breakProgress = 0.0f;
+            }
+            if (input.placeBlock && m_target.hit && m_placeCooldown <= 0.0f) {
+                const gameplay::InteractionResult result = m_blockInteraction.PlaceBlock(*m_world, m_player);
+                if (result.success) {
+                    if (!m_worldOptions.sandboxMode) {
+                        const bool removed = m_player.state.inventory.RemoveItem(
+                            static_cast<std::size_t>(m_player.state.inventory.GetSelectedSlot()), 1);
+                        (void)removed;
+                    }
+                    m_editedBlocks.push_back(result.adjacentPosition);
+                    m_soundEvents.push_back({GameplaySoundEventType::Place, result.adjacentPosition, result.blockId});
+                    m_placeCooldown = 0.16f;
+                }
+            }
+            const gameplay::ItemStack& selectedStack = m_player.state.inventory.GetSelectedStack();
+            if (selectedStack != m_lastSelectedStack) {
+                m_lastSelectedStack = selectedStack;
+                m_selectedItemLabelAge = 0.0f;
+                const BlockDefinition* definition = m_registry->GetDefinition(selectedStack.blockId);
+                m_selectedItemLabel = selectedStack.IsEmpty() || definition == nullptr ? "" : definition->displayName;
+            } else if (!m_selectedItemLabel.empty()) {
+                m_selectedItemLabelAge += deltaSeconds;
+            }
+        }
         m_input->Update();
     } else {
         gameplay::Physics::Step(*m_world, m_player, deltaSeconds);

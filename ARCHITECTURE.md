@@ -43,14 +43,14 @@ Anything less than the above is an unfinished product, regardless of unit test c
 | Textures & Atlas | Real | STB decoders, `TextureLoader`, `TextureForge`, `TextureAtlas` (GL_TEXTURE_2D_ARRAY), `--dump-atlas`. |
 | Chunk mesher (`render/chunk_mesher.cpp`) | Real | Neighbour-aware, greedy-merged, AO + sky/block light + transparent-range split; consumed by `ChunkRenderer` and **reaches the GPU every frame**. |
 | `ChunkRenderer` (`render/chunk_renderer.cpp`) | Real | Job-scheduled meshing, budgeted upload, frustum-culled opaque/transparent draw. Wired into `InGameState`. |
-| Physics / block interaction / camera math | Partial | Player physics and first-person camera control run in the fixed gameplay step; block interaction remains for item 07. |
+| Physics / block interaction / camera math | Real | Fixed-step DDA targeting, hardness-based breaking, placement collision checks, stack inventory, hotbar input, and break/place event queue are wired into `GameSession`. |
 | Input manager | Real | SDL keyboard and relative mouse events feed the player action map in the desktop runtime. |
 | Networking (Asio UDP client/server) | Real | Ticks in `main.cpp` but carries no gameplay traffic. |
 | Audio | Partial | Generates PCM; **no output device, nothing is audible**. |
 | Asset manager / `.vpk` | Partial | Archive I/O + procedural placeholders; image decoders active. |
 | Platform / SDL2 | Real | Desktop build with real SDL2 window and GL 3.3 Core context. |
 | **Renderer** | Real | GL 3.3 Core renderer with textured block rendering via 2D array texture atlas. |
-| **UI** | **Absent** | `UIManager` computes a DPI scale and nothing else. Dear ImGui is not a dependency of this project. |
+| **UI** | Partial | Engine-rendered gameplay HUD draws crosshair, hotbar selection, held-item silhouette, selected-item label, targeted block outline, mining crack feedback, and break particles. Menu UI remains item 08/09. |
 | **App states** | Partial | `BootState`, `MainMenuState` render a clear sky (no menu UI yet - item 08/09). `InGameState` owns a `GameSession` with first-person WASD/mouse-look, jumping, collision, generated terrain, and `ChunkRenderer` rendering. |
 | Editor | Stub | Prints one line and exits. |
 | App assets | Real | 15 launch block textures (16×16 PNG), `blocks.json`, server/default configs, shaders. |

@@ -48,6 +48,12 @@ public:
             m_inputManager.InjectKeyEvent(static_cast<int>(event.keyCode), false);
         } else if (event.type == voxels::PlatformEventType::MouseMotion) {
             m_inputManager.InjectMouseDelta(static_cast<float>(event.relativeX), static_cast<float>(event.relativeY));
+        } else if (event.type == voxels::PlatformEventType::MouseButtonDown) {
+            m_inputManager.InjectMouseButtonEvent(static_cast<int>(event.button), true);
+        } else if (event.type == voxels::PlatformEventType::MouseButtonUp) {
+            m_inputManager.InjectMouseButtonEvent(static_cast<int>(event.button), false);
+        } else if (event.type == voxels::PlatformEventType::MouseWheel) {
+            m_inputManager.InjectMouseWheel(event.wheelY);
         }
     }
 

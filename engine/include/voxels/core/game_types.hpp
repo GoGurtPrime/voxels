@@ -54,6 +54,7 @@ struct GamePreferences {
     float masterVolume = 1.0f;
     float musicVolume = 0.7f;
     float sfxVolume = 0.8f;
+    bool particles = true;
     std::map<std::string, std::string> keyBindings;
 
     [[nodiscard]] bool operator==(const GamePreferences&) const noexcept = default;

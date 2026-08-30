@@ -47,12 +47,11 @@ TEST_CASE("PlayerSave.RoundTrip", "[runtime][save]") {
     state.yaw = 90.0f;
     state.pitch = -15.5f;
     state.onGround = true;
-    state.selectedHotbarSlot = 7;
+    state.inventory.SetSelectedSlot(7);
     state.health = 72.5f;
-    state.inventory = {};
-    state.inventory[0] = static_cast<voxels::BlockId>(voxels::BlockType::Stone);
-    state.inventory[1] = static_cast<voxels::BlockId>(voxels::BlockType::TreeTrunk);
-    state.inventory[2] = static_cast<voxels::BlockId>(voxels::BlockType::Leaf);
+    state.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Stone), 17};
+    state.inventory.GetSlot(1) = {static_cast<voxels::BlockId>(voxels::BlockType::TreeTrunk), 3};
+    state.inventory.GetSlot(2) = {static_cast<voxels::BlockId>(voxels::BlockType::Leaf), 64};
 
     const std::string root = TempRoot("player_roundtrip");
     const auto playerPath = std::filesystem::path(root) / "TestWorld" / "players" / "player_1.player";
