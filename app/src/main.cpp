@@ -142,6 +142,7 @@ std::array<std::uint8_t, 3> PreviewColor(voxels::Biome biome) {
 bool WriteGenerationPreview(std::uint64_t seed, const std::filesystem::path& outputPath) {
     constexpr int kChunksPerSide = 8;
     constexpr int kPixelsPerChunk = 16;
+    constexpr int kBlocksPerPixel = 4;
     constexpr int kSize = kChunksPerSide * kPixelsPerChunk;
     voxels::ImageData image;
     image.width = kSize;
@@ -151,7 +152,8 @@ bool WriteGenerationPreview(std::uint64_t seed, const std::filesystem::path& out
     const voxels::WorldGenerator generator({.seed = seed});
     for (int z = 0; z < kSize; ++z) {
         for (int x = 0; x < kSize; ++x) {
-            const voxels::TerrainColumn column = generator.SampleColumn(x - kSize / 2, z - kSize / 2);
+            const voxels::TerrainColumn column = generator.SampleColumn((x - kSize / 2) * kBlocksPerPixel,
+                                                                          (z - kSize / 2) * kBlocksPerPixel);
             const auto color = PreviewColor(column.biome);
             const float shade = 0.60f + static_cast<float>(column.surfaceY) / 295.0f;
             const std::size_t offset = static_cast<std::size_t>((z * kSize + x) * 4);
