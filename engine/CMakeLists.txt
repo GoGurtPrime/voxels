@@ -1,10 +1,30 @@
 cmake_minimum_required(VERSION 3.21)
 
+# Regenerated on every build (custom target has no tracked outputs, so it always reruns) so the
+# embedded git commit/timestamp never go stale between builds without a reconfigure.
+set(VOXELS_GENERATED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/generated_include")
+set(VOXELS_VERSION_HEADER "${VOXELS_GENERATED_INCLUDE_DIR}/voxels/core/version.hpp")
+add_custom_target(voxels_generate_version_header ALL
+    COMMAND "${CMAKE_COMMAND}"
+        "-DVOXELS_VERSION=${PROJECT_VERSION}"
+        "-DVOXELS_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}"
+        "-DVOXELS_VERSION_MINOR=${PROJECT_VERSION_MINOR}"
+        "-DVOXELS_VERSION_PATCH=${PROJECT_VERSION_PATCH}"
+        "-DSOURCE_DIR=${CMAKE_SOURCE_DIR}"
+        "-DTEMPLATE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/include/voxels/core/version.hpp.in"
+        "-DOUTPUT_FILE=${VOXELS_VERSION_HEADER}"
+        -P "${CMAKE_SOURCE_DIR}/cmake/GenerateVersionHeader.cmake"
+    BYPRODUCTS "${VOXELS_VERSION_HEADER}"
+    COMMENT "Regenerating voxels/core/version.hpp (git SHA + build timestamp)"
+    VERBATIM
+)
+
 add_library(voxels_engine
     src/engine.cpp
     src/core/job_system.cpp
     src/platform/headless_platform.cpp
     src/platform/platform_factory.cpp
+    src/platform/platform_services.cpp
     src/rendering.cpp
     src/render/camera.cpp
     src/render/texture_forge.cpp
@@ -56,10 +76,13 @@ add_library(voxels_engine
 target_include_directories(voxels_engine
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${VOXELS_GENERATED_INCLUDE_DIR}
         ${CMAKE_BINARY_DIR}/glad_gl_core_33/include
     SYSTEM PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
+
+add_dependencies(voxels_engine voxels_generate_version_header)
 
 target_compile_features(voxels_engine PUBLIC cxx_std_20)
 
@@ -107,5 +130,39 @@ endif()
 if(VOXELS_ENABLE_DREAMCAST)
     target_compile_definitions(voxels_engine PUBLIC VOXELS_ENABLE_DREAMCAST=1)
     target_sources(voxels_engine PRIVATE src/platform/dreamcast_platform.cpp)
+endif()
+
+if(VOXELS_ENABLE_STEAM)
+    if(NOT DEFINED STEAM_SDK_ROOT OR STEAM_SDK_ROOT STREQUAL "")
+        set(STEAM_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/steam")
+    endif()
+    set(VOXELS_STEAM_HEADER "${STEAM_SDK_ROOT}/include/steam/steam_api.h")
+    if(WIN32)
+        set(VOXELS_STEAM_LIB "${STEAM_SDK_ROOT}/lib/win64/steam_api64.lib")
+        set(VOXELS_STEAM_RUNTIME "${STEAM_SDK_ROOT}/lib/win64/steam_api64.dll")
+    elseif(APPLE)
+        set(VOXELS_STEAM_LIB "${STEAM_SDK_ROOT}/lib/osx/libsteam_api.dylib")
+        set(VOXELS_STEAM_RUNTIME "${VOXELS_STEAM_LIB}")
+    else()
+        set(VOXELS_STEAM_LIB "${STEAM_SDK_ROOT}/lib/linux64/libsteam_api.so")
+        set(VOXELS_STEAM_RUNTIME "${VOXELS_STEAM_LIB}")
+    endif()
+
+    if(EXISTS "${VOXELS_STEAM_HEADER}" AND EXISTS "${VOXELS_STEAM_LIB}")
+        target_sources(voxels_engine PRIVATE src/platform/steam_platform_services.cpp)
+        target_include_directories(voxels_engine SYSTEM PUBLIC "${STEAM_SDK_ROOT}/include")
+        target_link_libraries(voxels_engine PUBLIC "${VOXELS_STEAM_LIB}")
+        target_compile_definitions(voxels_engine PUBLIC VOXELS_ENABLE_STEAM=1)
+        set(VOXELS_STEAM_ACTIVE TRUE PARENT_SCOPE)
+        set(VOXELS_STEAM_RUNTIME "${VOXELS_STEAM_RUNTIME}" PARENT_SCOPE)
+        message(STATUS "Steam platform services enabled (SDK at ${STEAM_SDK_ROOT}).")
+    else()
+        # Optional feature: an absent SDK cleanly disables it rather than failing the build
+        # (work_items/18_packaging_distribution_and_platform_services.md §4.7).
+        message(WARNING "VOXELS_ENABLE_STEAM was ON but the Steamworks SDK was not found at "
+                        "'${STEAM_SDK_ROOT}' (expected 'include/steam/steam_api.h' and the "
+                        "platform import library). Disabling Steam integration for this build; "
+                        "set -DSTEAM_SDK_ROOT=<path> to point at a valid SDK.")
+    endif()
 endif()
 

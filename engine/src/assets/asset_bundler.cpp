@@ -14,6 +14,7 @@
 
 #include "voxels/assets/texture_loader.hpp"
 #include "voxels/assets/vmdl_codec.hpp"
+#include "voxels/core/version.hpp"
 
 namespace voxels {
 
@@ -97,7 +98,8 @@ bool AssetBundler::Bundle(const std::filesystem::path& inputDirectory, const std
         entries.push_back({relativePath, payload, type});
     }
     if (entries.empty()) { error = "bundle input contains no files"; return false; }
-    const std::string manifest = R"({"pack_name":"core","pack_version":1,"engine_compatibility":"0.1","format":"VPK1"})";
+    const std::string manifest = std::string(R"({"pack_name":"core","pack_version":1,"engine_compatibility":")") +
+        kEngineVersion + R"(","format":"VPK1"})";
     std::vector<std::byte> manifestBytes(manifest.size());
     for (std::size_t index = 0; index < manifest.size(); ++index) {
         manifestBytes[index] = static_cast<std::byte>(manifest[index]);

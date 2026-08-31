@@ -13,6 +13,7 @@
 #include <charconv>
 #include <csignal>
 #include <cmath>
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -29,14 +30,17 @@
 #include "voxels/assets/texture_loader.hpp"
 #include "voxels/audio/audio_engine.hpp"
 #include "voxels/core/job_system.hpp"
+#include "voxels/core/logger.hpp"
 #include "voxels/core/paths.hpp"
 #include "voxels/core/preferences.hpp"
+#include "voxels/core/version.hpp"
 #include "voxels/engine.hpp"
 #include "voxels/graphics/gl_renderer.hpp"
 #include "voxels/input/input_manager.hpp"
 #include "voxels/networking/client.hpp"
 #include "voxels/networking/server.hpp"
 #include "voxels/platform/platform.hpp"
+#include "voxels/platform/platform_services.hpp"
 #include "voxels/render/texture_atlas.hpp"
 #include "voxels/render/texture_forge.hpp"
 #include "voxels/ui/imgui_ui_manager.hpp"
@@ -45,6 +49,20 @@
 #include "voxels/world/spawn_calculator.hpp"
 
 namespace {
+
+/// Mirrors the app-facing log banner to both stdout and `<userdata>/logs/` so the running
+/// version/commit/build-time is recoverable from a bug report's log file alone (work_items/18).
+voxels::Logger& BootLog() {
+    static voxels::Logger logger;
+    static const bool initialized = [] {
+        logger.AddSink(std::make_shared<voxels::ConsoleLogSink>());
+        logger.AddSink(std::make_shared<voxels::FileLogSink>(
+            voxels::Paths::LogsDir() / ("voxels_" + std::to_string(std::time(nullptr)) + ".log")));
+        return true;
+    }();
+    (void)initialized;
+    return logger;
+}
 
 class WindowEventListener final : public voxels::IPlatformEventListener {
 public:
@@ -317,13 +335,17 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    BootLog().Info("VoxelsEngine v" + std::string(voxels::kEngineVersion) + " (" + voxels::kEngineGitCommit +
+                   ") built " + voxels::kEngineBuildTimestamp);
+
+    const std::string windowTitle = "Voxels Engine v" + std::string(voxels::kEngineVersion) + " (" + voxels::kEngineGitCommit + ")";
     auto* platform = engine.getPlatform();
     if (platform != nullptr) {
         const int windowWidth = options.resolutionOverride ? options.resolutionWidth : 1280;
         const int windowHeight = options.resolutionOverride ? options.resolutionHeight : 720;
         const bool windowFullscreen = options.fullscreenOverride ? options.fullscreenValue : false;
 
-        platform->SetWindowTitle("Voxels Engine");
+        platform->SetWindowTitle(windowTitle);
         platform->SetWindowResolution(windowWidth, windowHeight);
         platform->SetWindowFullscreen(windowFullscreen);
         if (options.vsyncOverride) {
@@ -373,8 +395,18 @@ int main(int argc, char** argv) {
     voxels::SetGlobalRenderer(&renderer);
 
     voxels::InputManager inputManager;
-    voxels::PreferencesManager preferencesManager(voxels::Paths::UserDataDir() / "settings.json", platform->GetContext().type);
+    const std::filesystem::path settingsPath = voxels::Paths::UserDataDir() / "settings.json";
+    // No settings.json yet is the first-run signal (work_items/18 §4): the user directory tree
+    // was just created above by the Paths::*Dir() calls, and defaults are persisted below.
+    const bool firstRun = !std::filesystem::exists(settingsPath);
+    voxels::PreferencesManager preferencesManager(settingsPath, platform->GetContext().type);
     voxels::GamePreferences preferences = preferencesManager.Load();
+    if (firstRun) {
+        preferencesManager.Save(preferences);
+        BootLog().Info("First run detected: wrote default settings to " + settingsPath.string());
+    }
+    std::unique_ptr<voxels::IPlatformServices> platformServices = voxels::CreatePlatformServices();
+    platformServices->Initialize();
     std::unique_ptr<voxels::IAudioDevice> audioDevice = std::make_unique<voxels::SDLAudioDevice>();
     auto audio = std::make_unique<voxels::AudioEngine>(*audioDevice);
     std::string audioError;
@@ -404,6 +436,8 @@ int main(int argc, char** argv) {
     appContext.saveManager = &saveManager;
     appContext.preferences = &preferences;
     appContext.audio = audio.get();
+    appContext.platformServices = platformServices.get();
+    appContext.firstRun = firstRun;
     appContext.soundBank = std::move(soundBank);
     appContext.requestTransition = [&stateMachine](std::unique_ptr<voxels::IAppState> state) { stateMachine.RequestTransition(std::move(state)); };
     appContext.requestPushOverlay = [&stateMachine](std::unique_ptr<voxels::IAppState> state) { stateMachine.RequestPushOverlay(std::move(state)); };
@@ -499,6 +533,8 @@ int main(int argc, char** argv) {
             stateMachine.Update(kFixedStepSeconds);
         }
 
+        platformServices->Update();
+
         uiManager.BeginFrame();
         stateMachine.Render();
         voxels::UIDebugMetrics debugMetrics{};
@@ -548,6 +584,7 @@ int main(int argc, char** argv) {
     }
     uiManager.Shutdown();
     audio->Shutdown();
+    platformServices->Shutdown();
     voxels::SetGlobalRenderer(nullptr);
     renderer.Shutdown();
     engine.shutdown();

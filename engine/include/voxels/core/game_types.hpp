@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+#include "voxels/core/version.hpp"
+
 namespace voxels {
 
 using WorldSeed = std::uint32_t;
@@ -55,6 +57,8 @@ struct GamePreferences {
     float musicVolume = 0.7f;
     float sfxVolume = 0.8f;
     bool particles = true;
+    /// Persisted so the first-run controls card (work_items/18 §4) is shown exactly once.
+    bool controlsCardSeen = false;
     std::map<std::string, std::string> keyBindings;
 
     [[nodiscard]] bool operator==(const GamePreferences&) const noexcept = default;
@@ -82,7 +86,7 @@ struct GameSave {
     float spawnY = 0.0f;
     float spawnZ = 0.0f;
     std::uint32_t generatorVersion = 1;
-    std::string engineVersion = "0.1.0";
+    std::string engineVersion = kEngineVersion;
     bool peaceful = false;
     bool permadeath = false;
     bool alwaysSunny = true;

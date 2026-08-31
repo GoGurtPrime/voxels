@@ -13,6 +13,7 @@
 #include "voxels/gameplay/player.hpp"
 #include "voxels/input/input_manager.hpp"
 #include "voxels/networking/client.hpp"
+#include "voxels/platform/platform_services.hpp"
 #include "voxels/render/camera.hpp"
 #include "voxels/world/world.hpp"
 
@@ -40,6 +41,9 @@ public:
     void SetRemoteWorld(bool remote) noexcept { m_remoteWorld = remote; }
     void SetBlockRegistry(const BlockRegistry* registry) noexcept;
     void SetJobSystem(JobSystem* jobSystem) noexcept { m_jobSystem = jobSystem; }
+    /// Optional: when set, real break/place/exploration events unlock the matching launch
+    /// achievement (work_items/18_packaging_distribution_and_platform_services.md §7).
+    void SetPlatformServices(IPlatformServices* platformServices) noexcept { m_platformServices = platformServices; }
     void SetPlayerSpawn(const Vec3& spawn);
     void SetPlayerSpawn(const Vec3I& spawn);
     void RestorePlayerState(const PlayerState& state) noexcept;
@@ -98,6 +102,7 @@ private:
     bool m_playerStateRestored = false;
     bool m_initialized = false;
     const BlockRegistry* m_registry = nullptr;
+    IPlatformServices* m_platformServices = nullptr;
     gameplay::BlockInteraction m_blockInteraction{};
     RaycastHit m_target{};
     Vec3I m_breakTarget{};

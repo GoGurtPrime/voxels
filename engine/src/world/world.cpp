@@ -127,6 +127,16 @@ bool World::SetBlock(const Vec3I& worldBlockPos, BlockId block) {
                            FloorMod(worldBlockPos.z, size), block);
 }
 
+std::uint8_t World::GetSkyLight(const Vec3I& worldBlockPos) const {
+    const int size = static_cast<int>(m_chunkSize);
+    const ChunkCoordinate coordinate{FloorDiv(worldBlockPos.x, size), FloorDiv(worldBlockPos.y, size),
+                                      FloorDiv(worldBlockPos.z, size)};
+    const auto it = m_chunks.find(coordinate);
+    if (it == m_chunks.end()) return 0;
+    return it->second->GetSkyLight(FloorMod(worldBlockPos.x, size), FloorMod(worldBlockPos.y, size),
+                                    FloorMod(worldBlockPos.z, size));
+}
+
 std::size_t World::RebuildSkyLightAround(const Vec3I& center, int radiusBlocks) {
     (void)radiusBlocks;
     const int chunkSize = static_cast<int>(m_chunkSize);

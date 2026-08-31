@@ -9,6 +9,21 @@
 
 namespace voxels {
 
+namespace {
+/// Counts orthogonally-adjacent solid blocks around `position` (6-connectivity, excluding
+/// `position` itself). Used as a cheap, real-geometry proxy for "this placement joined an
+/// existing structure" rather than a bare placed-block counter.
+int CountSolidNeighbors(const World& world, const Vec3I& position) {
+    static constexpr Vec3I kOffsets[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    int count = 0;
+    for (const Vec3I& offset : kOffsets) {
+        const Vec3I neighbor{position.x + offset.x, position.y + offset.y, position.z + offset.z};
+        if (gameplay::Physics::IsSolidBlock(world.GetBlock(neighbor))) ++count;
+    }
+    return count;
+}
+} // namespace
+
 GameSession::GameSession() : m_ownedWorld(std::make_unique<World>()) , m_world(m_ownedWorld.get()) {
     m_worldOptions.renderDistanceChunks = 4;
     m_worldOptions.simulationDistanceChunks = 3;
@@ -241,6 +256,12 @@ void GameSession::Update(float deltaSeconds) {
             m_soundEvents.push_back({GameplaySoundEventType::Splash, playerBlock, static_cast<BlockId>(BlockType::Water)});
             m_wasInWater = inWater;
         }
+        // Zero sky light with a solid roof overhead means no line to the open sky: a real,
+        // world-data-driven signal for "the player is underground/in a cave", not a Y threshold.
+        if (m_platformServices != nullptr && m_world->GetSkyLight(playerBlock) == 0 &&
+            gameplay::Physics::IsSolidBlock(m_world->GetBlock({playerBlock.x, playerBlock.y + 2, playerBlock.z}))) {
+            m_platformServices->UnlockAchievement(Achievement::FirstCaveEntered);
+        }
         if (m_registry != nullptr) {
             m_target = m_blockInteraction.Target(*m_world, m_player, *m_registry);
             if (input.hotbarSlot >= 0) m_player.state.inventory.SetSelectedSlot(input.hotbarSlot);
@@ -269,6 +290,7 @@ void GameSession::Update(float deltaSeconds) {
                             }
                             m_editedBlocks.push_back(result.targetPosition);
                             m_soundEvents.push_back({GameplaySoundEventType::Break, result.targetPosition, result.blockId});
+                            if (m_platformServices != nullptr) m_platformServices->UnlockAchievement(Achievement::FirstBlockBroken);
                             if (m_preferences.particles) m_particleBursts.push_back(result.targetPosition);
                             if (m_networkClient != nullptr && m_networkClient->HasReceivedConnectAck()) {
                                 m_networkClient->SendBlockModify(
@@ -296,6 +318,9 @@ void GameSession::Update(float deltaSeconds) {
                     }
                     m_editedBlocks.push_back(result.adjacentPosition);
                     m_soundEvents.push_back({GameplaySoundEventType::Place, result.adjacentPosition, result.blockId});
+                    if (m_platformServices != nullptr && CountSolidNeighbors(*m_world, result.adjacentPosition) >= 3) {
+                        m_platformServices->UnlockAchievement(Achievement::FirstStructureBuilt);
+                    }
                     m_placeCooldown = 0.16f;
                     if (m_networkClient != nullptr && m_networkClient->HasReceivedConnectAck()) {
                         m_networkClient->SendBlockModify({result.adjacentPosition, result.blockId});

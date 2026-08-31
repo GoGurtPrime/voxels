@@ -46,6 +46,7 @@ std::string_view ToString(AppStateId id) noexcept {
         case AppStateId::InGame: return "InGame";
         case AppStateId::PauseMenu: return "PauseMenu";
         case AppStateId::Settings: return "Settings";
+        case AppStateId::ControlsCard: return "ControlsCard";
         case AppStateId::Error: return "Error";
     }
     return "Unknown";

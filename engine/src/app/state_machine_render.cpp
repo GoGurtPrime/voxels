@@ -101,6 +101,7 @@ void InGameState::OnEnter() {
     if (m_context != nullptr) m_session.SetNetworkClient(m_context->networkClient);
     m_session.SetBlockRegistry(m_registry);
     m_session.SetJobSystem(m_jobSystem.get());
+    if (m_context != nullptr) m_session.SetPlatformServices(m_context->platformServices);
     if (m_context != nullptr && m_context->preferences != nullptr) m_session.SetPreferences(*m_context->preferences);
     if (m_context != nullptr) m_context->activeGame = this;
     PlayerState loadedPlayer{};
@@ -190,6 +191,9 @@ void InGameState::OnExit() {
         m_context->saveManager->Save(m_activeSave);
         m_context->saveManager->SaveWorldState(m_activeSave.saveName, m_session.GetWorld());
         m_context->saveManager->SavePlayerState(m_activeSave.saveName, m_activeSave.playerName, m_session.GetPlayer().state);
+        if (m_context->platformServices != nullptr) {
+            m_context->platformServices->OnWorldSaved(m_context->saveManager->GetSaveDirectory(m_activeSave.saveName));
+        }
     }
     if (!m_remoteSession && m_context != nullptr && m_context->networkServer != nullptr) {
         // End the hosted session: remote peers are told the world closed before it is dropped.
@@ -291,6 +295,9 @@ void InGameState::Update(double deltaSeconds) {
     }
     if (m_autosaveFuture.valid() && m_autosaveFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         const bool saved = m_autosaveFuture.get();
+        if (saved && m_context != nullptr && m_context->platformServices != nullptr && m_context->saveManager != nullptr) {
+            m_context->platformServices->OnWorldSaved(m_context->saveManager->GetSaveDirectory(m_activeSave.saveName));
+        }
         if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->ShowToast(saved ? "World autosaved" : "World autosave failed");
     }
     if (m_autosaveSeconds >= kAutosaveIntervalSeconds && !m_autosaveFuture.valid()) StartAutosave();

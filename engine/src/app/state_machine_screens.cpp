@@ -92,6 +92,10 @@ void ConfigureInGameState(InGameState& state, AppContext* context, const GameSav
 void MainMenuState::OnEnter() {
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
     if (m_context != nullptr && m_context->input != nullptr) m_context->input->ClearGameplayInput();
+    if (m_context != nullptr && m_context->firstRun && m_context->preferences != nullptr &&
+        !m_context->preferences->controlsCardSeen && m_context->requestPushOverlay) {
+        m_context->requestPushOverlay(std::make_unique<ControlsCardState>(m_context));
+    }
 }
 
 void MainMenuState::Render() {
@@ -114,7 +118,7 @@ void MainMenuState::Render() {
     if (ui::MenuButton("Settings")) m_context->requestPushOverlay(std::make_unique<SettingsState>(m_context));
     if (ui::MenuButton("Quit")) m_context->requestQuit();
     ImGui::Separator();
-    ImGui::TextDisabled("VoxelsEngine 0.1.0");
+    ImGui::TextDisabled("VoxelsEngine v%s (%s)", kEngineVersion, kEngineGitCommit);
     ImGui::End();
 }
 
@@ -240,6 +244,9 @@ void WorldCreationState::Render() {
             if (!m_context->saveManager->Save(save)) {
                 m_error = "Could not create the world directory.";
             } else {
+                if (m_context->platformServices != nullptr) {
+                    m_context->platformServices->UnlockAchievement(Achievement::FirstWorldCreated);
+                }
                 auto loading = std::make_unique<LoadingScreenState>(m_context);
                 loading->SetSaveManager(*m_context->saveManager);
                 loading->SetSaveName(save.saveName);
@@ -511,6 +518,7 @@ void PauseMenuState::Render() {
     ui::MenuTitle("PAUSED");
     if (ui::MenuButton("Resume")) m_context->requestPopOverlay();
     if (ui::MenuButton("Settings")) m_context->requestPushOverlay(std::make_unique<SettingsState>(m_context));
+    if (ui::MenuButton("Controls")) m_context->requestPushOverlay(std::make_unique<ControlsCardState>(m_context));
     if (m_remoteSession) {
         ImGui::Separator();
         if (ui::MenuButton("Leave Server")) {
@@ -614,6 +622,51 @@ void SettingsState::Render() {
     }
     if (ui::MenuButton("Revert")) m_pending = *m_context->preferences;
     if (ui::MenuButton("Back")) m_context->requestPopOverlay();
+    ImGui::End();
+}
+
+void ControlsCardState::OnEnter() {
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
+}
+void ControlsCardState::Update(double) {}
+void ControlsCardState::Render() {
+    if (m_context == nullptr) return;
+    BeginMenuFrame(m_context);
+    CenterNextWindow();
+    ImGui::SetNextWindowSize({460.0f, 0.0f}, ImGuiCond_Always);
+    ImGui::Begin("Controls", nullptr, kMenuWindowFlags);
+    ui::MenuTitle("CONTROLS");
+    if (ImGui::BeginTable("ControlsCard", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV)) {
+        const std::pair<const char*, const char*> rows[] = {
+            {"Move", "W A S D"},
+            {"Look", "Mouse"},
+            {"Jump", "Space"},
+            {"Sprint", "Left Shift"},
+            {"Break Block", "Left Click"},
+            {"Place Block", "Right Click"},
+            {"Hotbar Slot", "1 - 9 / Mouse Wheel"},
+            {"Pause / Back", "Escape"},
+            {"Debug Overlay", "F3"},
+            {"Screenshot", "F2"},
+        };
+        for (const auto& [action, keys] : rows) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(action);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("%s", keys);
+        }
+        ImGui::EndTable();
+    }
+    ImGui::Spacing();
+    if (ui::MenuButton("Got it")) {
+        if (m_context->preferences != nullptr && m_context->platform != nullptr) {
+            m_context->preferences->controlsCardSeen = true;
+            PreferencesManager manager(Paths::UserDataDir() / "settings.json", m_context->platform->GetContext().type);
+            manager.Save(*m_context->preferences);
+        }
+        m_context->requestPopOverlay();
+    }
     ImGui::End();
 }
 

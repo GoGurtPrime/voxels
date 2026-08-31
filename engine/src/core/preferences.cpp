@@ -297,6 +297,7 @@ std::string PreferencesManager::ToJson(const GamePreferences& preferences) {
     out << "  \"masterVolume\": " << preferences.masterVolume << ",\n";
     out << "  \"musicVolume\": " << preferences.musicVolume << ",\n";
     out << "  \"sfxVolume\": " << preferences.sfxVolume << ",\n";
+    out << "  \"controlsCardSeen\": " << (preferences.controlsCardSeen ? "true" : "false") << ",\n";
     out << "  \"keyBindings\": {\n";
     std::size_t index = 0;
     for (const auto& [action, binding] : preferences.keyBindings) {
@@ -335,6 +336,7 @@ GamePreferences PreferencesManager::FromJson(const std::string& json) {
     preferences.masterVolume = root.GetFloat("masterVolume", preferences.masterVolume);
     preferences.musicVolume = root.GetFloat("musicVolume", preferences.musicVolume);
     preferences.sfxVolume = root.GetFloat("sfxVolume", preferences.sfxVolume);
+    preferences.controlsCardSeen = root.GetBool("controlsCardSeen", preferences.controlsCardSeen);
     if (const JsonValue* keyBindings = root.GetObject("keyBindings")) {
         for (const auto& [action, binding] : keyBindings->objectValue) {
             if (binding.type == JsonValue::Type::String) {

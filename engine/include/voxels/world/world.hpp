@@ -75,6 +75,10 @@ public:
 
     [[nodiscard]] BlockId GetBlock(const Vec3I& worldBlockPos) const;
     bool SetBlock(const Vec3I& worldBlockPos, BlockId block);
+    /// Sky light (0-15) at a world-space block position; 0 for an unresident chunk. Zero means
+    /// no direct line to the open sky — used as the "enclosed/underground" signal for the
+    /// first-cave-entered platform achievement (work_items/18).
+    [[nodiscard]] std::uint8_t GetSkyLight(const Vec3I& worldBlockPos) const;
 
     /// Rebuilds the edited skylight column across resident sections and returns touched voxels.
     [[nodiscard]] std::size_t RebuildSkyLightAround(const Vec3I& center, int radiusBlocks = 0);

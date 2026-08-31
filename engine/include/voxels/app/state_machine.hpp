@@ -27,6 +27,7 @@
 #include "voxels/core/job_system.hpp"
 #include "voxels/graphics/gl_renderer.hpp"
 #include "voxels/input/input_manager.hpp"
+#include "voxels/platform/platform_services.hpp"
 #include "voxels/render/chunk_renderer.hpp"
 #include "voxels/render/gameplay_hud.hpp"
 #include "voxels/render/remote_player_renderer.hpp"
@@ -47,6 +48,7 @@ enum class AppStateId {
     InGame,
     PauseMenu,
     Settings,
+    ControlsCard,
     Error
 };
 
@@ -70,10 +72,14 @@ struct AppContext {
     SaveManager* saveManager = nullptr;
     GamePreferences* preferences = nullptr;
     AudioEngine* audio = nullptr;
+    IPlatformServices* platformServices = nullptr;
     networking::GameClient* networkClient = nullptr;
     networking::GameServer* networkServer = nullptr;
     std::unordered_map<std::string, SoundHandle> soundBank;
     InGameState* activeGame = nullptr;
+    /// True on the very first launch (no settings.json present yet); MainMenuState uses this to
+    /// present the dismissible controls card once (work_items/18 §4).
+    bool firstRun = false;
     std::function<void(std::unique_ptr<class IAppState>)> requestTransition;
     std::function<void(std::unique_ptr<class IAppState>)> requestPushOverlay;
     std::function<void()> requestPopOverlay;
@@ -318,6 +324,17 @@ public:
 
 private:
     GamePreferences m_pending{};
+};
+
+/// Dismissible overlay listing the core keybinds. Shown once automatically on first launch
+/// (AppContext::firstRun) and reopenable at any time from the pause menu (work_items/18 §4).
+class ControlsCardState final : public IAppState {
+public:
+    explicit ControlsCardState(AppContext* context) : IAppState(context) {}
+    [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::ControlsCard; }
+    void OnEnter() override;
+    void Update(double deltaSeconds) override;
+    void Render() override;
 };
 
 class ErrorState final : public IAppState {
