@@ -5,11 +5,16 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
+#include <span>
+
+#include "voxels/app/network_sync.hpp"
 #include "voxels/networking/client.hpp"
 #include "voxels/networking/packet.hpp"
 #include "voxels/networking/reliable_channel.hpp"
 #include "voxels/networking/server.hpp"
 #include "voxels/world/block.hpp"
+#include "voxels/world/generation_pipeline.hpp"
 
 namespace {
 
@@ -173,4 +178,204 @@ TEST_CASE("Multiplayer.HeadlessClientsReplicateMovementAndBlockEdits", "[network
     REQUIRE_FALSE(secondClient.ReceivedBlockUpdates().empty());
     REQUIRE(secondClient.ReceivedBlockUpdates().back().position == edit.position);
     REQUIRE(secondClient.ReceivedBlockUpdates().back().blockId == edit.blockId);
+}
+
+TEST_CASE("Protocol.ConnectAcceptRoundTripsWorldInfo", "[networking][packet]") {
+    voxels::networking::ConnectAccept source{{7, {{1.5f, 40.0f, -3.5f}, {0.4f, -0.1f, 0.0f}, {}}}, true, {}};
+    source.world.seed = 0xDEADBEEFCAFEF00Dull;
+    source.world.generatorVersion = 2;
+    source.world.sandboxMode = true;
+    source.world.alwaysSunny = true;
+    source.world.spawnPosition = {8.5f, 41.9f, 8.5f};
+
+    const std::vector<std::uint8_t> bytes = voxels::networking::SerializeConnectAccept(source);
+    voxels::networking::ConnectAccept decoded;
+    REQUIRE(voxels::networking::DeserializeConnectAccept(bytes, decoded));
+    REQUIRE(decoded.state.entityId == 7);
+    REQUIRE(decoded.worldReady);
+    REQUIRE(decoded.world.seed == source.world.seed);
+    REQUIRE(decoded.world.generatorVersion == 2);
+    REQUIRE(decoded.world.sandboxMode);
+    REQUIRE_FALSE(decoded.world.peaceful);
+    REQUIRE(decoded.world.spawnPosition == source.world.spawnPosition);
+
+    const voxels::networking::ConnectAccept notReady{{3, {}}, false, {}};
+    const std::vector<std::uint8_t> notReadyBytes = voxels::networking::SerializeConnectAccept(notReady);
+    voxels::networking::ConnectAccept decodedNotReady;
+    REQUIRE(voxels::networking::DeserializeConnectAccept(notReadyBytes, decodedNotReady));
+    REQUIRE_FALSE(decodedNotReady.worldReady);
+
+    // Truncated and trailing-garbage payloads must be rejected, never read out of bounds.
+    for (std::size_t length = 0; length < bytes.size(); ++length) {
+        voxels::networking::ConnectAccept scratch;
+        REQUIRE_FALSE(voxels::networking::DeserializeConnectAccept(
+            std::span<const std::uint8_t>(bytes.data(), length), scratch));
+    }
+    std::vector<std::uint8_t> oversized = bytes;
+    oversized.push_back(0);
+    voxels::networking::ConnectAccept scratch;
+    REQUIRE_FALSE(voxels::networking::DeserializeConnectAccept(oversized, scratch));
+}
+
+TEST_CASE("Fragmentation.LargeChunkPayloadReassemblesExactly", "[networking][packet]") {
+    std::vector<std::uint8_t> payload(5000);
+    for (std::size_t index = 0; index < payload.size(); ++index) {
+        payload[index] = static_cast<std::uint8_t>(index * 31u);
+    }
+    const auto fragments = voxels::networking::FragmentChunkPayload({4, 2, -9}, payload);
+    REQUIRE(fragments.size() == 5);
+    std::vector<std::uint8_t> reassembled;
+    for (const voxels::networking::ChunkFragment& fragment : fragments) {
+        REQUIRE(fragment.chunkCoordinate == voxels::Vec3I{4, 2, -9});
+        REQUIRE(fragment.fragmentCount == 5);
+        REQUIRE(fragment.totalBytes == payload.size());
+        const std::vector<std::uint8_t> wire = voxels::networking::SerializeChunkFragment(fragment);
+        REQUIRE_FALSE(wire.empty());
+        REQUIRE(wire.size() <= voxels::networking::kMaximumPacketPayloadBytes);
+        voxels::networking::ChunkFragment decoded;
+        REQUIRE(voxels::networking::DeserializeChunkFragment(wire, decoded));
+        reassembled.insert(reassembled.end(), decoded.data.begin(), decoded.data.end());
+    }
+    REQUIRE(reassembled == payload);
+}
+
+TEST_CASE("Protocol.MalformedChunkFragmentsAreRejectedSafely", "[networking][packet]") {
+    voxels::networking::ChunkFragment fragment;
+    // Too short for the header.
+    REQUIRE_FALSE(voxels::networking::DeserializeChunkFragment(std::vector<std::uint8_t>(10), fragment));
+    // Header only, no data bytes.
+    const auto valid = voxels::networking::FragmentChunkPayload({0, 0, 0}, std::vector<std::uint8_t>(64, 7));
+    REQUIRE(valid.size() == 1);
+    std::vector<std::uint8_t> wire = voxels::networking::SerializeChunkFragment(valid.front());
+    REQUIRE(voxels::networking::DeserializeChunkFragment(wire, fragment));
+    wire.resize(24);
+    REQUIRE_FALSE(voxels::networking::DeserializeChunkFragment(wire, fragment));
+    // fragmentIndex >= fragmentCount.
+    voxels::networking::ChunkFragment inverted = valid.front();
+    inverted.fragmentIndex = 1;
+    REQUIRE(voxels::networking::SerializeChunkFragment(inverted).size() > 0);
+    const std::vector<std::uint8_t> invertedWire = voxels::networking::SerializeChunkFragment(inverted);
+    REQUIRE_FALSE(voxels::networking::DeserializeChunkFragment(invertedWire, fragment));
+    // totalBytes over the transfer bound refuses to serialize at all.
+    voxels::networking::ChunkFragment oversized = valid.front();
+    oversized.totalBytes = voxels::networking::kMaximumChunkTransferBytes + 1;
+    REQUIRE(voxels::networking::SerializeChunkFragment(oversized).empty());
+}
+
+TEST_CASE("Streaming.RemoteClientReceivesHostWorldAndAppliesIt", "[networking][integration]") {
+    voxels::networking::GameServer server;
+    REQUIRE(server.Start("127.0.0.1", 0));
+
+    // Host a tiny 1x1-column world with a marker block.
+    voxels::WorldOptions options{};
+    options.seed = 1234;
+    voxels::World& hostWorld = server.GetWorld();
+    hostWorld.Initialize(options);
+    voxels::WorldGenerator generator(options);
+    for (int y = 0; y < 8; ++y) {
+        hostWorld.GetOrCreateChunk({0, y, 0}) = generator.GenerateChunk({0, y, 0});
+    }
+    hostWorld.GetOrCreateChunk({0, 8, 0});
+    const voxels::Vec3I marker{3, 100, 3};
+    REQUIRE(hostWorld.SetBlock(marker, static_cast<voxels::BlockId>(voxels::BlockType::Planks)));
+    server.SetWorldReady(options, {8.0f, 60.0f, 8.0f});
+
+    voxels::networking::GameClient joiner;
+    REQUIRE(joiner.Connect("127.0.0.1", server.Port(), voxels::networking::ClientKind::Remote));
+    voxels::World joinerWorld;
+    voxels::RemoteChunkApplier applier;
+    for (int tick = 0; tick < 50 && !applier.IsColumnComplete(0, 0); ++tick) {
+        server.Tick();
+        joiner.Tick();
+        (void)applier.Apply(joiner, joinerWorld);
+    }
+    REQUIRE(joiner.HasReceivedConnectAck());
+    REQUIRE(joiner.IsWorldReadyOnServer());
+    REQUIRE(joiner.GetWorldInfo().seed == 1234);
+    REQUIRE(applier.IsColumnComplete(0, 0));
+    // The requested column arrived; the server may also stream neighbours it generated
+    // around the joiner's position, so the count is a lower bound.
+    REQUIRE(applier.AppliedChunkCount() >= 9);
+
+    // The streamed column matches the authoritative world block-for-block, including the edit.
+    REQUIRE(joinerWorld.GetBlock(marker) == static_cast<voxels::BlockId>(voxels::BlockType::Planks));
+    for (int y = 0; y < 128; y += 3) {
+        for (int x = 0; x < 16; x += 5) {
+            for (int z = 0; z < 16; z += 5) {
+                REQUIRE(joinerWorld.GetBlock({x, y, z}) == hostWorld.GetBlock({x, y, z}));
+            }
+        }
+    }
+    // Skylight was rebuilt above the surface so streamed terrain is not rendered black.
+    const auto topSection = joinerWorld.GetChunks().find(voxels::ChunkCoordinate{0, 7, 0});
+    REQUIRE(topSection != joinerWorld.GetChunks().end());
+    REQUIRE(topSection->second->GetSkyLight(0, 15, 0) == 15);
+}
+
+TEST_CASE("Connection.NinthClientIsRejectedAsServerFull", "[networking]") {
+    voxels::networking::GameServer server;
+    REQUIRE(server.Start("127.0.0.1", 0));
+    std::array<voxels::networking::GameClient, 8> clients;
+    for (voxels::networking::GameClient& client : clients) {
+        REQUIRE(client.Connect("127.0.0.1", server.Port()));
+        server.Tick();
+        client.Tick();
+        REQUIRE(client.HasReceivedConnectAck());
+    }
+    REQUIRE(server.PeerCount() == voxels::networking::GameServer::kMaxPlayers);
+    voxels::networking::GameClient ninth;
+    REQUIRE(ninth.Connect("127.0.0.1", server.Port()));
+    server.Tick();
+    ninth.Tick();
+    REQUIRE_FALSE(ninth.HasReceivedConnectAck());
+    REQUIRE(ninth.WasRejected());
+    REQUIRE(ninth.GetRejectReason() == voxels::networking::RejectReason::ServerFull);
+}
+
+TEST_CASE("Connection.ClosingHostedWorldDisconnectsRemotePeers", "[networking]") {
+    voxels::networking::GameServer server;
+    REQUIRE(server.Start("127.0.0.1", 0));
+    server.SetWorldReady({}, {0.0f, 2.0f, 0.0f});
+
+    voxels::networking::GameClient host;
+    voxels::networking::GameClient remote;
+    REQUIRE(host.Connect("127.0.0.1", server.Port(), voxels::networking::ClientKind::InProcessHost));
+    REQUIRE(remote.Connect("127.0.0.1", server.Port(), voxels::networking::ClientKind::Remote));
+    server.Tick();
+    host.Tick();
+    remote.Tick();
+    REQUIRE(server.PeerCount() == 2);
+
+    server.ClearWorld();
+    server.Tick();
+    host.Tick();
+    remote.Tick();
+    REQUIRE(remote.WasDisconnectedByServer());
+    REQUIRE_FALSE(host.WasDisconnectedByServer());
+    REQUIRE(server.PeerCount() == 1);
+    // The remaining host learned the remote player left.
+    REQUIRE_FALSE(host.TakeDepartedPlayers().empty());
+}
+
+TEST_CASE("Connection.DisconnectBroadcastsPlayerLeft", "[networking]") {
+    voxels::networking::GameServer server;
+    REQUIRE(server.Start("127.0.0.1", 0));
+    voxels::networking::GameClient stayer;
+    voxels::networking::GameClient leaver;
+    REQUIRE(stayer.Connect("127.0.0.1", server.Port()));
+    REQUIRE(leaver.Connect("127.0.0.1", server.Port()));
+    server.Tick();
+    stayer.Tick();
+    leaver.Tick();
+    const std::uint32_t leaverId = leaver.PlayerId();
+    REQUIRE(leaverId != 0);
+    REQUIRE(stayer.ReceivedEntityStates().contains(leaverId));
+
+    leaver.Disconnect();
+    server.Tick();
+    stayer.Tick();
+    const std::vector<std::uint32_t> departed = stayer.TakeDepartedPlayers();
+    REQUIRE_FALSE(departed.empty());
+    REQUIRE(departed.front() == leaverId);
+    REQUIRE_FALSE(stayer.ReceivedEntityStates().contains(leaverId));
 }
