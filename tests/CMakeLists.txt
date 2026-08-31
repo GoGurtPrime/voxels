@@ -27,6 +27,7 @@ add_executable(voxels_tests
     test_block_catalogue.cpp
     test_ui_framework.cpp
     test_persistence.cpp
+    test_packaging.cpp
 )
 
 target_link_libraries(voxels_tests
