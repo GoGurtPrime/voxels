@@ -14,6 +14,7 @@
 
 #include "voxels/core/logger.hpp"
 #include "voxels/graphics/gl_renderer.hpp"
+#include "voxels/networking/client.hpp"
 #include "voxels/networking/server.hpp"
 #include "voxels/platform/platform.hpp"
 #include "voxels/render/chunk_renderer.hpp"
@@ -24,6 +25,16 @@ namespace voxels {
 
 namespace {
 voxels::graphics::GLRenderer* g_renderer = nullptr;
+
+Logger& RenderStateLog() {
+    static Logger logger;
+    static const bool initialized = [] {
+        logger.AddSink(std::make_shared<ConsoleLogSink>());
+        return true;
+    }();
+    (void)initialized;
+    return logger;
+}
 
 /// Chunk radius generated around the origin for the initial playable area. Chunk streaming
 /// around a moving player is work item 06; this keeps the world bounded but large enough to
@@ -67,8 +78,13 @@ void MainMenuState::Update(double deltaSeconds) {
 
 void InGameState::OnEnter() {
     if (m_jobSystem == nullptr) m_jobSystem = std::make_unique<JobSystem>();
-    if (m_context != nullptr && m_context->networkServer != nullptr) {
+    if (m_remoteSession) {
+        if (m_preparedWorld != nullptr) m_session.AdoptWorld(std::move(m_preparedWorld));
+        m_session.SetRemoteWorld(true);
+        if (m_hasRemoteSpawn) m_session.SetPlayerSpawn(m_remoteSpawn);
+    } else if (m_context != nullptr && m_context->networkServer != nullptr) {
         World& authoritativeWorld = m_context->networkServer->GetWorld();
+        authoritativeWorld.Clear();
         authoritativeWorld.Initialize(m_options);
         if (m_preparedWorld != nullptr) {
             for (const auto& [coordinate, chunk] : m_preparedWorld->GetChunks()) {
@@ -88,7 +104,8 @@ void InGameState::OnEnter() {
     if (m_context != nullptr && m_context->preferences != nullptr) m_session.SetPreferences(*m_context->preferences);
     if (m_context != nullptr) m_context->activeGame = this;
     PlayerState loadedPlayer{};
-    const bool hasSavedPlayer = m_context != nullptr && m_context->saveManager != nullptr &&
+    const bool hasSavedPlayer = !m_remoteSession && m_context != nullptr && m_context->saveManager != nullptr &&
+                                !m_activeSave.saveName.empty() &&
                                 m_context->saveManager->LoadPlayerState(m_activeSave.saveName, m_activeSave.playerName, loadedPlayer);
     if (hasSavedPlayer) {
         m_session.RestorePlayerState(loadedPlayer);
@@ -99,6 +116,14 @@ void InGameState::OnEnter() {
     if (hasSavedPlayer && !IsSafePlayerSpawn(m_session.GetWorld(), m_session.GetPlayer().state.position) &&
         m_activeSave.spawnY > 0.0f) {
         m_session.SetPlayerSpawn(Vec3{m_activeSave.spawnX, m_activeSave.spawnY, m_activeSave.spawnZ});
+    }
+    if (!m_remoteSession && m_context != nullptr && m_context->networkServer != nullptr) {
+        // Publish the hosted world so remote joiners receive its identity and spawn point.
+        m_context->networkServer->SetWorldReady(m_options, m_session.GetPlayer().state.position);
+        RenderStateLog().Info("Hosting world on UDP port " + std::to_string(m_context->networkServer->Port()));
+    }
+    if (m_remoteSession) {
+        RenderStateLog().Info("Remote session started: playing on the host's world.");
     }
 
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Gameplay);
@@ -111,6 +136,7 @@ void InGameState::OnEnter() {
             m_chunkRenderer->SetBackgroundMeshQueueLimit(1);
         }
         if (m_hudRenderer == nullptr) m_hudRenderer = std::make_unique<graphics::GameplayHudRenderer>();
+        if (m_remotePlayerRenderer == nullptr) m_remotePlayerRenderer = std::make_unique<graphics::RemotePlayerRenderer>();
     }
 
     if (m_inputManager != nullptr) {
@@ -156,7 +182,7 @@ void InGameState::OnEnter() {
 }
 
 void InGameState::OnExit() {
-    if (m_context != nullptr && m_context->saveManager != nullptr && !m_activeSave.saveName.empty()) {
+    if (!m_remoteSession && m_context != nullptr && m_context->saveManager != nullptr && !m_activeSave.saveName.empty()) {
         m_activeSave.lastPlayedAt = "saved";
         m_activeSave.spawnX = m_session.GetPlayer().state.position.x;
         m_activeSave.spawnY = m_session.GetPlayer().state.position.y;
@@ -164,6 +190,10 @@ void InGameState::OnExit() {
         m_context->saveManager->Save(m_activeSave);
         m_context->saveManager->SaveWorldState(m_activeSave.saveName, m_session.GetWorld());
         m_context->saveManager->SavePlayerState(m_activeSave.saveName, m_activeSave.playerName, m_session.GetPlayer().state);
+    }
+    if (!m_remoteSession && m_context != nullptr && m_context->networkServer != nullptr) {
+        // End the hosted session: remote peers are told the world closed before it is dropped.
+        m_context->networkServer->ClearWorld();
     }
     if (m_context != nullptr && m_context->activeGame == this) m_context->activeGame = nullptr;
     if (m_platform != nullptr) {
@@ -177,10 +207,14 @@ void InGameState::OnExit() {
         m_chunkRenderer->Shutdown();
     }
     if (m_hudRenderer) m_hudRenderer->Shutdown();
+    if (m_remotePlayerRenderer) m_remotePlayerRenderer->Shutdown();
     m_chunkRenderer.reset();
     m_hudRenderer.reset();
+    m_remotePlayerRenderer.reset();
     m_jobSystem.reset();
     m_session.Shutdown();
+    m_remoteSession = false;
+    m_hasRemoteSpawn = false;
     m_worldGenerated = false;
 }
 
@@ -199,9 +233,25 @@ void InGameState::Update(double deltaSeconds) {
 
     if (m_context != nullptr && m_context->input != nullptr && m_context->input->IsActionActive("Pause") &&
         m_context->requestPushOverlay) {
-        m_context->requestPushOverlay(std::make_unique<PauseMenuState>(m_context, m_activeSave));
+        m_context->requestPushOverlay(std::make_unique<PauseMenuState>(m_context, m_activeSave, m_remoteSession));
         return;
     }
+
+    if (m_remoteSession && m_context != nullptr && m_context->networkClient != nullptr) {
+        networking::GameClient& client = *m_context->networkClient;
+        if (client.WasDisconnectedByServer() || client.SecondsSinceLastServerPacket() > 10.0) {
+            if (m_context->resetNetworkToLocal) m_context->resetNetworkToLocal();
+            if (m_context->requestTransition) {
+                m_context->requestTransition(std::make_unique<ErrorState>(
+                    m_context, "Connection Lost",
+                    client.WasDisconnectedByServer() ? "The host ended the session."
+                                                     : "The host stopped responding."));
+            }
+            return;
+        }
+    }
+
+    ApplyNetworkedBlockUpdates();
 
     m_session.Update(static_cast<float>(deltaSeconds));
     if (m_context != nullptr && m_context->audio != nullptr && m_registry != nullptr) {
@@ -256,6 +306,16 @@ void InGameState::Update(double deltaSeconds) {
         for (const ChunkCoordinate& coordinate : m_session.ConsumeArrivedChunks()) {
             m_chunkRenderer->OnChunkArrived(coordinate, world);
         }
+        if (m_remoteSession && m_context != nullptr && m_context->networkClient != nullptr) {
+            for (const ChunkCoordinate& coordinate : m_remoteChunkApplier.Apply(*m_context->networkClient, world)) {
+                m_chunkRenderer->OnChunkArrived(coordinate, world);
+            }
+        }
+        if (!m_remoteSession && m_context != nullptr && m_context->networkServer != nullptr) {
+            for (const ChunkCoordinate& coordinate : m_context->networkServer->TakeNewlyGeneratedChunks()) {
+                m_chunkRenderer->OnChunkArrived(coordinate, world);
+            }
+        }
         const int chunkSize = static_cast<int>(world.GetChunkSize());
         for (const Vec3I& position : m_session.GetEditedBlocks()) {
             const ChunkCoordinate coordinate{static_cast<int>(std::floor(static_cast<float>(position.x) / chunkSize)),
@@ -269,6 +329,39 @@ void InGameState::Update(double deltaSeconds) {
         m_session.ClearEditedBlocks();
         m_chunkRenderer->EnqueueDirtyMeshJobs(world, m_session.GetCamera().position);
         m_chunkRenderer->UploadCompletedMeshes();
+    }
+}
+
+void InGameState::ApplyNetworkedBlockUpdates() {
+    if (m_context == nullptr) return;
+    World& world = m_session.GetWorld();
+    const int chunkSize = static_cast<int>(world.GetChunkSize());
+    const auto relightAndRemesh = [this, &world, chunkSize](const Vec3I& position) {
+        (void)world.RebuildSkyLightAround(position);
+        if (m_chunkRenderer == nullptr) return;
+        const ChunkCoordinate coordinate{static_cast<int>(std::floor(static_cast<float>(position.x) / chunkSize)),
+                                         static_cast<int>(std::floor(static_cast<float>(position.y) / chunkSize)),
+                                         static_cast<int>(std::floor(static_cast<float>(position.z) / chunkSize))};
+        const Vec3I local{((position.x % chunkSize) + chunkSize) % chunkSize,
+                          ((position.y % chunkSize) + chunkSize) % chunkSize,
+                          ((position.z % chunkSize) + chunkSize) % chunkSize};
+        m_chunkRenderer->MarkBlockEdited(coordinate, local, world.GetChunkSize());
+    };
+    if (m_context->networkClient != nullptr) {
+        for (const networking::BlockModify& update : m_context->networkClient->TakeReceivedBlockUpdates()) {
+            // Edits this client already applied predictively (and the host's shared world) match
+            // the authoritative value and are skipped without a redundant remesh.
+            if (world.GetBlock(update.position) == update.blockId) continue;
+            if (!world.SetBlock(update.position, update.blockId)) continue;
+            relightAndRemesh(update.position);
+        }
+    }
+    if (!m_remoteSession && m_context->networkServer != nullptr) {
+        // Remote peers' edits were already applied to the shared world by the server; the host
+        // still needs to relight and remesh the touched chunks.
+        for (const networking::BlockModify& edit : m_context->networkServer->TakeRemoteBlockEdits()) {
+            relightAndRemesh(edit.position);
+        }
     }
 }
 
@@ -294,6 +387,18 @@ void InGameState::Render() {
     g_renderer->BeginFrame({0.58f, 0.72f, 0.88f, 1.0f});
     if (m_chunkRenderer) {
         m_chunkRenderer->Render(camera);
+    }
+    if (m_remotePlayerRenderer && m_context != nullptr && m_context->networkClient != nullptr) {
+        const networking::GameClient& client = *m_context->networkClient;
+        std::vector<graphics::RemotePlayerVisual> visuals;
+        for (const auto& [entityId, state] : client.ReceivedEntityStates()) {
+            if (entityId == client.PlayerId()) continue;
+            visuals.push_back({entityId,
+                               glm::vec3{state.movement.position.x, state.movement.position.y,
+                                         state.movement.position.z},
+                               state.movement.rotation.x});
+        }
+        m_remotePlayerRenderer->Render(camera, visuals, 1.0f / 60.0f);
     }
     if (m_hudRenderer) {
         m_hudRenderer->Render(camera, m_session.GetTarget(), m_session.GetBreakProgress(), m_session.GetPlayer().state.inventory,

@@ -36,6 +36,8 @@ public:
     void SetWorldOptions(const WorldOptions& options) noexcept;
     void SetInputManager(InputManager* inputManager) noexcept;
     void SetNetworkClient(networking::GameClient* client) noexcept { m_networkClient = client; }
+    /// Remote worlds are streamed from the host server: no local generation or eviction.
+    void SetRemoteWorld(bool remote) noexcept { m_remoteWorld = remote; }
     void SetBlockRegistry(const BlockRegistry* registry) noexcept;
     void SetJobSystem(JobSystem* jobSystem) noexcept { m_jobSystem = jobSystem; }
     void SetPlayerSpawn(const Vec3& spawn);
@@ -85,6 +87,7 @@ private:
     World* m_world = nullptr;
     InputManager* m_input = nullptr;
     networking::GameClient* m_networkClient = nullptr;
+    bool m_remoteWorld = false;
     JobSystem* m_jobSystem = nullptr;
     Player m_player{};
     Camera m_camera{};

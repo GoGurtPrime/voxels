@@ -41,6 +41,8 @@ std::string_view ToString(AppStateId id) noexcept {
         case AppStateId::WorldSelect: return "WorldSelect";
         case AppStateId::WorldCreation: return "WorldCreation";
         case AppStateId::LoadingScreen: return "LoadingScreen";
+        case AppStateId::JoinGame: return "JoinGame";
+        case AppStateId::JoinLoading: return "JoinLoading";
         case AppStateId::InGame: return "InGame";
         case AppStateId::PauseMenu: return "PauseMenu";
         case AppStateId::Settings: return "Settings";

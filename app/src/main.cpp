@@ -17,6 +17,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <random>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -41,6 +42,7 @@
 #include "voxels/ui/imgui_ui_manager.hpp"
 #include "voxels/world/block.hpp"
 #include "voxels/world/generation_pipeline.hpp"
+#include "voxels/world/spawn_calculator.hpp"
 
 namespace {
 
@@ -239,7 +241,26 @@ int main(int argc, char** argv) {
             std::cerr << "Voxels server failed to start." << std::endl;
             return 1;
         }
-        std::cout << "Voxels server listening on port " << server.Port() << "." << std::endl;
+        // Generate a joinable spawn area so remote clients receive real terrain.
+        voxels::WorldOptions worldOptions{};
+        worldOptions.seed = options.seedOverride ? options.seed : std::random_device{}();
+        voxels::World& world = server.GetWorld();
+        world.Initialize(worldOptions);
+        voxels::WorldGenerator generator(worldOptions);
+        for (int cz = -2; cz <= 2; ++cz) {
+            for (int cx = -2; cx <= 2; ++cx) {
+                for (int cy = 0; cy < 8; ++cy) {
+                    world.GetOrCreateChunk({cx, cy, cz}) = generator.GenerateChunk({cx, cy, cz});
+                }
+                world.GetOrCreateChunk({cx, 8, cz});
+            }
+        }
+        const voxels::Vec3I spawnBlock = voxels::FindSafeSpawn(world);
+        const voxels::Vec3 spawn{static_cast<float>(spawnBlock.x) + 0.5f, static_cast<float>(spawnBlock.y) + 1.9f,
+                                 static_cast<float>(spawnBlock.z) + 0.5f};
+        server.SetWorldReady(worldOptions, spawn);
+        std::cout << "Voxels server listening on port " << server.Port() << " (seed " << worldOptions.seed
+                  << ", spawn " << spawn.x << ' ' << spawn.y << ' ' << spawn.z << ")." << std::endl;
         std::signal(SIGINT, HandleServerInterrupt);
         int tick = 0;
         while (g_serverRunning != 0 && (!options.maxTicksOverride || tick < options.maxTicks)) {
@@ -393,10 +414,28 @@ int main(int argc, char** argv) {
 
     std::unique_ptr<voxels::networking::GameServer> localServer;
     voxels::networking::GameClient localClient;
-    std::string connectionHost = "127.0.0.1";
-    std::uint16_t connectionPort = options.serverPort;
+    // The in-process server binds all interfaces so a LAN or second-instance peer can join;
+    // non-loopback joiners are still gated server-side on world visibility. If the preferred
+    // port is taken (a second instance on this machine), fall back to an ephemeral port.
+    localServer = std::make_unique<voxels::networking::GameServer>();
+    if (!localServer->Start("0.0.0.0", options.serverPort) && !localServer->Start("0.0.0.0", 0)) {
+        std::cerr << "Voxels local server failed to start." << std::endl;
+        uiManager.ShowToast("Local server could not bind a UDP port.");
+        stateMachine.Shutdown();
+        uiManager.Shutdown();
+        renderer.Shutdown();
+        engine.shutdown();
+        return 1;
+    }
+    const std::uint16_t localPort = localServer->Port();
+    const auto connectToLocalServer = [&localClient, localPort]() {
+        return localClient.Connect("127.0.0.1", localPort, voxels::networking::ClientKind::InProcessHost);
+    };
+    bool initialRemoteJoin = false;
+    std::string joinHost;
+    std::uint16_t joinPort = 0;
     if (options.joinEndpointOverride) {
-        if (!ParseNetworkEndpoint(options.joinEndpoint, connectionHost, connectionPort)) {
+        if (!ParseNetworkEndpoint(options.joinEndpoint, joinHost, joinPort)) {
             std::cerr << "Invalid --join endpoint; expected HOST:PORT." << std::endl;
             uiManager.ShowToast("Join address must use HOST:PORT.");
             stateMachine.Shutdown();
@@ -405,26 +444,30 @@ int main(int argc, char** argv) {
             engine.shutdown();
             return 1;
         }
-    } else {
-        localServer = std::make_unique<voxels::networking::GameServer>();
-        if (!localServer->Start("127.0.0.1", connectionPort)) {
-            std::cerr << "Voxels local server failed to start on port " << connectionPort << "." << std::endl;
-            uiManager.ShowToast("Local server port is unavailable.");
-            stateMachine.Shutdown();
-            uiManager.Shutdown();
-            renderer.Shutdown();
-            engine.shutdown();
-            return 1;
-        }
+        initialRemoteJoin = localClient.Connect(joinHost, joinPort, voxels::networking::ClientKind::Remote);
     }
-    if (!localClient.Connect(connectionHost, connectionPort)) {
-        std::cerr << "Voxels client failed to connect to " << connectionHost << ':' << connectionPort << "." << std::endl;
+    if (!initialRemoteJoin && !connectToLocalServer()) {
+        std::cerr << "Voxels client failed to connect to the local server." << std::endl;
         uiManager.ShowToast("Unable to open the game connection.");
         engine.shutdown();
         return 1;
     }
     appContext.networkClient = &localClient;
     appContext.networkServer = localServer.get();
+    appContext.connectRemote = [&localClient](const std::string& host, std::uint16_t port) {
+        localClient.Disconnect();
+        return localClient.Connect(host, port, voxels::networking::ClientKind::Remote);
+    };
+    appContext.resetNetworkToLocal = [&localClient, connectToLocalServer]() {
+        localClient.Disconnect();
+        if (!connectToLocalServer()) {
+            std::cerr << "Voxels client failed to reconnect to the local server." << std::endl;
+        }
+    };
+    if (initialRemoteJoin) {
+        stateMachine.TransitionTo(std::make_unique<voxels::JoinLoadingState>(
+            &appContext, joinHost + ":" + std::to_string(joinPort)));
+    }
 
     WindowEventListener windowListener(running, renderer, inputManager, uiManager);
     if (platform != nullptr) {
@@ -437,7 +480,6 @@ int main(int argc, char** argv) {
     voxels::FrameAccumulator frameAccumulator;
     auto lastTime = std::chrono::steady_clock::now();
     int frameCount = 0;
-    bool connectionStatusShown = false;
     const int maxFrames = options.maxFrames > 0 ? options.maxFrames : std::numeric_limits<int>::max();
 
     while (running && frameCount < maxFrames) {
@@ -454,10 +496,6 @@ int main(int argc, char** argv) {
         for (int i = 0; i < simTicks; ++i) {
             if (localServer != nullptr) localServer->Tick();
             localClient.Tick();
-            if (!connectionStatusShown && localClient.HasReceivedConnectAck()) {
-                uiManager.ShowToast("Connected to " + connectionHost + ':' + std::to_string(connectionPort));
-                connectionStatusShown = true;
-            }
             stateMachine.Update(kFixedStepSeconds);
         }
 

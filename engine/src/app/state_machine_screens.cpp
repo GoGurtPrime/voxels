@@ -20,8 +20,11 @@
 #include <imgui.h>
 
 #include "voxels/app/save_manager.hpp"
+#include "voxels/core/logger.hpp"
 #include "voxels/core/paths.hpp"
 #include "voxels/core/preferences.hpp"
+#include "voxels/networking/client.hpp"
+#include "voxels/networking/server.hpp"
 #include "voxels/ui/imgui_ui_manager.hpp"
 
 namespace voxels {
@@ -29,6 +32,16 @@ namespace {
 constexpr ImGuiWindowFlags kMenuWindowFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
                                                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize;
 constexpr std::size_t kMaximumSeedTextLength = 20;
+
+Logger& ScreenLog() {
+    static Logger logger;
+    static const bool initialized = [] {
+        logger.AddSink(std::make_shared<ConsoleLogSink>());
+        return true;
+    }();
+    (void)initialized;
+    return logger;
+}
 
 void CenterNextWindow() {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
@@ -97,6 +110,7 @@ void MainMenuState::Render() {
             m_context->requestTransition(std::make_unique<WorldSelectState>(m_context));
         }
     }
+    if (ui::MenuButton("Join Game")) m_context->requestTransition(std::make_unique<JoinGameState>(m_context));
     if (ui::MenuButton("Settings")) m_context->requestPushOverlay(std::make_unique<SettingsState>(m_context));
     if (ui::MenuButton("Quit")) m_context->requestQuit();
     ImGui::Separator();
@@ -238,6 +252,147 @@ void WorldCreationState::Render() {
     ImGui::End();
 }
 
+void JoinGameState::OnEnter() {
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::TextEntry);
+}
+
+void JoinGameState::Update(double) {}
+
+void JoinGameState::Render() {
+    if (m_context == nullptr) return;
+    BeginMenuFrame(m_context);
+    CenterNextWindow();
+    ImGui::SetNextWindowSize({480.0f, 0.0f}, ImGuiCond_Always);
+    ImGui::Begin("Join Game", nullptr, kMenuWindowFlags);
+    ui::MenuTitle("JOIN GAME");
+    ImGui::TextUnformatted("Enter the host's address and UDP port.");
+    ImGui::Spacing();
+    ui::TextField("Host Address", m_host, 64);
+    ui::TextField("UDP Port", m_portText, 6);
+    if (!m_error.empty()) ImGui::TextColored({0.95f, 0.35f, 0.25f, 1.0f}, "%s", m_error.c_str());
+    if (ui::MenuButton("Connect")) {
+        unsigned int port = 0;
+        const auto result = std::from_chars(m_portText.data(), m_portText.data() + m_portText.size(), port);
+        const bool portValid = result.ec == std::errc{} && result.ptr == m_portText.data() + m_portText.size() &&
+                               port > 0 && port <= 65535;
+        if (m_host.empty() || !portValid) {
+            m_error = "Enter a host address and a port between 1 and 65535.";
+        } else if (!m_context->connectRemote || !m_context->connectRemote(m_host, static_cast<std::uint16_t>(port))) {
+            m_error = "Could not open a connection to " + m_host + ":" + m_portText + ".";
+        } else {
+            m_context->requestTransition(
+                std::make_unique<JoinLoadingState>(m_context, m_host + ":" + m_portText));
+        }
+    }
+    if (ui::MenuButton("Back")) m_context->requestTransition(std::make_unique<MainMenuState>(m_context));
+    ImGui::End();
+}
+
+void JoinLoadingState::OnEnter() {
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
+    m_world = std::make_unique<World>();
+    m_elapsedSeconds = 0.0;
+    m_lastProgressSeconds = 0.0;
+}
+
+void JoinLoadingState::FailWith(std::string title, std::string detail) {
+    if (m_context == nullptr) return;
+    Logger& logger = ScreenLog();
+    logger.Warn("Join failed for " + m_endpointLabel + ": " + detail);
+    if (m_context->resetNetworkToLocal) m_context->resetNetworkToLocal();
+    m_context->requestTransition(std::make_unique<ErrorState>(m_context, std::move(title), std::move(detail)));
+}
+
+void JoinLoadingState::Update(double deltaSeconds) {
+    if (m_context == nullptr || m_context->networkClient == nullptr) return;
+    m_elapsedSeconds += deltaSeconds;
+    networking::GameClient& client = *m_context->networkClient;
+    if (client.WasRejected()) {
+        switch (client.GetRejectReason()) {
+            case networking::RejectReason::ServerFull:
+                FailWith("Join Failed", "The server is full.");
+                return;
+            case networking::RejectReason::WorldNotReady:
+                FailWith("Join Failed", "The host is not in a world yet. Ask them to enter their world, then retry.");
+                return;
+            case networking::RejectReason::WorldPrivate:
+                FailWith("Join Failed", "The host's world is private. Ask them to set it public from the pause menu.");
+                return;
+        }
+    }
+    if (client.WasDisconnectedByServer()) {
+        FailWith("Join Failed", "The host ended the session.");
+        return;
+    }
+    if (!client.HasReceivedConnectAck()) {
+        if (m_elapsedSeconds > kHandshakeTimeoutSeconds) {
+            FailWith("Join Failed", "No response from " + m_endpointLabel +
+                                        ". Check the address, port, and the host's firewall (UDP).");
+        }
+        return;
+    }
+    if (!client.IsWorldReadyOnServer()) {
+        FailWith("Join Failed", "The host is not in a world yet. Ask them to enter their world, then retry.");
+        return;
+    }
+    const networking::WorldInfo& info = client.GetWorldInfo();
+    const std::size_t appliedBefore = m_applier.AppliedChunkCount();
+    (void)m_applier.Apply(client, *m_world);
+    if (m_applier.AppliedChunkCount() != appliedBefore) {
+        m_lastProgressSeconds = m_elapsedSeconds;
+        m_lastAppliedChunks = m_applier.AppliedChunkCount();
+    } else if (m_elapsedSeconds - m_lastProgressSeconds > kStreamStallTimeoutSeconds) {
+        FailWith("Join Failed", "The world download from " + m_endpointLabel + " stalled.");
+        return;
+    }
+    const int spawnColumnX = static_cast<int>(std::floor(info.spawnPosition.x / 16.0f));
+    const int spawnColumnZ = static_cast<int>(std::floor(info.spawnPosition.z / 16.0f));
+    for (int z = -kRequiredColumnRadius; z <= kRequiredColumnRadius; ++z) {
+        for (int x = -kRequiredColumnRadius; x <= kRequiredColumnRadius; ++x) {
+            if (!m_applier.IsColumnComplete(spawnColumnX + x, spawnColumnZ + z)) return;
+        }
+    }
+    WorldOptions options{};
+    options.seed = info.seed;
+    options.generatorVersion = info.generatorVersion;
+    options.sandboxMode = info.sandboxMode;
+    options.peaceful = info.peaceful;
+    options.alwaysSunny = info.alwaysSunny;
+    options.permadeath = info.permadeath;
+    ScreenLog().Info("Join complete: entering remote world from " + m_endpointLabel + " (seed " +
+                     std::to_string(info.seed) + ", " + std::to_string(m_applier.AppliedChunkCount()) +
+                     " chunk sections streamed)");
+    auto game = std::make_unique<InGameState>(m_context);
+    game->SetBlockRegistry(m_context->blockRegistry);
+    game->SetTextureAtlas(m_context->textureAtlas);
+    game->SetWorldOptions(options);
+    game->SetInputManager(m_context->input);
+    game->SetPlatform(m_context->platform);
+    game->SetRemoteSession(true);
+    game->SetRemoteSpawn(info.spawnPosition);
+    game->SetPreparedWorld(std::move(m_world));
+    m_context->requestTransition(std::move(game));
+}
+
+void JoinLoadingState::Render() {
+    BeginMenuFrame(m_context);
+    CenterNextWindow();
+    ImGui::SetNextWindowSize({460.0f, 0.0f}, ImGuiCond_Always);
+    ImGui::Begin("Joining", nullptr, kMenuWindowFlags);
+    ui::MenuTitle("JOINING...");
+    const bool acked = m_context != nullptr && m_context->networkClient != nullptr &&
+                       m_context->networkClient->HasReceivedConnectAck();
+    ImGui::Text("%s %s", acked ? "Downloading world from" : "Contacting", m_endpointLabel.c_str());
+    constexpr float kExpectedColumns = 9.0f;
+    const float progress = acked
+        ? 0.15f + 0.85f * std::min(1.0f, static_cast<float>(m_applier.CompletedColumnCount()) / kExpectedColumns)
+        : std::min(0.15f, static_cast<float>(m_elapsedSeconds / kHandshakeTimeoutSeconds) * 0.15f);
+    const std::string percent = std::to_string(static_cast<int>(progress * 100.0f)) + "%";
+    ui::ProgressBar(progress, percent.c_str());
+    ImGui::Text("Chunk sections received: %zu", m_applier.AppliedChunkCount());
+    ImGui::End();
+}
+
 void LoadingScreenState::OnEnter() {
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
     m_generationComplete = false;
@@ -356,9 +511,38 @@ void PauseMenuState::Render() {
     ui::MenuTitle("PAUSED");
     if (ui::MenuButton("Resume")) m_context->requestPopOverlay();
     if (ui::MenuButton("Settings")) m_context->requestPushOverlay(std::make_unique<SettingsState>(m_context));
+    if (m_remoteSession) {
+        ImGui::Separator();
+        if (ui::MenuButton("Leave Server")) {
+            if (m_context->resetNetworkToLocal) m_context->resetNetworkToLocal();
+            m_context->requestTransition(std::make_unique<MainMenuState>(m_context));
+        }
+        if (ui::MenuButton("Leave and Exit to Desktop")) {
+            if (m_context->resetNetworkToLocal) m_context->resetNetworkToLocal();
+            m_context->requestQuit();
+        }
+        ImGui::End();
+        return;
+    }
     if (ui::MenuButton(m_activeSave.publicVisibility ? "Set World Private" : "Set World Public")) {
         m_activeSave.publicVisibility = !m_activeSave.publicVisibility;
         if (m_context->saveManager != nullptr) m_context->saveManager->Save(m_activeSave);
+        if (m_context->activeGame != nullptr) {
+            // Visibility gates non-loopback joiners server-side, so republish the world.
+            WorldOptions options{.seed = m_activeSave.seed,
+                                 .generatorVersion = m_activeSave.generatorVersion,
+                                 .isPublic = m_activeSave.publicVisibility};
+            if (m_context->networkServer != nullptr) {
+                m_context->networkServer->SetWorldReady(options,
+                                                        {m_activeSave.spawnX, m_activeSave.spawnY, m_activeSave.spawnZ});
+            }
+        }
+    }
+    if (m_context->networkServer != nullptr && m_context->networkServer->IsRunning()) {
+        ImGui::Spacing();
+        ImGui::TextDisabled("Hosting on UDP port %u (%s)", m_context->networkServer->Port(),
+                            m_activeSave.publicVisibility ? "public: LAN players can join this machine's IP"
+                                                          : "private: this machine only");
     }
     if (ui::MenuButton("Save and Quit to Menu")) {
         m_activeSave.lastPlayedAt = TimestampNow();

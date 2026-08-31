@@ -92,7 +92,7 @@ void GameSession::Initialize() {
         return;
     }
 
-    if (m_world->LoadedChunkCount() == 0) {
+    if (m_world->LoadedChunkCount() == 0 && !m_remoteWorld) {
         WorldGenerator generator(m_worldOptions);
         for (int cz = -1; cz <= 1; ++cz) {
             for (int cx = -1; cx <= 1; ++cx) {
@@ -144,7 +144,7 @@ void GameSession::Initialize() {
 }
 
 void GameSession::EnsureChunkResidentAroundPlayer() {
-    if (m_world == nullptr) {
+    if (m_world == nullptr || m_remoteWorld) {
         return;
     }
     ApplyCompletedChunkJobs();
@@ -270,6 +270,10 @@ void GameSession::Update(float deltaSeconds) {
                             m_editedBlocks.push_back(result.targetPosition);
                             m_soundEvents.push_back({GameplaySoundEventType::Break, result.targetPosition, result.blockId});
                             if (m_preferences.particles) m_particleBursts.push_back(result.targetPosition);
+                            if (m_networkClient != nullptr && m_networkClient->HasReceivedConnectAck()) {
+                                m_networkClient->SendBlockModify(
+                                    {result.targetPosition, static_cast<BlockId>(BlockType::Air)});
+                            }
                         }
                         m_breakProgress = 0.0f;
                         m_hasBreakTarget = false;
@@ -293,6 +297,9 @@ void GameSession::Update(float deltaSeconds) {
                     m_editedBlocks.push_back(result.adjacentPosition);
                     m_soundEvents.push_back({GameplaySoundEventType::Place, result.adjacentPosition, result.blockId});
                     m_placeCooldown = 0.16f;
+                    if (m_networkClient != nullptr && m_networkClient->HasReceivedConnectAck()) {
+                        m_networkClient->SendBlockModify({result.adjacentPosition, result.blockId});
+                    }
                 }
             }
             const gameplay::ItemStack& selectedStack = m_player.state.inventory.GetSelectedStack();
@@ -332,6 +339,7 @@ void GameSession::Shutdown() noexcept {
     m_initialized = false;
     m_input = nullptr;
     m_networkClient = nullptr;
+    m_remoteWorld = false;
     m_jobSystem = nullptr;
     m_world = nullptr;
     m_ownedWorld.reset();

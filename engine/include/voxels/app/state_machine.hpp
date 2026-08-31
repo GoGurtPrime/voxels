@@ -22,12 +22,14 @@
 #include "voxels/app/game_session.hpp"
 #include "voxels/audio/audio_engine.hpp"
 #include "voxels/app/menus.hpp"
+#include "voxels/app/network_sync.hpp"
 #include "voxels/app/save_manager.hpp"
 #include "voxels/core/job_system.hpp"
 #include "voxels/graphics/gl_renderer.hpp"
 #include "voxels/input/input_manager.hpp"
 #include "voxels/render/chunk_renderer.hpp"
 #include "voxels/render/gameplay_hud.hpp"
+#include "voxels/render/remote_player_renderer.hpp"
 #include "voxels/world/generation_pipeline.hpp"
 #include "voxels/world/world.hpp"
 #include "voxels/world/world_options.hpp"
@@ -40,6 +42,8 @@ enum class AppStateId {
     WorldSelect,
     WorldCreation,
     LoadingScreen,
+    JoinGame,
+    JoinLoading,
     InGame,
     PauseMenu,
     Settings,
@@ -74,6 +78,10 @@ struct AppContext {
     std::function<void(std::unique_ptr<class IAppState>)> requestPushOverlay;
     std::function<void()> requestPopOverlay;
     std::function<void()> requestQuit;
+    /// Reconnects the client to a remote host (disconnecting from the in-process server).
+    std::function<bool(const std::string&, std::uint16_t)> connectRemote;
+    /// Restores the loopback connection to the in-process server after a remote session ends.
+    std::function<void()> resetNetworkToLocal;
 };
 
 [[nodiscard]] std::string_view ToString(AppStateId id) noexcept;
@@ -182,12 +190,54 @@ private:
     std::size_t m_generatedChunks = 0;
 };
 
+/// Direct-IP join screen: the player enters the host address and UDP port, and a connection
+/// attempt hands off to `JoinLoadingState` (work_items/16_multiplayer_runtime_integration.md).
+class JoinGameState final : public IAppState {
+public:
+    using IAppState::IAppState;
+    [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::JoinGame; }
+    void OnEnter() override;
+    void Update(double deltaSeconds) override;
+    void Render() override;
+
+private:
+    std::string m_host = "127.0.0.1";
+    std::string m_portText = "27015";
+    std::string m_error;
+};
+
+/// Waits for the remote handshake, receives the host's world info, and integrates streamed
+/// chunks until the spawn area is walkable, then enters a remote `InGameState`.
+class JoinLoadingState final : public IAppState {
+public:
+    JoinLoadingState(AppContext* context, std::string endpointLabel)
+        : IAppState(context), m_endpointLabel(std::move(endpointLabel)) {}
+    [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::JoinLoading; }
+    void OnEnter() override;
+    void Update(double deltaSeconds) override;
+    void Render() override;
+
+private:
+    void FailWith(std::string title, std::string detail);
+
+    static constexpr double kHandshakeTimeoutSeconds = 8.0;
+    static constexpr double kStreamStallTimeoutSeconds = 15.0;
+    /// Columns (radius 1 around spawn) that must be fully streamed before the player spawns.
+    static constexpr int kRequiredColumnRadius = 1;
+
+    std::string m_endpointLabel;
+    std::unique_ptr<World> m_world;
+    RemoteChunkApplier m_applier;
+    double m_elapsedSeconds = 0.0;
+    double m_lastProgressSeconds = 0.0;
+    std::size_t m_lastAppliedChunks = 0;
+};
+
 /// The real playable gameplay state: generates a bounded voxel world and renders it through
 /// `ChunkRenderer` (work_items/05_chunk_mesh_pipeline_and_world_rendering.md). A full player
 /// controller (movement, mouse-look, collision) is work item 06; until then this state drives
 /// a slow automatic flythrough camera so the generated world is directly observable.
-class InGameState final : public IAppState {
-public:
+class InGameState final : public IAppState {public:
     using IAppState::IAppState;
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::InGame; }
 
@@ -199,6 +249,10 @@ public:
     void SetPlatform(IPlatform* platform) noexcept { m_platform = platform; }
     void SetActiveSave(GameSave save) { m_activeSave = std::move(save); }
     void SetPreparedWorld(std::unique_ptr<World> world) noexcept { m_preparedWorld = std::move(world); }
+    /// Marks this session as a remote join: the world is streamed from the host server and
+    /// nothing is generated or persisted locally.
+    void SetRemoteSession(bool remote) noexcept { m_remoteSession = remote; }
+    void SetRemoteSpawn(const Vec3& spawn) noexcept { m_remoteSpawn = spawn; m_hasRemoteSpawn = true; }
     void ApplyPreferences(const GamePreferences& preferences) noexcept { m_session.SetPreferences(preferences); }
 
     void OnEnter() override;
@@ -212,6 +266,7 @@ public:
 private:
     void GenerateInitialWorld();
     void StartAutosave();
+    void ApplyNetworkedBlockUpdates();
 
     BlockRegistry* m_registry = nullptr;
     TextureAtlas* m_atlas = nullptr;
@@ -224,19 +279,24 @@ private:
     std::unique_ptr<JobSystem> m_jobSystem;
     std::unique_ptr<graphics::ChunkRenderer> m_chunkRenderer;
     std::unique_ptr<graphics::GameplayHudRenderer> m_hudRenderer;
+    std::unique_ptr<graphics::RemotePlayerRenderer> m_remotePlayerRenderer;
+    RemoteChunkApplier m_remoteChunkApplier;
     float m_elapsedSeconds = 0.0f;
     float m_autosaveSeconds = 0.0f;
     std::future<bool> m_autosaveFuture;
     bool m_screenshotPressed = false;
     bool m_worldGenerated = false;
+    bool m_remoteSession = false;
+    bool m_hasRemoteSpawn = false;
+    Vec3 m_remoteSpawn{};
     GameSave m_activeSave{};
     std::unique_ptr<World> m_preparedWorld;
 };
 
 class PauseMenuState final : public IAppState {
 public:
-    PauseMenuState(AppContext* context = nullptr, GameSave activeSave = {})
-        : IAppState(context), m_activeSave(std::move(activeSave)) {}
+    PauseMenuState(AppContext* context = nullptr, GameSave activeSave = {}, bool remoteSession = false)
+        : IAppState(context), m_activeSave(std::move(activeSave)), m_remoteSession(remoteSession) {}
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::PauseMenu; }
     void OnEnter() override;
     void OnExit() override;
@@ -245,6 +305,7 @@ public:
 
 private:
     GameSave m_activeSave;
+    bool m_remoteSession = false;
 };
 
 class SettingsState final : public IAppState {
