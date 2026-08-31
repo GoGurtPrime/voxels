@@ -61,6 +61,8 @@ public:
     /// Returns the chunk at the given coordinate, creating and loading it (all-air) if absent.
     Chunk& GetOrCreateChunk(const ChunkCoordinate& coordinate);
     [[nodiscard]] bool HasChunk(const ChunkCoordinate& coordinate) const;
+    /// Drops every loaded chunk; used when an authoritative world is rebuilt for a new session.
+    void Clear() noexcept { m_chunks.clear(); }
     /// Evicts clean chunk columns outside the horizontal streaming radius and returns their count.
     [[nodiscard]] std::size_t UnloadCleanChunksOutsideRadius(const ChunkCoordinate& center, int radius,
                                                                std::vector<ChunkCoordinate>* unloaded = nullptr);

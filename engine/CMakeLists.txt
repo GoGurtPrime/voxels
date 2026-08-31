@@ -13,10 +13,12 @@ add_library(voxels_engine
     src/render/chunk_renderer.cpp
     src/render/model_registry.cpp
     src/render/gameplay_hud.cpp
+    src/render/remote_player_renderer.cpp
     src/graphics/gl_renderer.cpp
     src/graphics/mock_renderer.cpp
     src/app/state_machine_render.cpp
     src/app/game_session.cpp
+    src/app/network_sync.cpp
     src/input.cpp
     src/world/block.cpp
     src/world/chunk.cpp
