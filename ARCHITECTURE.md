@@ -54,6 +54,9 @@ Anything less than the above is an unfinished product, regardless of unit test c
 | **App states** | Partial | The desktop app now starts at a rendered ImGui main menu with world selection/creation, loading, pause, settings, error screens, and safe overlay transitions. New worlds persist metadata and regenerate deterministically from their seed; full region/player persistence remains item 10. `InGameState` owns a `GameSession` with first-person WASD/mouse-look, jumping, collision, generated terrain, and `ChunkRenderer` rendering. |
 | Editor | Partial | `voxels_editor` is a real SDL2/OpenGL/ImGui docked authoring workspace with a slice editor, palette/properties controls, VMDL persistence/recovery, block definition writing, OBJ export, and VPK build action. Full texture painting, textured GPU preview, and multi-part element tooling remain follow-ups. |
 | App assets | Real | 15 launch block textures (16×16 PNG), `blocks.json`, server/default configs, shaders. |
+| Versioning & packaging | Real | Single-source-of-truth version (`voxels/core/version.hpp`, regenerated every build with the git commit and timestamp) propagates into the window title, main-menu corner, a startup log banner, `GameSave.engineVersion`, and the `.vpk` manifest's `engine_compatibility` field. `cmake --install` and `cpack` produce a self-contained per-platform archive (`README.txt`, `LICENSE.txt`, a build-generated `THIRD_PARTY_LICENSES.txt`, SDL2/Steam runtime libraries, `assets/`); the editor is never installed into it. |
+| First-run experience | Real | Absence of `settings.json` is the first-run signal; defaults are written immediately, and a dismissible controls card overlay (reopenable from the pause menu) is shown once, tracked by `GamePreferences.controlsCardSeen`. |
+| Platform services | Partial | `IPlatformServices` (`NullPlatformServices` default, `SteamPlatformServices` behind `VOXELS_ENABLE_STEAM`) is wired into `GameSession` and unlocks four launch achievements from real gameplay events (first block broken, first world created, first cave entered — via world sky-light, first structure built — via placed-block neighbour count). The Steam backend compiles against the operator-supplied SDK at `engine/third_party/steam/` but was not runtime-verified against a live Steam client in this environment (ASSET_REQUESTS.md STEAM-001). |
 
 **Root cause diagnosis:** the project optimized for *testable isolation* and treated "mock/procedural fallback" as an acceptable terminal state. Every subsystem got a `Mock*`/`Headless*`/procedural implementation that satisfied its unit tests, so no work item was ever forced to produce pixels, sound, or interaction. The remediation is structural, not cosmetic: **mock implementations become test-only fixtures, and the shipped desktop configuration must use real backends or fail the build.**
 
@@ -78,6 +81,7 @@ These are binding. Do not silently deviate; if a work item requires deviating, s
 | **ADR-011** | **User data lives in the OS user-data directory**, never beside the executable: Windows `%LOCALAPPDATA%\VoxelsEngine\`, Linux `$XDG_DATA_HOME/VoxelsEngine/`, macOS `~/Library/Application Support/VoxelsEngine/`. Shipped read-only content lives beside the executable in `assets/`. | Required by the product brief and by OS install conventions. |
 | **ADR-012** | **Content resolution order:** loose files under `assets/` (developer override) → mounted `.vpk` packs → procedural placeholder. A placeholder used at runtime **must** log a warning and be recorded in [ASSET_REQUESTS.md](ASSET_REQUESTS.md). | Keeps builds green without letting missing content go unnoticed. |
 | **ADR-013** | **Dreamcast/KallistiOS and console SDKs are aspirational.** Preserve the abstraction seams; spend no work-item budget on them before the desktop game ships. | Scope discipline. |
+| **ADR-014** | **Platform services (achievements, rich presence, overlay, cloud saves) are a seam, not a hard dependency.** `IPlatformServices` lives beside `IPlatform` in the HAL; `NullPlatformServices` is the default, `SteamPlatformServices` is compiled in only when `VOXELS_ENABLE_STEAM=ON` and the SDK is present, and the desktop app falls back to the null implementation at runtime if Steam initialization fails. | Mirrors ADR-004's mock/real seam pattern; achievements must never be a build or runtime requirement. |
 
 ---
 
@@ -87,7 +91,8 @@ These are binding. Do not silently deviate; if a work item requires deviating, s
 voxels/
 ├── engine/            # voxels_engine static library — everything reusable
 │   ├── core/          # Logger, Preferences, Math, Memory, GameTypes, JobSystem, Paths
-│   ├── platform/      # IPlatform: SDL2 (desktop, required), Headless (tests), Dreamcast (stub)
+│   ├── platform/      # IPlatform: SDL2 (desktop, required), Headless (tests), Dreamcast (stub);
+│   │                  # IPlatformServices: Null (default), Steam (optional, VOXELS_ENABLE_STEAM)
 │   ├── graphics/      # IRenderer + RHI; gl/ (real GL 3.3 backend); mock/ (tests); vulkan|dx12|metal (declared, unimplemented)
 │   ├── render/        # Higher level: ChunkRenderer, TextureAtlas, MaterialSystem, Camera, Frustum, DebugDraw
 │   ├── ui/            # IUIManager + ImGui backend, screens, HUD primitives

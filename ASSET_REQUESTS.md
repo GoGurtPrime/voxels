@@ -31,6 +31,26 @@
 * **Need:** the machine running `voxels_app` must expose an OpenGL 3.3 Core profile context (any GPU from ~2010 onward, with vendor drivers installed — not the Microsoft Basic Display Adapter).
 * **Operator action:** if the app reports "failed to create GL 3.3 Core context", install/update your GPU vendor drivers.
 
+### LEGAL-001 — Real license terms *(status: BLOCKING before any public distribution, work item 18)*
+* **Need:** the actual license or end-user license agreement text for this game, and the copyright holder name to put in it.
+* **Current placeholder:** `LICENSE.txt` at the repository root is an explicit "no rights granted yet" placeholder (all-rights-reserved notice), generated so every package always ships a `LICENSE.txt`. It is **not** a real license grant.
+* **Operator action:** supply the final license text (or confirm "all rights reserved / proprietary, not for redistribution" is actually the intended terms) and the legal copyright holder name. Replace `LICENSE.txt`'s contents accordingly before distributing a build to anyone outside the team.
+
+### STEAM-001 — Steamworks App ID *(status: OPTIONAL, only needed if shipping the VOXELS_ENABLE_STEAM=ON build)*
+* **Need:** a registered Steamworks App ID, and (for achievements/rich presence to resolve against real definitions in the Steam client) the corresponding achievement API names configured in the Steamworks partner site to match `ACH_FIRST_BLOCK_BROKEN`, `ACH_FIRST_WORLD_CREATED`, `ACH_FIRST_CAVE_ENTERED`, `ACH_FIRST_STRUCTURE_BUILT` (see `engine/include/voxels/platform/platform_services.hpp`).
+* **Current state:** the Steamworks SDK itself was supplied by the operator and now lives at `engine/third_party/steam/`; `SteamPlatformServices` (`engine/src/platform/steam_platform_services.cpp`) is implemented against it but was not runtime-verified in this session (no Steam client / App ID available in this environment — see the completion report's Verification section).
+* **Operator action:** provide an App ID (a `steam_appid.txt` next to the executable is sufficient for local testing without a full Steamworks build submission), and confirm the achievement API names above in the partner site's achievement configuration.
+
+### OPS-001 — Clean test machine for packaging verification *(status: OPTIONAL, verify only, work item 18)*
+* **Need:** a VM or second machine with no compilers, SDKs, IDEs, or SDL2 installed, to install and launch a packaged `.zip`/`.tar.gz` archive exactly as a non-developer player would.
+* **Current state:** packaging was verified by installing into a local build-tree prefix and inspecting the resulting layout/CPack archive on the development machine only (see the work item 18 completion report). This is **not** equivalent to a clean-machine test.
+* **Operator action:** provide (or grant access to) a machine/VM without developer tooling so a future session can complete the clean-machine verification in [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
+
+### ART-001 — Icon and store/branding art *(status: OPTIONAL, work item 18)*
+* **Need:** an application icon (`.ico` for Windows / `.icns` for macOS, 256×256 source), and, if this ships on a storefront, capsule/header art and the final game title if it differs from the working name "VoxelsEngine".
+* **Current state:** the packaged executable and window use no custom icon (OS default) and the working title "VoxelsEngine".
+* **Operator action:** supply the icon and branding art files, and confirm the final title, when available.
+
 ---
 
 ## Placeholder Inventory (filler content currently shipping)

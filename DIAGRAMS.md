@@ -42,6 +42,7 @@ flowchart TD
     subgraph HAL["Hardware Abstraction Layer"]
         PLAT["platform<br/>IPlatform → SDL2Platform, Headless is test-only"]
         GFX["graphics<br/>IRenderer + RHI → GLRenderer, Mock is test-only,<br/>Vulkan/DX12/Metal declared but unimplemented"]
+        PSVC["platform_services<br/>IPlatformServices → NullPlatformServices (default),<br/>SteamPlatformServices (VOXELS_ENABLE_STEAM, optional)"]
     end
 
     subgraph CORE["core"]
@@ -74,8 +75,10 @@ flowchart TD
     AUD --> PLAT
     INP --> PLAT
     SAVE --> WORLD
+    SESS --> PSVC
     PLAT --> CR
     GFX --> CR
+    PSVC --> CR
     WORLD --> CR
     AST --> CR
 ```
@@ -492,3 +495,48 @@ flowchart LR
 ```
 
 The audio callback never allocates, never locks, and never touches game state directly.
+
+---
+
+## 14. Packaging, Versioning & Platform Services
+
+```mermaid
+flowchart TD
+    GIT["git rev-parse --short HEAD<br/>+ working-tree dirty check"] --> GEN["cmake/GenerateVersionHeader.cmake<br/>(custom target, reruns every build)"]
+    PVER["project(VoxelsEngine VERSION X.Y.Z)"] --> GEN
+    GEN --> VH["generated_include/voxels/core/version.hpp<br/>kEngineVersion, kEngineGitCommit, kEngineBuildTimestamp"]
+    VH --> TITLE["Window title (main.cpp)"]
+    VH --> MENU["Main-menu corner text"]
+    VH --> LOG["Startup log banner"]
+    VH --> SAVE["GameSave.engineVersion default"]
+    VH --> MANIFEST["VPK manifest.json engine_compatibility<br/>(AssetBundler)"]
+
+    subgraph BUILD["cmake --build"]
+        APPTGT["voxels_app"]
+    end
+    subgraph PACKAGE["cmake --install / cpack"]
+        LAYOUT["voxels_app(.exe) + SDL2/Steam runtime + assets/<br/>+ README.txt + LICENSE.txt + THIRD_PARTY_LICENSES.txt"]
+    end
+    APPTGT --> LAYOUT
+    TPL["packaging/README.txt.in<br/>packaging/THIRD_PARTY_LICENSES.txt.in"] --> LAYOUT
+
+    FR{"settings.json exists?"} -- no: first run --> DEFAULTS["Write default GamePreferences<br/>create user-data directory tree"]
+    DEFAULTS --> CARD["MainMenuState pushes ControlsCardState overlay"]
+    CARD -- "Got it" --> SEEN["controlsCardSeen = true, persisted"]
+    FR -- yes --> MENUSTATE["MainMenuState (no card unless controlsCardSeen is false)"]
+
+    subgraph PSVC["IPlatformServices"]
+        NPS["NullPlatformServices (default)"]
+        SPS["SteamPlatformServices<br/>(VOXELS_ENABLE_STEAM=ON + SDK present)"]
+    end
+    GS["GameSession"] -- "break/place/cave events" --> PSVC
+    PSVC --> ACH["Achievements: FirstBlockBroken, FirstWorldCreated,<br/>FirstCaveEntered, FirstStructureBuilt"]
+    SPS --> CLOUD["SaveManager save directory → Steam Cloud<br/>(level.json, player.dat mirrored on save/load)"]
+```
+
+Achievement triggers are real gameplay signals, not direct calls from menu code: `GameSession`
+unlocks `FirstBlockBroken` when a break completes, `FirstCaveEntered` when the player's block
+position has zero sky light with a solid roof two blocks overhead, and `FirstStructureBuilt`
+when a placement lands with three or more solid orthogonal neighbours already present.
+`FirstWorldCreated` fires from `WorldCreationState` when a new save is actually persisted (not
+when loading an existing one).
