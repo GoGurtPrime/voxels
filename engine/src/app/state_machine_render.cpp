@@ -14,6 +14,7 @@
 
 #include "voxels/core/logger.hpp"
 #include "voxels/graphics/gl_renderer.hpp"
+#include "voxels/networking/server.hpp"
 #include "voxels/platform/platform.hpp"
 #include "voxels/render/chunk_renderer.hpp"
 #include "voxels/ui/imgui_ui_manager.hpp"
@@ -66,9 +67,22 @@ void MainMenuState::Update(double deltaSeconds) {
 
 void InGameState::OnEnter() {
     if (m_jobSystem == nullptr) m_jobSystem = std::make_unique<JobSystem>();
-    if (m_preparedWorld != nullptr) m_session.AdoptWorld(std::move(m_preparedWorld));
+    if (m_context != nullptr && m_context->networkServer != nullptr) {
+        World& authoritativeWorld = m_context->networkServer->GetWorld();
+        authoritativeWorld.Initialize(m_options);
+        if (m_preparedWorld != nullptr) {
+            for (const auto& [coordinate, chunk] : m_preparedWorld->GetChunks()) {
+                authoritativeWorld.GetOrCreateChunk(coordinate) = *chunk;
+            }
+            m_preparedWorld.reset();
+        }
+        m_session.SetWorld(&authoritativeWorld);
+    } else if (m_preparedWorld != nullptr) {
+        m_session.AdoptWorld(std::move(m_preparedWorld));
+    }
     m_session.SetWorldOptions(m_options);
     m_session.SetInputManager(m_inputManager);
+    if (m_context != nullptr) m_session.SetNetworkClient(m_context->networkClient);
     m_session.SetBlockRegistry(m_registry);
     m_session.SetJobSystem(m_jobSystem.get());
     if (m_context != nullptr && m_context->preferences != nullptr) m_session.SetPreferences(*m_context->preferences);

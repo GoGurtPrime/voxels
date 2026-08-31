@@ -317,6 +317,11 @@ void GameSession::Update(float deltaSeconds) {
                                   m_player.state.position.z);
     m_camera.yaw = m_player.state.yaw;
     m_camera.pitch = m_player.state.pitch;
+    if (m_networkClient != nullptr && m_networkClient->HasReceivedConnectAck()) {
+        m_networkClient->SendPlayerMove({m_player.state.position,
+                                         {m_player.state.yaw, m_player.state.pitch, 0.0f},
+                                         m_player.state.velocity});
+    }
 }
 
 void GameSession::Shutdown() noexcept {
@@ -326,6 +331,7 @@ void GameSession::Shutdown() noexcept {
     m_pendingChunkJobs.clear();
     m_initialized = false;
     m_input = nullptr;
+    m_networkClient = nullptr;
     m_jobSystem = nullptr;
     m_world = nullptr;
     m_ownedWorld.reset();

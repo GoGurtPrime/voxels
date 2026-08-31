@@ -32,6 +32,14 @@ bool ParseU32Value(std::string_view value, std::uint32_t& outValue) {
     return result.ec == std::errc{};
 }
 
+bool ParsePort(std::string_view value, std::uint16_t& outValue) {
+    unsigned int port = 0;
+    const auto result = std::from_chars(value.data(), value.data() + value.size(), port);
+    if (result.ec != std::errc{} || port == 0 || port > 65535) return false;
+    outValue = static_cast<std::uint16_t>(port);
+    return true;
+}
+
 bool ParseResolution(std::string_view value, int& width, int& height) {
     const auto sep = value.find('x');
     if (sep == std::string_view::npos) {
@@ -82,6 +90,15 @@ AppCommandLineOptions CliParser::Parse(const std::vector<std::string>& args) con
             options.headless = true;
         } else if (key == "server") {
             options.serverMode = true;
+        } else if (key == "port") {
+            std::uint16_t port = 0;
+            if (ParsePort(value, port)) {
+                options.serverPortOverride = true;
+                options.serverPort = port;
+            }
+        } else if (key == "join" && !value.empty()) {
+            options.joinEndpointOverride = true;
+            options.joinEndpoint = std::string(value);
         } else if (key == "world") {
             options.worldNameOverride = true;
             options.worldName = std::string(value);

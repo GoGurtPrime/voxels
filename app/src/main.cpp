@@ -10,6 +10,8 @@
 
 #include <chrono>
 #include <array>
+#include <charconv>
+#include <csignal>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -89,6 +91,23 @@ private:
 constexpr double kFixedStepSeconds = 1.0 / 60.0;
 constexpr int kMaxSimulationStepsPerFrame = 4;
 constexpr char kSaveFormatDirectory[] = "v1";
+volatile std::sig_atomic_t g_serverRunning = 1;
+
+void HandleServerInterrupt(int) {
+    g_serverRunning = 0;
+}
+
+bool ParseNetworkEndpoint(const std::string& text, std::string& host, std::uint16_t& port) {
+    const std::size_t separator = text.rfind(':');
+    if (separator == std::string::npos || separator == 0 || separator == text.size() - 1) return false;
+    const std::string portText = text.substr(separator + 1);
+    unsigned int parsedPort = 0;
+    const auto result = std::from_chars(portText.data(), portText.data() + portText.size(), parsedPort);
+    if (result.ec != std::errc{} || parsedPort == 0 || parsedPort > 65535) return false;
+    host = text.substr(0, separator);
+    port = static_cast<std::uint16_t>(parsedPort);
+    return true;
+}
 
 void RemoveUnversionedSaves() {
     const std::filesystem::path savesRoot = voxels::Paths::SavesDir();
@@ -216,13 +235,17 @@ int main(int argc, char** argv) {
     if (options.serverMode) {
         std::cout << "Voxels app booting in headless server mode." << std::endl;
         voxels::networking::GameServer server;
-        if (!server.Start()) {
+        if (!server.Start("0.0.0.0", options.serverPort)) {
             std::cerr << "Voxels server failed to start." << std::endl;
             return 1;
         }
         std::cout << "Voxels server listening on port " << server.Port() << "." << std::endl;
-        for (int tick = 0; tick < std::max(1, options.maxTicks > 0 ? options.maxTicks : 1); ++tick) {
+        std::signal(SIGINT, HandleServerInterrupt);
+        int tick = 0;
+        while (g_serverRunning != 0 && (!options.maxTicksOverride || tick < options.maxTicks)) {
             server.Tick();
+            ++tick;
+            std::this_thread::sleep_for(voxels::networking::GameServer::kTickInterval);
         }
         server.Stop();
         return 0;
@@ -368,13 +391,40 @@ int main(int argc, char** argv) {
     stateMachine.Start(std::make_unique<voxels::MainMenuState>(&appContext));
     if (!audio->IsAudible()) uiManager.ShowToast("Audio device unavailable; playing silently.");
 
-    voxels::networking::GameServer localServer;
+    std::unique_ptr<voxels::networking::GameServer> localServer;
     voxels::networking::GameClient localClient;
-    if (!localServer.Start("127.0.0.1", 0) || !localClient.Connect("127.0.0.1", localServer.Port())) {
-        std::cerr << "Voxels local server failed to start." << std::endl;
+    std::string connectionHost = "127.0.0.1";
+    std::uint16_t connectionPort = options.serverPort;
+    if (options.joinEndpointOverride) {
+        if (!ParseNetworkEndpoint(options.joinEndpoint, connectionHost, connectionPort)) {
+            std::cerr << "Invalid --join endpoint; expected HOST:PORT." << std::endl;
+            uiManager.ShowToast("Join address must use HOST:PORT.");
+            stateMachine.Shutdown();
+            uiManager.Shutdown();
+            renderer.Shutdown();
+            engine.shutdown();
+            return 1;
+        }
+    } else {
+        localServer = std::make_unique<voxels::networking::GameServer>();
+        if (!localServer->Start("127.0.0.1", connectionPort)) {
+            std::cerr << "Voxels local server failed to start on port " << connectionPort << "." << std::endl;
+            uiManager.ShowToast("Local server port is unavailable.");
+            stateMachine.Shutdown();
+            uiManager.Shutdown();
+            renderer.Shutdown();
+            engine.shutdown();
+            return 1;
+        }
+    }
+    if (!localClient.Connect(connectionHost, connectionPort)) {
+        std::cerr << "Voxels client failed to connect to " << connectionHost << ':' << connectionPort << "." << std::endl;
+        uiManager.ShowToast("Unable to open the game connection.");
         engine.shutdown();
         return 1;
     }
+    appContext.networkClient = &localClient;
+    appContext.networkServer = localServer.get();
 
     WindowEventListener windowListener(running, renderer, inputManager, uiManager);
     if (platform != nullptr) {
@@ -387,6 +437,7 @@ int main(int argc, char** argv) {
     voxels::FrameAccumulator frameAccumulator;
     auto lastTime = std::chrono::steady_clock::now();
     int frameCount = 0;
+    bool connectionStatusShown = false;
     const int maxFrames = options.maxFrames > 0 ? options.maxFrames : std::numeric_limits<int>::max();
 
     while (running && frameCount < maxFrames) {
@@ -401,8 +452,12 @@ int main(int argc, char** argv) {
 
         const int simTicks = frameAccumulator.Resolve(kFixedStepSeconds, kMaxSimulationStepsPerFrame);
         for (int i = 0; i < simTicks; ++i) {
-            localServer.Tick();
+            if (localServer != nullptr) localServer->Tick();
             localClient.Tick();
+            if (!connectionStatusShown && localClient.HasReceivedConnectAck()) {
+                uiManager.ShowToast("Connected to " + connectionHost + ':' + std::to_string(connectionPort));
+                connectionStatusShown = true;
+            }
             stateMachine.Update(kFixedStepSeconds);
         }
 
@@ -443,7 +498,7 @@ int main(int argc, char** argv) {
     }
 
     localClient.Disconnect();
-    localServer.Stop();
+    if (localServer != nullptr) localServer->Stop();
     std::cout << "Voxels app loop exited after " << frameCount << " frames.\n";
     // Exit the active state (releasing any GPU resources it owns, e.g. InGameState's
     // ChunkRenderer) while the GL context is still alive, before the renderer/platform below

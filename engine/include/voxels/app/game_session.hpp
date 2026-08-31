@@ -12,6 +12,7 @@
 #include "voxels/gameplay/physics.hpp"
 #include "voxels/gameplay/player.hpp"
 #include "voxels/input/input_manager.hpp"
+#include "voxels/networking/client.hpp"
 #include "voxels/render/camera.hpp"
 #include "voxels/world/world.hpp"
 
@@ -34,6 +35,7 @@ public:
     void AdoptWorld(std::unique_ptr<World> world) noexcept;
     void SetWorldOptions(const WorldOptions& options) noexcept;
     void SetInputManager(InputManager* inputManager) noexcept;
+    void SetNetworkClient(networking::GameClient* client) noexcept { m_networkClient = client; }
     void SetBlockRegistry(const BlockRegistry* registry) noexcept;
     void SetJobSystem(JobSystem* jobSystem) noexcept { m_jobSystem = jobSystem; }
     void SetPlayerSpawn(const Vec3& spawn);
@@ -82,6 +84,7 @@ private:
     std::unique_ptr<World> m_ownedWorld;
     World* m_world = nullptr;
     InputManager* m_input = nullptr;
+    networking::GameClient* m_networkClient = nullptr;
     JobSystem* m_jobSystem = nullptr;
     Player m_player{};
     Camera m_camera{};

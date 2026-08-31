@@ -53,6 +53,8 @@ class IPlatform;
 class ImGuiUIManager;
 class SaveManager;
 class InGameState;
+namespace networking { class GameClient; }
+namespace networking { class GameServer; }
 
 struct AppContext {
     IPlatform* platform = nullptr;
@@ -64,6 +66,8 @@ struct AppContext {
     SaveManager* saveManager = nullptr;
     GamePreferences* preferences = nullptr;
     AudioEngine* audio = nullptr;
+    networking::GameClient* networkClient = nullptr;
+    networking::GameServer* networkServer = nullptr;
     std::unordered_map<std::string, SoundHandle> soundBank;
     InGameState* activeGame = nullptr;
     std::function<void(std::unique_ptr<class IAppState>)> requestTransition;

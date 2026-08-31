@@ -102,6 +102,10 @@ struct AppCommandLineOptions {
     bool vsyncValue = true;
     bool headless = false;
     bool serverMode = false;
+    bool serverPortOverride = false;
+    std::uint16_t serverPort = 27015;
+    bool joinEndpointOverride = false;
+    std::string joinEndpoint;
     std::string configPath;
     std::string saveSlot;
     bool worldNameOverride = false;
