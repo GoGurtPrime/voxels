@@ -45,7 +45,7 @@ Anything less than the above is an unfinished product, regardless of unit test c
 | `ChunkRenderer` (`render/chunk_renderer.cpp`) | Real | Job-scheduled meshing, budgeted upload, frustum-culled opaque/transparent draw. Wired into `InGameState`. |
 | Physics / block interaction / camera math | Real | Fixed-step DDA targeting, hardness-based breaking, placement collision checks, stack inventory, hotbar input, and break/place event queue are wired into `GameSession`. |
 | Input manager | Real | SDL keyboard and relative mouse events feed the player action map in the desktop runtime. |
-| Networking (Asio UDP client/server) | Real | Ticks in `main.cpp` but carries no gameplay traffic. |
+| Networking (Asio UDP client/server) | Partial | Versioned bounded protocol; server-assigned player ids; movement replication with delta validation; reach-validated block-edit authority with broadcast; ack-based chunk streaming with fragmentation/reassembly; direct-IP join UI plus `--join`; dedicated `--server` hosts a generated world; keep-alives, timeouts, reject/disconnect reasons, player-left cleanup. Input-intent server physics and prediction/reconciliation remain future work. |
 | Audio | Partial | SDL2 float-stereo callback device, fixed 32-voice mixer, shipped generated WAV filler, JSON sound bank, WAV PCM decode/fallback synthesis, 3D attenuation/panning, and block/movement/water event routing are real. OGG streaming, cave ambience, and full UI audio remain unfinished. |
 | Asset manager / `.vpk` | Partial | Validated deterministic VPK v1 reader/writer, CLI bundler, manifest, CRC checking, deduplicated payloads, and loose-first resolution are real. Pack-only GPU/audio consumers and development hot reload remain future work. |
 | Platform / SDL2 | Real | Desktop build with real SDL2 window and GL 3.3 Core context. |
@@ -186,8 +186,10 @@ Authoring (editor) → `.vmdl` models + textures + audio → **bundler** → `.v
 - `ModelRegistry` loads each `render_type: "model"` asset once, bakes culled micro-voxel faces into `ChunkVertex` buffers, and `ChunkRenderer` appends that data at model-block coordinates during normal chunk meshing. Missing/corrupt models produce a visible fallback mesh and warning rather than a crash.
 
 ### 6.7 Networking
-- UDP over Asio. Packet types: `C2S_Handshake`/`Input`/`BlockEdit`, `S2C_Accept`/`ChunkData`/`EntityState`/`BlockEdit`/`Disconnect`.
-- Loopback in solo play; the same server accepts LAN clients when world visibility is set to public.
+- UDP over Asio, versioned packet header (`kProtocolVersion`) with a 1200-byte payload bound enforced on both ends. Packet types: `C2S_Connect`(client kind)/`PlayerMove`/`BlockModify`/`ChunkAck`/`KeepAlive`/`Disconnect`; `S2C_ConnectAck`(entity + world info)/`EntityState`/`BlockUpdate`/`ChunkData`(fragment)/`KeepAliveAck`/`PlayerLeft`/`Reject`(reason)/`Disconnect`(reason).
+- The in-process server binds `0.0.0.0` at app boot (ephemeral fallback when the preferred port is taken). Loopback joiners are always admitted; non-loopback joiners require a ready **public** world. Entering a world publishes it via `SetWorldReady` (seed, generator version, mode flags, spawn); leaving calls `ClearWorld`, disconnecting remote peers with a reason.
+- Joining is world-download, not local generation: the server streams RLE chunk sections nearest-first as MTU-safe fragments, retransmitting until the client acks each chunk (`C2S_ChunkAck`); the client reassembles, rebuilds column skylight, and surfaces whole columns to the renderer. The server also generates terrain columns around remote peers on demand.
+- Movement is client-reported and server-validated (per-tick delta bound with respawn resync); block edits are server-validated for reach before mutation and broadcast. Remote players render as color-hashed body/head boxes with yaw. **Deviation from ADR-007:** full input-intent server physics with client prediction/reconciliation is not yet implemented; the server gates rather than simulates movement.
 
 ---
 

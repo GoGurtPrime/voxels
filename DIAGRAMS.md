@@ -139,8 +139,15 @@ stateDiagram-v2
     Boot --> MainMenu: services initialized
 
     MainMenu --> WorldSelect: "Play"
+    MainMenu --> JoinGame: "Join Game"
     MainMenu --> Settings: "Settings"
     MainMenu --> [*]: "Quit"
+
+    JoinGame --> JoinLoading: "Connect — host address + UDP port"
+    JoinGame --> MainMenu: "Back"
+
+    JoinLoading --> InGame: world info received + spawn columns streamed
+    JoinLoading --> ErrorScreen: reject, timeout, or download stall
 
     WorldSelect --> WorldCreation: "New World"
     WorldSelect --> Loading: "Load selected save"
@@ -158,7 +165,7 @@ stateDiagram-v2
 
     Pause --> InGame: "Resume"
     Pause --> Settings: "Settings"
-    Pause --> MainMenu: "Save and Quit"
+    Pause --> MainMenu: "Save and Quit" or "Leave Server"
     Pause --> [*]: "Save and Exit to Desktop"
 
     Settings --> MainMenu: "Back (from main menu)"
@@ -446,17 +453,27 @@ Packet flow per connection:
 sequenceDiagram
     participant C as GameClient
     participant S as GameServer
-    C->>S: C2S_Handshake {protocolVersion, playerName}
-    S-->>C: S2C_Accept {playerId, worldInfo, spawn}
-    loop each simulation tick
-        C->>S: C2S_Input {seq, move, look, actions}
-        S-->>C: S2C_EntityState {seq ack, transforms}
+    C->>S: C2S_Connect {protocolVersion, clientKind}
+    alt full, not ready, or private (non-loopback)
+        S-->>C: S2C_Reject {reason}
+    else accepted
+        S-->>C: S2C_ConnectAck {playerId, worldReady, worldInfo: seed/version/flags/spawn}
     end
-    S-->>C: S2C_ChunkData (streamed, as player moves)
-    C->>S: C2S_BlockEdit {position, action, blockId}
-    S-->>C: S2C_BlockEdit (broadcast to all clients)
+    loop world download (remote clients)
+        S-->>C: S2C_ChunkData {coord, fragment i/n, totalBytes, RLE slice}
+        C->>S: C2S_ChunkAck {coord}
+        Note over S: unacked chunks retransmit after 350 ms
+    end
+    loop each simulation tick
+        C->>S: C2S_PlayerMove {position, rotation, velocity}
+        S-->>C: S2C_EntityState (broadcast, delta-validated)
+    end
+    C->>S: C2S_BlockModify {position, blockId}
+    S-->>C: S2C_BlockUpdate (broadcast after reach validation)
+    C->>S: C2S_KeepAlive (every 2 s)
+    S-->>C: S2C_KeepAliveAck
     C->>S: C2S_Disconnect
-    S-->>C: S2C_Disconnect {reason}
+    S-->>C: S2C_PlayerLeft (broadcast) / S2C_Disconnect {reason}
 ```
 
 ---
