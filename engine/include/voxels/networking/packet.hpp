@@ -28,13 +28,19 @@ enum class PacketId : std::uint16_t {
     S2C_BlockUpdate,
     S2C_ChunkData,
     C2S_KeepAlive,
-    S2C_KeepAliveAck
+    S2C_KeepAliveAck,
+    C2S_Disconnect,
+    S2C_PlayerLeft
 };
+
+inline constexpr std::uint16_t kProtocolVersion = 1;
+inline constexpr std::size_t kMaximumPacketPayloadBytes = 1200;
 
 struct PacketHeader {
     PacketId id{};
     std::uint32_t sequenceNum = 0;
     std::uint16_t payloadSize = 0;
+    std::uint16_t protocolVersion = kProtocolVersion;
 };
 
 struct PlayerMove {
@@ -65,6 +71,10 @@ struct Packet {
 
 [[nodiscard]] std::vector<std::uint8_t> SerializePacket(const Packet& packet);
 [[nodiscard]] bool DeserializePacket(std::span<const std::uint8_t> bytes, Packet& packet);
+[[nodiscard]] std::vector<std::uint8_t> SerializePlayerMove(const PlayerMove& movement);
+[[nodiscard]] bool DeserializePlayerMove(std::span<const std::uint8_t> bytes, PlayerMove& movement);
+[[nodiscard]] std::vector<std::uint8_t> SerializeEntityState(const EntityState& state);
+[[nodiscard]] bool DeserializeEntityState(std::span<const std::uint8_t> bytes, EntityState& state);
 [[nodiscard]] std::vector<std::uint8_t> SerializeBlockModify(const BlockModify& modify);
 [[nodiscard]] bool DeserializeBlockModify(std::span<const std::uint8_t> bytes, BlockModify& modify);
 

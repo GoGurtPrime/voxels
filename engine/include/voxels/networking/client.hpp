@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "voxels/networking/packet.hpp"
@@ -28,10 +29,13 @@ public:
     [[nodiscard]] bool Connect(std::string host, std::uint16_t port);
     void Disconnect();
     void Tick();
+    void SendPlayerMove(const PlayerMove& movement);
     void SendBlockModify(const BlockModify& modify);
 
     [[nodiscard]] bool IsConnected() const noexcept;
     [[nodiscard]] bool HasReceivedConnectAck() const noexcept;
+    [[nodiscard]] std::uint32_t PlayerId() const noexcept;
+    [[nodiscard]] const std::unordered_map<std::uint32_t, EntityState>& ReceivedEntityStates() const noexcept;
     [[nodiscard]] const std::vector<BlockModify>& ReceivedBlockUpdates() const noexcept;
 
 private:

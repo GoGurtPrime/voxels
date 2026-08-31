@@ -14,7 +14,9 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
+#include "voxels/networking/packet.hpp"
 #include "voxels/world/world.hpp"
 
 namespace voxels::networking {
@@ -38,6 +40,7 @@ public:
     [[nodiscard]] std::size_t PeerCount() const noexcept;
     [[nodiscard]] World& GetWorld() noexcept;
     [[nodiscard]] const World& GetWorld() const noexcept;
+    [[nodiscard]] const std::unordered_map<std::uint32_t, EntityState>& GetPlayerStates() const noexcept;
 
 private:
     class Impl;

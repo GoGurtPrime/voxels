@@ -9,6 +9,8 @@
 #include "voxels/networking/packet.hpp"
 
 #include <limits>
+#include <bit>
+#include <cmath>
 
 namespace voxels::networking {
 
@@ -46,15 +48,39 @@ bool ReadInt32(std::span<const std::uint8_t> input, std::size_t& offset, int& va
     return true;
 }
 
+void WriteFloat(std::vector<std::uint8_t>& output, float value) {
+    WriteUnsigned(output, std::bit_cast<std::uint32_t>(value));
+}
+
+bool ReadFloat(std::span<const std::uint8_t> input, std::size_t& offset, float& value) {
+    std::uint32_t bits = 0;
+    if (!ReadUnsigned(input, offset, bits)) return false;
+    value = std::bit_cast<float>(bits);
+    return std::isfinite(value);
+}
+
+void WriteVec3(std::vector<std::uint8_t>& output, const Vec3& value) {
+    WriteFloat(output, value.x);
+    WriteFloat(output, value.y);
+    WriteFloat(output, value.z);
+}
+
+bool ReadVec3(std::span<const std::uint8_t> input, std::size_t& offset, Vec3& value) {
+    return ReadFloat(input, offset, value.x) && ReadFloat(input, offset, value.y) &&
+           ReadFloat(input, offset, value.z);
+}
+
 } // namespace
 
 std::vector<std::uint8_t> SerializePacket(const Packet& packet) {
-    if (packet.payload.size() > std::numeric_limits<std::uint16_t>::max()) {
+    if (packet.header.protocolVersion != kProtocolVersion ||
+        packet.payload.size() > kMaximumPacketPayloadBytes) {
         return {};
     }
 
     std::vector<std::uint8_t> bytes;
-    bytes.reserve(8 + packet.payload.size());
+    bytes.reserve(10 + packet.payload.size());
+    WriteUnsigned(bytes, packet.header.protocolVersion);
     WriteUnsigned(bytes, static_cast<std::uint16_t>(packet.header.id));
     WriteUnsigned(bytes, packet.header.sequenceNum);
     WriteUnsigned(bytes, static_cast<std::uint16_t>(packet.payload.size()));
@@ -64,16 +90,50 @@ std::vector<std::uint8_t> SerializePacket(const Packet& packet) {
 
 bool DeserializePacket(std::span<const std::uint8_t> bytes, Packet& packet) {
     std::size_t offset = 0;
+    std::uint16_t protocolVersion = 0;
     std::uint16_t id = 0;
     std::uint16_t payloadSize = 0;
-    if (!ReadUnsigned(bytes, offset, id) || !ReadUnsigned(bytes, offset, packet.header.sequenceNum) ||
-        !ReadUnsigned(bytes, offset, payloadSize) || bytes.size() - offset != payloadSize) {
+    if (!ReadUnsigned(bytes, offset, protocolVersion) || protocolVersion != kProtocolVersion ||
+        !ReadUnsigned(bytes, offset, id) || !ReadUnsigned(bytes, offset, packet.header.sequenceNum) ||
+        !ReadUnsigned(bytes, offset, payloadSize) || payloadSize > kMaximumPacketPayloadBytes ||
+        bytes.size() - offset != payloadSize) {
         return false;
     }
     packet.header.id = static_cast<PacketId>(id);
     packet.header.payloadSize = payloadSize;
+    packet.header.protocolVersion = protocolVersion;
     packet.payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(offset), bytes.end());
     return true;
+}
+
+std::vector<std::uint8_t> SerializePlayerMove(const PlayerMove& movement) {
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(36);
+    WriteVec3(bytes, movement.position);
+    WriteVec3(bytes, movement.rotation);
+    WriteVec3(bytes, movement.velocity);
+    return bytes;
+}
+
+bool DeserializePlayerMove(std::span<const std::uint8_t> bytes, PlayerMove& movement) {
+    std::size_t offset = 0;
+    return ReadVec3(bytes, offset, movement.position) && ReadVec3(bytes, offset, movement.rotation) &&
+           ReadVec3(bytes, offset, movement.velocity) && offset == bytes.size();
+}
+
+std::vector<std::uint8_t> SerializeEntityState(const EntityState& state) {
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(40);
+    WriteUnsigned(bytes, state.entityId);
+    const std::vector<std::uint8_t> movement = SerializePlayerMove(state.movement);
+    bytes.insert(bytes.end(), movement.begin(), movement.end());
+    return bytes;
+}
+
+bool DeserializeEntityState(std::span<const std::uint8_t> bytes, EntityState& state) {
+    std::size_t offset = 0;
+    if (!ReadUnsigned(bytes, offset, state.entityId)) return false;
+    return DeserializePlayerMove(bytes.subspan(offset), state.movement);
 }
 
 std::vector<std::uint8_t> SerializeBlockModify(const BlockModify& modify) {

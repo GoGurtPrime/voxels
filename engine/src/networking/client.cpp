@@ -11,6 +11,7 @@
 #include <asio.hpp>
 
 #include <array>
+#include <unordered_map>
 #include <utility>
 
 namespace voxels::networking {
@@ -21,8 +22,10 @@ public:
     asio::ip::udp::socket socket{ioContext};
     asio::ip::udp::endpoint serverEndpoint;
     std::uint32_t sequenceNumber = 0;
+    std::uint32_t playerId = 0;
     bool connected = false;
     bool receivedConnectAck = false;
+    std::unordered_map<std::uint32_t, EntityState> receivedEntityStates;
     std::vector<BlockModify> receivedBlockUpdates;
 };
 
@@ -65,12 +68,17 @@ bool GameClient::Connect(std::string host, std::uint16_t port) {
 }
 
 void GameClient::Disconnect() {
+    if (m_impl->connected && m_impl->socket.is_open()) {
+        SendPacket(*m_impl, PacketId::C2S_Disconnect);
+    }
     if (m_impl->socket.is_open()) {
         asio::error_code error;
         m_impl->socket.close(error);
     }
     m_impl->connected = false;
     m_impl->receivedConnectAck = false;
+    m_impl->playerId = 0;
+    m_impl->receivedEntityStates.clear();
     m_impl->receivedBlockUpdates.clear();
 }
 
@@ -93,14 +101,31 @@ void GameClient::Tick() {
         if (!DeserializePacket(std::span<const std::uint8_t>(buffer.data(), received), packet)) {
             continue;
         }
+        if (sender != m_impl->serverEndpoint) continue;
         if (packet.header.id == PacketId::S2C_ConnectAck) {
-            m_impl->receivedConnectAck = true;
+            EntityState state;
+            if (DeserializeEntityState(packet.payload, state)) {
+                m_impl->playerId = state.entityId;
+                m_impl->receivedEntityStates.insert_or_assign(state.entityId, state);
+                m_impl->receivedConnectAck = true;
+            }
+        } else if (packet.header.id == PacketId::S2C_EntityState) {
+            EntityState state;
+            if (DeserializeEntityState(packet.payload, state)) {
+                m_impl->receivedEntityStates.insert_or_assign(state.entityId, state);
+            }
         } else if (packet.header.id == PacketId::S2C_BlockUpdate) {
             BlockModify modify;
             if (DeserializeBlockModify(packet.payload, modify)) {
                 m_impl->receivedBlockUpdates.push_back(modify);
             }
         }
+    }
+}
+
+void GameClient::SendPlayerMove(const PlayerMove& movement) {
+    if (m_impl->connected && m_impl->receivedConnectAck) {
+        SendPacket(*m_impl, PacketId::C2S_PlayerMove, SerializePlayerMove(movement));
     }
 }
 
@@ -113,6 +138,12 @@ void GameClient::SendBlockModify(const BlockModify& modify) {
 bool GameClient::IsConnected() const noexcept { return m_impl->connected; }
 
 bool GameClient::HasReceivedConnectAck() const noexcept { return m_impl->receivedConnectAck; }
+
+std::uint32_t GameClient::PlayerId() const noexcept { return m_impl->playerId; }
+
+const std::unordered_map<std::uint32_t, EntityState>& GameClient::ReceivedEntityStates() const noexcept {
+    return m_impl->receivedEntityStates;
+}
 
 const std::vector<BlockModify>& GameClient::ReceivedBlockUpdates() const noexcept {
     return m_impl->receivedBlockUpdates;

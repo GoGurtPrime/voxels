@@ -36,6 +36,7 @@ add_library(voxels_engine
     src/assets/texture_loader.cpp
     src/assets/vmdl_codec.cpp
     src/networking/packet.cpp
+    src/networking/reliable_channel.cpp
     src/networking/server.cpp
     src/networking/client.cpp
     src/gameplay/physics.cpp
