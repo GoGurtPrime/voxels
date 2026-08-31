@@ -75,6 +75,36 @@ TEST_CASE("ModelEdit transforms and selection movement preserve authored geometr
     REQUIRE(document.Model().IsSolidAt(1, 0, 0));
 }
 
+TEST_CASE("ModelEdit box selection and selected movement mutate only selected voxels", "[editor]") {
+    auto document = MakeDocument();
+    REQUIRE(document.SetVoxel({0, 0, 0}, 1));
+    REQUIRE(document.SetVoxel({1, 0, 0}, 2));
+    REQUIRE(document.SetVoxel({3, 3, 3}, 1));
+    REQUIRE(document.SelectBox({0, 0, 0}, {1, 0, 0}, false));
+    REQUIRE(document.Selection().size() == 2);
+    REQUIRE(document.MoveSelected(0, 1, 0));
+    REQUIRE_FALSE(document.Model().IsSolidAt(0, 0, 0));
+    REQUIRE(document.Model().IsSolidAt(0, 1, 0));
+    REQUIRE(document.Model().IsSolidAt(3, 3, 3));
+}
+
+TEST_CASE("ModelEdit properties are dirty and undoable", "[editor]") {
+    auto document = MakeDocument();
+    const auto originalPalette = document.Model().palette[0];
+    auto updatedPalette = originalPalette;
+    updatedPalette.red = 32;
+    REQUIRE(document.UpdatePaletteEntry(0, updatedPalette));
+    REQUIRE(document.SetPivot({0.5F, 0.25F, 0.5F}));
+    REQUIRE(document.SetBounds({0.1F, 0.2F, 0.3F}, {0.8F, 0.9F, 1.0F}));
+    REQUIRE(document.IsDirty());
+    REQUIRE(document.Model().boundsMin == std::array<float, 3>{0.1F, 0.2F, 0.3F});
+    REQUIRE(document.Undo());
+    REQUIRE(document.Model().boundsMin != std::array<float, 3>{0.1F, 0.2F, 0.3F});
+    REQUIRE(document.Undo());
+    REQUIRE(document.Undo());
+    REQUIRE(document.Model().palette[0].red == originalPalette.red);
+}
+
 TEST_CASE("Editor project persists VMDL recovery and produces a pack", "[editor][filesystem]") {
     const std::filesystem::path root = TestDirectory("project");
     voxels::editor::EditorProject project(root);

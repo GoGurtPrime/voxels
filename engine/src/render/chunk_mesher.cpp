@@ -434,6 +434,9 @@ ChunkMeshData BuildChunkMesh(const Chunk& chunk, const ChunkNeighborhood& neighb
                     const std::uint32_t baseIndex = static_cast<std::uint32_t>(opaqueVerts.size());
                     for (ChunkVertex vertex : baked->vertices) {
                         RotateModelVertex(vertex, rotation);
+                        // Model blocks inherit their authored block texture, so artists bind a
+                        // single PNG in blocks.json without depending on atlas sort order.
+                        vertex.atlasLayer = static_cast<std::uint16_t>(atlas.LayerFor(definition->GetFaceTexture(static_cast<Face>(vertex.faceIndex))));
                         vertex.x = static_cast<std::uint16_t>(vertex.x + x * static_cast<int>(kChunkVertexPositionScale));
                         vertex.y = static_cast<std::uint16_t>(vertex.y + y * static_cast<int>(kChunkVertexPositionScale));
                         vertex.z = static_cast<std::uint16_t>(vertex.z + z * static_cast<int>(kChunkVertexPositionScale));

@@ -55,7 +55,7 @@ void ModelRegistry::LoadReferencedModels(const BlockRegistry& blocks, const std:
 }
 
 void ModelRegistry::Register(std::string modelId, VoxelModel model) {
-    BakedModelMesh mesh = Bake(model);
+    BakedModelMesh mesh = BakeModel(model);
     m_models.insert_or_assign(modelId, std::move(model));
     m_meshes.insert_or_assign(std::move(modelId), std::move(mesh));
 }
@@ -70,7 +70,7 @@ const VoxelModel* ModelRegistry::FindModel(const std::string& modelId) const noe
     return found == m_models.end() ? nullptr : &found->second;
 }
 
-BakedModelMesh ModelRegistry::Bake(const VoxelModel& model) {
+BakedModelMesh ModelRegistry::BakeModel(const VoxelModel& model) {
     BakedModelMesh mesh;
     for (std::uint32_t z = 0; z < model.gridSize[2]; ++z) for (std::uint32_t y = 0; y < model.gridSize[1]; ++y) for (std::uint32_t x = 0; x < model.gridSize[0]; ++x) {
         if (!model.IsSolidAt(x, y, z)) continue;

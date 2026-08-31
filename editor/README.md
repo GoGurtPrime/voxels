@@ -17,7 +17,7 @@ build/editor/Debug/voxels_editor.exe --bundle --input=editor/samples/starter --o
 ```mermaid
 flowchart LR
     A[Create or open content project] --> B[Model a VMDL in Slice Editor]
-    B --> C[Set palette colors and texture layers]
+    B --> C[Choose a block texture id]
     C --> D[Save models/name.vmdl]
     D --> E[Create or import 16x16 RGBA PNG]
     E --> F[Write or update block definition]
@@ -39,15 +39,17 @@ flowchart TD
 
 ## Create A New Model Block
 
-1. Open **Slice Editor**. Select a `Slice Z` layer, choose a palette color in **Palette and Properties**, and click cells to add or remove micro-voxels. The grid is $16\times16\times16$ and each slice exposes otherwise hidden interiors.
-2. Use **Mirror X/Y/Z** and **Rotate X/Y/Z** to build symmetrical forms quickly. **Edit > Undo/Redo** restores the complete prior model state. Set pivot and bounds in **Palette and Properties**. The Model Viewport is an immediate geometric reference; export OBJ when an external DCC inspection is useful.
+1. Open **Slice Editor**. Select a `Slice Z` layer, choose a palette color in **Palette and Properties**, and click cells to add or remove micro-voxels. The grid is $16\times16\times16$ and each slice exposes otherwise hidden interiors. The tool selector provides add/remove, paint, contiguous fill, eyedropper, and selection modes.
+2. Choose **Select**, click voxels, or enter a `Box start` and `Box end` coordinate then choose **Box Select**. The yellow outline identifies selected voxels; use the move controls to reposition them. Use **Mirror X/Y/Z** and **Rotate X/Y/Z** to build symmetrical forms quickly. **Edit > Undo/Redo** restores the complete prior model state. Set pivot and bounds in **Palette and Properties**.
 3. Choose **File > Save Model**. The default model is `models/authored_block.vmdl`. This is an atomic save: an interrupted write does not corrupt the previous model. Dirty documents also write `%LOCALAPPDATA%/VoxelsEngine/editor_recovery.vmdl` every 60 seconds.
 4. Give the block a unique lowercase `Id`, display name, model path, texture id, and hardness in **Block Definition**. Select **Write Block Definition**. Existing entries stay in `data/blocks.json`; writing the same id updates that entry. The editor validates the complete JSON using the game's `BlockRegistry` before it writes.
 5. Select **Content > Build Pack**. The editor saves the model, validates its referenced PNG/VMDL files, and creates `packs/content.vpk`. A failed validation is shown in **Build Output** and produces no replacement pack.
 
 ## Texture Workflow
 
-Block textures live below `textures/` and must be square, power-of-two RGBA PNG files. Use **16x16 RGBA8 PNG** for block atlas art. The starter project generates `textures/blocks/authored_block.png` from the engine's intentional filler texture set; replace it with artist-authored art using the same relative texture id, such as `blocks/authored_block`.
+Block textures live below `textures/` and must be square, power-of-two RGBA PNG files. Use **16x16 RGBA8 PNG** for block atlas art. Enter a source path in **PNG to import** and choose **Import PNG Texture** to copy and validate the artist image into the project. The selected block texture is immediately applied to the OpenGL Model Viewport and is used by every exposed model face in the running game.
+
+This deliberately avoids a UV unwrap/seam workflow: sub-voxel geometry is composed of exposed axis-aligned faces, each of which uses the standard square tile UVs. Artists create one deliberate pixel-art tile for the block; the runtime binds that tile through the block definition and the game texture atlas. It keeps the content file compact, makes texture replacement a single import, and exactly matches how block models render in the voxel world.
 
 The texture id intentionally excludes both `textures/` and `.png`:
 

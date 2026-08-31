@@ -59,6 +59,12 @@ bool EditorDocument::IsInBounds(VoxelCoordinate coordinate) const noexcept {
     return coordinate.x < m_model.gridSize[0] && coordinate.y < m_model.gridSize[1] && coordinate.z < m_model.gridSize[2];
 }
 
+bool EditorDocument::IsSelected(VoxelCoordinate coordinate) const noexcept {
+    return std::find_if(m_selection.begin(), m_selection.end(), [coordinate](const VoxelCoordinate& selected) {
+        return selected.x == coordinate.x && selected.y == coordinate.y && selected.z == coordinate.z;
+    }) != m_selection.end();
+}
+
 std::size_t EditorDocument::Index(VoxelCoordinate coordinate) const noexcept { return IndexFor(m_model, coordinate.x, coordinate.y, coordinate.z); }
 
 void EditorDocument::PushUndo() {
@@ -74,6 +80,45 @@ bool EditorDocument::SetVoxel(VoxelCoordinate coordinate, std::uint16_t paletteI
     PushUndo();
     m_model.voxels[Index(coordinate)] = paletteIndex;
     CommitMutation();
+    return true;
+}
+
+std::optional<std::uint16_t> EditorDocument::PaletteAt(VoxelCoordinate coordinate) const noexcept {
+    if (!IsInBounds(coordinate)) return std::nullopt;
+    return m_model.voxels[Index(coordinate)];
+}
+
+bool EditorDocument::Select(VoxelCoordinate coordinate, bool additive) {
+    if (!IsInBounds(coordinate)) return false;
+    if (!additive) m_selection.clear();
+    if (m_model.voxels[Index(coordinate)] == 0 || IsSelected(coordinate)) return false;
+    m_selection.push_back(coordinate);
+    return true;
+}
+
+bool EditorDocument::SelectBox(VoxelCoordinate minimum, VoxelCoordinate maximum, bool additive) {
+    if (!IsInBounds(minimum) || !IsInBounds(maximum)) return false;
+    if (!additive) m_selection.clear();
+    const auto lowX = std::min(minimum.x, maximum.x), highX = std::max(minimum.x, maximum.x);
+    const auto lowY = std::min(minimum.y, maximum.y), highY = std::max(minimum.y, maximum.y);
+    const auto lowZ = std::min(minimum.z, maximum.z), highZ = std::max(minimum.z, maximum.z);
+    const std::size_t before = m_selection.size();
+    for (std::uint32_t z = lowZ; z <= highZ; ++z) for (std::uint32_t y = lowY; y <= highY; ++y) for (std::uint32_t x = lowX; x <= highX; ++x) {
+        const VoxelCoordinate coordinate{x, y, z};
+        if (m_model.voxels[Index(coordinate)] != 0 && !IsSelected(coordinate)) m_selection.push_back(coordinate);
+    }
+    return m_selection.size() != before;
+}
+
+bool EditorDocument::MoveSelected(int offsetX, int offsetY, int offsetZ) {
+    if (m_selection.empty()) return false;
+    const bool moved = MoveSelection(m_selection, offsetX, offsetY, offsetZ);
+    if (!moved) return false;
+    for (VoxelCoordinate& coordinate : m_selection) {
+        coordinate.x = static_cast<std::uint32_t>(static_cast<int>(coordinate.x) + offsetX);
+        coordinate.y = static_cast<std::uint32_t>(static_cast<int>(coordinate.y) + offsetY);
+        coordinate.z = static_cast<std::uint32_t>(static_cast<int>(coordinate.z) + offsetZ);
+    }
     return true;
 }
 
@@ -167,6 +212,33 @@ bool EditorDocument::RemovePaletteEntry(std::size_t index) {
     }
     m_model.palette.erase(m_model.palette.begin() + static_cast<std::ptrdiff_t>(index));
     CommitMutation();
+    return true;
+}
+
+bool EditorDocument::UpdatePaletteEntry(std::size_t index, VoxelPaletteEntry entry) {
+    if (index >= m_model.palette.size() || m_model.palette[index].red == entry.red && m_model.palette[index].green == entry.green &&
+        m_model.palette[index].blue == entry.blue && m_model.palette[index].alpha == entry.alpha &&
+        m_model.palette[index].textureLayer == entry.textureLayer) return false;
+    PushUndo();
+    m_model.palette[index] = entry;
+    CommitMutation();
+    return true;
+}
+
+bool EditorDocument::SetPivot(std::array<float, 3> pivot) {
+    if (m_model.pivot == pivot) return false;
+    PushUndo();
+    m_model.pivot = pivot;
+    CommitMutation();
+    return true;
+}
+
+bool EditorDocument::SetBounds(std::array<float, 3> minimum, std::array<float, 3> maximum) {
+    if (m_model.boundsMin == minimum && m_model.boundsMax == maximum) return false;
+    PushUndo();
+    m_model.boundsMin = minimum;
+    m_model.boundsMax = maximum;
+    m_dirty = true;
     return true;
 }
 
@@ -264,6 +336,12 @@ bool EditorProject::CreateBlockTexture(const std::string& textureId, const Image
     const std::filesystem::path path = m_root / "textures" / (textureId + ".png");
     if (!TextureLoader::WritePngToFile(path, image)) { error = "could not write " + path.string(); return false; }
     return true;
+}
+
+bool EditorProject::ImportBlockTexture(const std::filesystem::path& source, const std::string& textureId, std::string& error) const {
+    const auto image = TextureLoader::LoadFromFile(source);
+    if (!image.has_value()) { error = "could not load a square power-of-two RGBA PNG from " + source.string(); return false; }
+    return CreateBlockTexture(textureId, *image, error);
 }
 
 bool EditorProject::UpsertModelBlock(const std::string& id, const std::string& displayName, const std::string& modelId,

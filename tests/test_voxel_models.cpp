@@ -15,6 +15,7 @@
 #include "voxels/render/chunk_mesher.hpp"
 #include "voxels/render/model_registry.hpp"
 #include "voxels/render/texture_atlas.hpp"
+#include "voxels/render/texture_forge.hpp"
 #include "voxels/world/block.hpp"
 #include "voxels/world/chunk.hpp"
 
@@ -152,4 +153,22 @@ TEST_CASE("Model block state rotates baked geometry", "[vmdl][render]") {
     const auto rotatedMesh = voxels::graphics::BuildChunkMesh(rotated, {}, registry, atlas, &models);
     REQUIRE(originalMesh.vertices.size() == rotatedMesh.vertices.size());
     REQUIRE((originalMesh.vertices[0].x != rotatedMesh.vertices[0].x || originalMesh.vertices[0].z != rotatedMesh.vertices[0].z));
+}
+
+TEST_CASE("Model blocks inherit their authored block texture layer", "[vmdl][render]") {
+        voxels::BlockRegistry registry;
+        registry.LoadFromJsonString(R"({"blocks":[
+            {"id":"air","numeric_id":0,"solid":false,"opaque":false,"render_type":"cube"},
+            {"id":"lantern","numeric_id":1,"solid":true,"opaque":true,"render_type":"model","model_id":"models/lantern.vmdl","textures":{"all":"blocks/lantern"}}
+        ]})");
+        voxels::TextureAtlas atlas(16, 16);
+        atlas.RegisterTexture("blocks/lantern", voxels::TextureForge::GenerateTexture("planks"));
+        REQUIRE(atlas.BuildGLTexture());
+        voxels::graphics::ModelRegistry models;
+        models.Register("models/lantern.vmdl", MakeStairModel());
+        voxels::Chunk chunk({0, 0, 0}, 2, 2, 2);
+        chunk.SetBlock(0, 0, 0, 1);
+        const auto mesh = voxels::graphics::BuildChunkMesh(chunk, {}, registry, atlas, &models);
+        REQUIRE_FALSE(mesh.vertices.empty());
+        for (const auto& vertex : mesh.vertices) REQUIRE(vertex.atlasLayer == atlas.LayerFor("blocks/lantern"));
 }

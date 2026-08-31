@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 add_library(voxels_editor_core STATIC
     src/editor_document.cpp
+    src/gpu_model_preview.cpp
 )
 target_include_directories(voxels_editor_core PUBLIC src)
 target_link_libraries(voxels_editor_core PUBLIC voxels_engine)
