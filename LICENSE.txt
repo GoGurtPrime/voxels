@@ -1,0 +1,9 @@
+VoxelsEngine — All Rights Reserved (placeholder)
+
+Copyright (c) 2026 the VoxelsEngine project. All rights reserved.
+
+No license to copy, modify, distribute, or use this software has been granted at this time.
+This placeholder exists so the packaged build always ships a LICENSE.txt file
+(work_items/18_packaging_distribution_and_platform_services.md). Replace this file's contents
+with the project's actual chosen license or end-user license agreement before any public
+distribution — see ASSET_REQUESTS.md for the corresponding operator action item.

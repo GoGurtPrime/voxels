@@ -24,3 +24,34 @@ if(TARGET SDL2::SDL2)
         COMMENT "Staging SDL2 runtime next to the executable"
     )
 endif()
+
+if(VOXELS_STEAM_ACTIVE)
+    add_custom_command(TARGET voxels_app POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${VOXELS_STEAM_RUNTIME}"
+            "$<TARGET_FILE_DIR:voxels_app>"
+        COMMENT "Staging Steam runtime next to the executable"
+    )
+endif()
+
+# --- Install / package layout (work_items/18) -------------------------------------------------
+# Distributable layout:
+#   VoxelsGame/
+#     voxels_app(.exe), SDL2/Steam runtime libraries
+#     assets/            (textures, audio, fonts, models, shaders, data, packs/core.vpk)
+#     README.txt, LICENSE.txt, THIRD_PARTY_LICENSES.txt
+# The editor is deliberately never installed here; it ships separately as an internal tool.
+install(TARGETS voxels_app RUNTIME DESTINATION .)
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/app/assets/" DESTINATION assets)
+install(FILES "${VOXELS_PACKAGE_DIR}/README.txt"
+              "${CMAKE_SOURCE_DIR}/LICENSE.txt"
+              "${VOXELS_PACKAGE_DIR}/THIRD_PARTY_LICENSES.txt"
+        DESTINATION .)
+
+if(TARGET SDL2::SDL2)
+    install(FILES "$<TARGET_FILE:SDL2::SDL2>" DESTINATION .)
+endif()
+
+if(VOXELS_STEAM_ACTIVE)
+    install(FILES "${VOXELS_STEAM_RUNTIME}" DESTINATION .)
+endif()

@@ -1,0 +1,109 @@
+THIRD_PARTY_LICENSES.txt — VoxelsEngine v@VOXELS_VERSION@
+Generated at build time (do not edit by hand; edit packaging/THIRD_PARTY_LICENSES.txt.in and
+the CMake dependency list in CMakeLists.txt instead) — build timestamp: @VOXELS_LICENSE_TIMESTAMP@
+
+This distributable bundles the following third-party software. Each is used in accordance
+with its own license, reproduced below.
+
+================================================================================
+SDL2 (Simple DirectMedia Layer) — zlib license
+https://www.libsdl.org/
+--------------------------------------------------------------------------------
+Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
+
+This software is provided 'as-is', without any express or implied warranty. In no event will
+the authors be held liable for any damages arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose, including commercial
+applications, and to alter it and redistribute it freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not claim that you wrote
+   the original software. If you use this software in a product, an acknowledgment in the
+   product documentation would be appreciated but is not required.
+2. Altered source versions must be plainly marked as such, and must not be misrepresented as
+   being the original software.
+3. This notice may not be removed or altered from any source distribution.
+
+================================================================================
+GLM (OpenGL Mathematics) — MIT License / "The Happy Bunny License"
+https://github.com/g-truc/glm
+--------------------------------------------------------------------------------
+Copyright (c) 2005-2017 G-Truc Creation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, subject to including the above
+copyright notice and this permission notice in all copies or substantial portions of the
+Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+================================================================================
+Dear ImGui — MIT License
+https://github.com/ocornut/imgui
+--------------------------------------------------------------------------------
+Copyright (c) 2014-2024 Omar Cornut
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the above copyright notice and this permission
+notice being included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+================================================================================
+Asio C++ Library (standalone) — Boost Software License 1.0
+https://think-async.com/Asio/
+--------------------------------------------------------------------------------
+Copyright (c) 2003-2024 Christopher M. Kohlhoff
+
+Permission is hereby granted, free of charge, to any person or organization obtaining a copy
+of the software and accompanying documentation covered by this license (the "Software") to
+use, reproduce, display, distribute, execute, and transmit the Software, and to prepare
+derivative works of the Software, subject to retaining this license text in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+================================================================================
+stb_image / stb_image_write / stb_vorbis / stb_truetype (Sean Barrett) — Public Domain / MIT
+https://github.com/nothings/stb
+--------------------------------------------------------------------------------
+This software is dual-licensed to the public domain and under the following license, at your
+option: a copyright holder disclaims all copyright interest and grants an unrestricted MIT-style
+license to use, copy, modify, and distribute the software.
+
+================================================================================
+dr_libs (dr_wav) — Public Domain / MIT-0
+https://github.com/mackron/dr_libs
+--------------------------------------------------------------------------------
+Dual-licensed to the public domain and under the MIT No Attribution license. Copyright (c)
+David Reid.
+
+================================================================================
+glad (OpenGL loader generator, generated sources) — MIT License
+https://github.com/Dav1dde/glad
+--------------------------------------------------------------------------------
+Copyright (c) 2013-2024 David Herberth
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the "Software"), to deal in the Software without
+restriction, subject to including the above copyright notice and this permission notice in all
+copies or substantial portions of the Software.
+
+================================================================================
+Catch2 — Boost Software License 1.0 (test-only; not linked into the shipped executable)
+https://github.com/catchorg/Catch2
+--------------------------------------------------------------------------------
+Copyright (c) 2020 Two Blue Cubes Ltd and Catch2 contributors.
+
+================================================================================
+Atkinson Hyperlegible (font) — SIL Open Font License 1.1
+https://www.brailleinstitute.org/freefont/
+--------------------------------------------------------------------------------
+Copyright (c) Braille Institute of America, Inc. Licensed under the SIL Open Font License,
+Version 1.1. The full license text is bundled at app/assets/fonts/OFL.txt in the source
+repository and applies unmodified to the copy shipped in this package's assets/fonts/ folder.
+@VOXELS_STEAM_LICENSE_NOTE@

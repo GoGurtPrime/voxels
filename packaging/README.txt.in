@@ -1,0 +1,60 @@
+VoxelsEngine — @VOXELS_VERSION@
+================================
+
+Thank you for trying VoxelsEngine, a first-person block-based voxel sandbox game.
+
+Controls
+--------
+  Move                 W A S D
+  Look                 Mouse
+  Jump                 Space
+  Sprint               Left Shift
+  Break Block          Left Click
+  Place Block          Right Click
+  Hotbar Slot          1-9 or Mouse Wheel
+  Pause / Back         Escape
+  Debug Overlay        F3
+  Screenshot           F2
+This card is also shown in-game on first launch and is reopenable from the pause menu
+("Controls").
+
+Running the game
+-----------------
+Double-click voxels_app(.exe) to launch. The game creates its own save/settings/log
+directory on first run (see "Where your data lives" below) — no installer is required.
+
+Where your data lives
+----------------------
+Saves, settings, logs, and screenshots are stored outside this folder, in your OS user-data
+directory, so they survive reinstalling or moving this folder:
+
+  Windows   %LOCALAPPDATA%\VoxelsEngine\
+  Linux     $XDG_DATA_HOME/VoxelsEngine/  (usually ~/.local/share/VoxelsEngine/)
+  macOS     ~/Library/Application Support/VoxelsEngine/
+
+Reporting a bug
+----------------
+Each session writes a timestamped log file to the "logs" folder under the path above
+(e.g. VoxelsEngine\logs\voxels_<timestamp>.log on Windows). Please attach that file, along
+with a description of what you were doing, to your bug report.
+
+System requirements
+--------------------
+  OS:        Windows 10/11, a modern Linux desktop, or macOS 11+
+  GPU:       Any GPU with OpenGL 3.3 Core support and up-to-date vendor drivers
+  Storage:   ~200 MB
+  Input:     Keyboard and mouse
+
+Known limitations (this build)
+-------------------------------
+  * World generation, lighting propagation across chunk boundaries, and multiplayer
+    prediction/reconciliation are still being refined — see ARCHITECTURE.md in the source
+    repository for the honest, current subsystem status.
+  * Most in-game textures, sounds, and models are procedurally generated placeholder content,
+    not final hand-authored art; see ASSET_REQUESTS.md in the source repository.
+  * Steam integration (achievements, overlay, cloud saves), when present in this build, requires
+    the Steam client to be running; the game plays identically without it.
+
+Version
+-------
+VoxelsEngine v@VOXELS_VERSION@

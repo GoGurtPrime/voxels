@@ -14,6 +14,7 @@ option(VOXELS_ENABLE_VULKAN "Enable the Vulkan renderer backend" OFF)
 option(VOXELS_ENABLE_DX12 "Enable the DirectX 12 renderer backend" OFF)
 option(VOXELS_ENABLE_METAL "Enable the Metal renderer backend" OFF)
 option(VOXELS_ENABLE_DREAMCAST "Enable the Dreamcast renderer backend" OFF)
+option(VOXELS_ENABLE_STEAM "Enable optional Steamworks platform services (achievements, overlay, cloud saves)" OFF)
 option(VOXELS_WARNINGS_AS_ERRORS "Treat warnings as errors for first-party targets" ON)
 
 add_compile_definitions(VOXELS_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -145,6 +146,29 @@ endif()
 
 add_subdirectory(engine)
 
+# Packaging content (work_items/18): generated once per configure so the version stamp and the
+# third-party dependency list can never silently drift from what CMake actually vendors/links.
+set(VOXELS_PACKAGE_DIR "${CMAKE_BINARY_DIR}/package")
+file(MAKE_DIRECTORY "${VOXELS_PACKAGE_DIR}")
+set(VOXELS_VERSION "${PROJECT_VERSION}")
+string(TIMESTAMP VOXELS_LICENSE_TIMESTAMP "%Y-%m-%dT%H:%M:%SZ" UTC)
+if(VOXELS_STEAM_ACTIVE)
+    set(VOXELS_STEAM_LICENSE_NOTE "
+================================================================================
+Steamworks SDK — proprietary, Valve Corporation (optional; VOXELS_ENABLE_STEAM=ON in this build)
+https://partner.steamgames.com/
+--------------------------------------------------------------------------------
+The Steamworks SDK is licensed to registered Steamworks partners under the Steamworks SDK
+Access Agreement and is not open source. It is not redistributed by this source repository;
+the operator supplies it locally (see ASSET_REQUESTS.md). Its runtime library is included in
+this specific package build because VOXELS_ENABLE_STEAM was enabled.")
+else()
+    set(VOXELS_STEAM_LICENSE_NOTE "")
+endif()
+configure_file("${CMAKE_SOURCE_DIR}/packaging/README.txt.in" "${VOXELS_PACKAGE_DIR}/README.txt" @ONLY)
+configure_file("${CMAKE_SOURCE_DIR}/packaging/THIRD_PARTY_LICENSES.txt.in"
+               "${VOXELS_PACKAGE_DIR}/THIRD_PARTY_LICENSES.txt" @ONLY)
+
 if(VOXELS_BUILD_APP)
     add_subdirectory(app)
 endif()
@@ -168,4 +192,28 @@ if(VOXELS_BUILD_TESTS)
     endif()
 
     add_subdirectory(tests)
+endif()
+
+# --- Packaging (work_items/18_packaging_distribution_and_platform_services.md) ---------------
+# Produces a self-contained, redistributable archive: `cmake --install build --prefix <dir>` or
+# `cpack --config build/CPackConfig.cmake` after building. The editor is never installed here —
+# it ships separately as an internal tool, per the work item's explicit scope.
+if(VOXELS_BUILD_APP)
+    set(CPACK_PACKAGE_NAME "VoxelsGame")
+    set(CPACK_PACKAGE_VENDOR "VoxelsEngine Project")
+    set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+    set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+    set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+    set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
+    set(CPACK_PACKAGE_INSTALL_DIRECTORY "VoxelsGame")
+    set(CPACK_PACKAGE_FILE_NAME "VoxelsGame-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-x64")
+    set(CPACK_PACKAGE_CHECKSUM "SHA256")
+    if(WIN32)
+        set(CPACK_GENERATOR "ZIP")
+    elseif(APPLE)
+        set(CPACK_GENERATOR "TGZ") # A proper .app bundle + DMG is future work (see completion report).
+    else()
+        set(CPACK_GENERATOR "TGZ")
+    endif()
+    include(CPack)
 endif()
