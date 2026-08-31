@@ -30,11 +30,24 @@ enum class PacketId : std::uint16_t {
     C2S_KeepAlive,
     S2C_KeepAliveAck,
     C2S_Disconnect,
-    S2C_PlayerLeft
+    S2C_PlayerLeft,
+    S2C_Reject,
+    S2C_Disconnect,
+    C2S_ChunkAck
 };
 
-inline constexpr std::uint16_t kProtocolVersion = 1;
+inline constexpr std::uint16_t kProtocolVersion = 2;
 inline constexpr std::size_t kMaximumPacketPayloadBytes = 1200;
+/// Upper bound accepted for a reassembled RLE chunk payload (a 16^3 section is far smaller).
+inline constexpr std::uint32_t kMaximumChunkTransferBytes = 512u * 1024u;
+/// Fragment data budget leaving room for the fragment header inside the packet payload bound.
+inline constexpr std::size_t kMaximumChunkFragmentBytes = 1100;
+
+enum class ClientKind : std::uint8_t { Remote = 0, InProcessHost = 1 };
+
+enum class RejectReason : std::uint8_t { ServerFull = 1, WorldNotReady = 2, WorldPrivate = 3 };
+
+enum class DisconnectReason : std::uint8_t { HostClosedWorld = 1, ServerShutdown = 2 };
 
 struct PacketHeader {
     PacketId id{};
@@ -59,9 +72,31 @@ struct BlockModify {
     BlockId blockId = 0;
 };
 
-struct ChunkDataPayload {
+/// World identity the server hands a joining client so both simulate the same rules.
+struct WorldInfo {
+    std::uint64_t seed = 0;
+    std::uint32_t generatorVersion = 0;
+    bool sandboxMode = false;
+    bool peaceful = false;
+    bool alwaysSunny = true;
+    bool permadeath = false;
+    Vec3 spawnPosition{};
+};
+
+/// Handshake acceptance: the joiner's assigned entity plus the host world, when one is live.
+struct ConnectAccept {
+    EntityState state{};
+    bool worldReady = false;
+    WorldInfo world{};
+};
+
+/// One MTU-safe slice of an RLE-serialized chunk section in transit.
+struct ChunkFragment {
     Vec3I chunkCoordinate{};
-    std::vector<std::uint8_t> compressedData;
+    std::uint16_t fragmentIndex = 0;
+    std::uint16_t fragmentCount = 0;
+    std::uint32_t totalBytes = 0;
+    std::vector<std::uint8_t> data;
 };
 
 struct Packet {
@@ -77,5 +112,16 @@ struct Packet {
 [[nodiscard]] bool DeserializeEntityState(std::span<const std::uint8_t> bytes, EntityState& state);
 [[nodiscard]] std::vector<std::uint8_t> SerializeBlockModify(const BlockModify& modify);
 [[nodiscard]] bool DeserializeBlockModify(std::span<const std::uint8_t> bytes, BlockModify& modify);
+[[nodiscard]] std::vector<std::uint8_t> SerializeConnectAccept(const ConnectAccept& accept);
+[[nodiscard]] bool DeserializeConnectAccept(std::span<const std::uint8_t> bytes, ConnectAccept& accept);
+[[nodiscard]] std::vector<std::uint8_t> SerializeChunkFragment(const ChunkFragment& fragment);
+[[nodiscard]] bool DeserializeChunkFragment(std::span<const std::uint8_t> bytes, ChunkFragment& fragment);
+[[nodiscard]] std::vector<std::uint8_t> SerializeVec3I(const Vec3I& value);
+[[nodiscard]] bool DeserializeVec3I(std::span<const std::uint8_t> bytes, Vec3I& value);
+
+/// Splits an RLE chunk payload into MTU-safe fragments; empty result when the payload is
+/// empty or exceeds the transfer bound.
+[[nodiscard]] std::vector<ChunkFragment> FragmentChunkPayload(const Vec3I& chunkCoordinate,
+                                                              std::span<const std::uint8_t> payload);
 
 } // namespace voxels::networking

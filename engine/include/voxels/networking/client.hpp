@@ -19,6 +19,12 @@
 
 namespace voxels::networking {
 
+/// A fully reassembled chunk payload received from the server, still RLE-encoded.
+struct NetworkChunk {
+    Vec3I coordinate{};
+    std::vector<std::uint8_t> rleData;
+};
+
 class GameClient {
 public:
     GameClient();
@@ -26,7 +32,7 @@ public:
     GameClient(const GameClient&) = delete;
     GameClient& operator=(const GameClient&) = delete;
 
-    [[nodiscard]] bool Connect(std::string host, std::uint16_t port);
+    [[nodiscard]] bool Connect(std::string host, std::uint16_t port, ClientKind kind = ClientKind::Remote);
     void Disconnect();
     void Tick();
     void SendPlayerMove(const PlayerMove& movement);
@@ -37,6 +43,19 @@ public:
     [[nodiscard]] std::uint32_t PlayerId() const noexcept;
     [[nodiscard]] const std::unordered_map<std::uint32_t, EntityState>& ReceivedEntityStates() const noexcept;
     [[nodiscard]] const std::vector<BlockModify>& ReceivedBlockUpdates() const noexcept;
+    /// Drains block updates so each authoritative edit is applied to the local world exactly once.
+    [[nodiscard]] std::vector<BlockModify> TakeReceivedBlockUpdates();
+    /// Drains chunks whose fragments have all arrived and been acknowledged.
+    [[nodiscard]] std::vector<NetworkChunk> TakeCompletedChunks();
+    /// Drains ids of players the server reported as departed; they are removed from the entity map.
+    [[nodiscard]] std::vector<std::uint32_t> TakeDepartedPlayers();
+
+    [[nodiscard]] bool IsWorldReadyOnServer() const noexcept;
+    [[nodiscard]] const WorldInfo& GetWorldInfo() const noexcept;
+    [[nodiscard]] bool WasRejected() const noexcept;
+    [[nodiscard]] RejectReason GetRejectReason() const noexcept;
+    [[nodiscard]] bool WasDisconnectedByServer() const noexcept;
+    [[nodiscard]] double SecondsSinceLastServerPacket() const noexcept;
 
 private:
     class Impl;

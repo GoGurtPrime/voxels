@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "voxels/networking/packet.hpp"
 #include "voxels/world/world.hpp"
@@ -25,6 +26,7 @@ class GameServer {
 public:
     static constexpr std::uint16_t kDefaultPort = 27015;
     static constexpr std::chrono::milliseconds kTickInterval{50};
+    static constexpr std::size_t kMaxPlayers = 8;
 
     GameServer();
     ~GameServer();
@@ -35,12 +37,24 @@ public:
     void Stop();
     void Tick();
 
+    /// Marks the authoritative world live for joiners and records the spawn handed to them.
+    void SetWorldReady(const WorldOptions& options, const Vec3& spawn);
+    /// Ends the hosted session: remote peers are disconnected and the world is dropped.
+    void ClearWorld();
+    [[nodiscard]] bool IsWorldReady() const noexcept;
+
     [[nodiscard]] bool IsRunning() const noexcept;
     [[nodiscard]] std::uint16_t Port() const noexcept;
     [[nodiscard]] std::size_t PeerCount() const noexcept;
     [[nodiscard]] World& GetWorld() noexcept;
     [[nodiscard]] const World& GetWorld() const noexcept;
     [[nodiscard]] const std::unordered_map<std::uint32_t, EntityState>& GetPlayerStates() const noexcept;
+    /// Chunks generated server-side for remote peers since the last call; the in-process host
+    /// drains these so its renderer learns about terrain it did not generate itself.
+    [[nodiscard]] std::vector<ChunkCoordinate> TakeNewlyGeneratedChunks();
+    /// Block edits applied on behalf of remote peers since the last call; the in-process host
+    /// drains these to relight and remesh chunks the server mutated in the shared world.
+    [[nodiscard]] std::vector<BlockModify> TakeRemoteBlockEdits();
 
 private:
     class Impl;

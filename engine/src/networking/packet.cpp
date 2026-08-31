@@ -8,6 +8,7 @@
 
 #include "voxels/networking/packet.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <bit>
 #include <cmath>
@@ -151,6 +152,134 @@ bool DeserializeBlockModify(std::span<const std::uint8_t> bytes, BlockModify& mo
     return ReadInt32(bytes, offset, modify.position.x) && ReadInt32(bytes, offset, modify.position.y) &&
            ReadInt32(bytes, offset, modify.position.z) && ReadUnsigned(bytes, offset, modify.blockId) &&
            offset == bytes.size();
+}
+
+std::vector<std::uint8_t> SerializeConnectAccept(const ConnectAccept& accept) {
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(72);
+    const std::vector<std::uint8_t> state = SerializeEntityState(accept.state);
+    bytes.insert(bytes.end(), state.begin(), state.end());
+    bytes.push_back(accept.worldReady ? 1 : 0);
+    if (accept.worldReady) {
+        WriteUnsigned(bytes, accept.world.seed);
+        WriteUnsigned(bytes, accept.world.generatorVersion);
+        const std::uint8_t flags = static_cast<std::uint8_t>((accept.world.sandboxMode ? 1u : 0u) |
+                                                             (accept.world.peaceful ? 2u : 0u) |
+                                                             (accept.world.alwaysSunny ? 4u : 0u) |
+                                                             (accept.world.permadeath ? 8u : 0u));
+        bytes.push_back(flags);
+        WriteVec3(bytes, accept.world.spawnPosition);
+    }
+    return bytes;
+}
+
+bool DeserializeConnectAccept(std::span<const std::uint8_t> bytes, ConnectAccept& accept) {
+    constexpr std::size_t kEntityStateBytes = 40;
+    if (bytes.size() < kEntityStateBytes + 1 ||
+        !DeserializeEntityState(bytes.first(kEntityStateBytes), accept.state)) {
+        return false;
+    }
+    std::size_t offset = kEntityStateBytes;
+    const std::uint8_t ready = bytes[offset++];
+    if (ready > 1) return false;
+    accept.worldReady = ready == 1;
+    if (!accept.worldReady) return offset == bytes.size();
+    std::uint8_t flags = 0;
+    if (!ReadUnsigned(bytes, offset, accept.world.seed) ||
+        !ReadUnsigned(bytes, offset, accept.world.generatorVersion) ||
+        !ReadUnsigned(bytes, offset, flags) || (flags & ~0x0Fu) != 0 ||
+        !ReadVec3(bytes, offset, accept.world.spawnPosition) || offset != bytes.size()) {
+        return false;
+    }
+    accept.world.sandboxMode = (flags & 1u) != 0;
+    accept.world.peaceful = (flags & 2u) != 0;
+    accept.world.alwaysSunny = (flags & 4u) != 0;
+    accept.world.permadeath = (flags & 8u) != 0;
+    return true;
+}
+
+std::vector<std::uint8_t> SerializeChunkFragment(const ChunkFragment& fragment) {
+    if (fragment.data.size() > kMaximumChunkFragmentBytes ||
+        fragment.totalBytes > kMaximumChunkTransferBytes) {
+        return {};
+    }
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(24 + fragment.data.size());
+    WriteInt32(bytes, fragment.chunkCoordinate.x);
+    WriteInt32(bytes, fragment.chunkCoordinate.y);
+    WriteInt32(bytes, fragment.chunkCoordinate.z);
+    WriteUnsigned(bytes, fragment.fragmentIndex);
+    WriteUnsigned(bytes, fragment.fragmentCount);
+    WriteUnsigned(bytes, fragment.totalBytes);
+    bytes.insert(bytes.end(), fragment.data.begin(), fragment.data.end());
+    return bytes;
+}
+
+bool DeserializeChunkFragment(std::span<const std::uint8_t> bytes, ChunkFragment& fragment) {
+    std::size_t offset = 0;
+    if (!ReadInt32(bytes, offset, fragment.chunkCoordinate.x) ||
+        !ReadInt32(bytes, offset, fragment.chunkCoordinate.y) ||
+        !ReadInt32(bytes, offset, fragment.chunkCoordinate.z) ||
+        !ReadUnsigned(bytes, offset, fragment.fragmentIndex) ||
+        !ReadUnsigned(bytes, offset, fragment.fragmentCount) ||
+        !ReadUnsigned(bytes, offset, fragment.totalBytes)) {
+        return false;
+    }
+    const std::size_t dataBytes = bytes.size() - offset;
+    if (fragment.fragmentCount == 0 || fragment.fragmentIndex >= fragment.fragmentCount ||
+        fragment.totalBytes == 0 || fragment.totalBytes > kMaximumChunkTransferBytes ||
+        dataBytes == 0 || dataBytes > kMaximumChunkFragmentBytes || dataBytes > fragment.totalBytes) {
+        return false;
+    }
+    // Every fragment except the last is full-sized; the last carries the exact remainder.
+    const std::size_t expectedBytes = fragment.fragmentIndex + 1 == fragment.fragmentCount
+        ? fragment.totalBytes - static_cast<std::size_t>(fragment.fragmentCount - 1) * kMaximumChunkFragmentBytes
+        : kMaximumChunkFragmentBytes;
+    if (fragment.totalBytes <= static_cast<std::size_t>(fragment.fragmentCount - 1) * kMaximumChunkFragmentBytes ||
+        dataBytes != expectedBytes) {
+        return false;
+    }
+    fragment.data.assign(bytes.begin() + static_cast<std::ptrdiff_t>(offset), bytes.end());
+    return true;
+}
+
+std::vector<std::uint8_t> SerializeVec3I(const Vec3I& value) {
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(12);
+    WriteInt32(bytes, value.x);
+    WriteInt32(bytes, value.y);
+    WriteInt32(bytes, value.z);
+    return bytes;
+}
+
+bool DeserializeVec3I(std::span<const std::uint8_t> bytes, Vec3I& value) {
+    std::size_t offset = 0;
+    return ReadInt32(bytes, offset, value.x) && ReadInt32(bytes, offset, value.y) &&
+           ReadInt32(bytes, offset, value.z) && offset == bytes.size();
+}
+
+std::vector<ChunkFragment> FragmentChunkPayload(const Vec3I& chunkCoordinate,
+                                                std::span<const std::uint8_t> payload) {
+    if (payload.empty() || payload.size() > kMaximumChunkTransferBytes) {
+        return {};
+    }
+    const std::size_t fragmentCount = (payload.size() + kMaximumChunkFragmentBytes - 1) / kMaximumChunkFragmentBytes;
+    if (fragmentCount > std::numeric_limits<std::uint16_t>::max()) {
+        return {};
+    }
+    std::vector<ChunkFragment> fragments;
+    fragments.reserve(fragmentCount);
+    for (std::size_t index = 0; index < fragmentCount; ++index) {
+        const std::size_t begin = index * kMaximumChunkFragmentBytes;
+        const std::size_t length = std::min(kMaximumChunkFragmentBytes, payload.size() - begin);
+        ChunkFragment fragment{chunkCoordinate, static_cast<std::uint16_t>(index),
+                               static_cast<std::uint16_t>(fragmentCount),
+                               static_cast<std::uint32_t>(payload.size()), {}};
+        fragment.data.assign(payload.begin() + static_cast<std::ptrdiff_t>(begin),
+                             payload.begin() + static_cast<std::ptrdiff_t>(begin + length));
+        fragments.push_back(std::move(fragment));
+    }
+    return fragments;
 }
 
 } // namespace voxels::networking
