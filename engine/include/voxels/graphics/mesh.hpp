@@ -14,14 +14,17 @@
 
 namespace voxels::graphics {
 
+/// Unpacked 52-byte float vertex consumed through the RHI vertex-layout path (tests/tools).
+/// The shipping voxel world path uses the 16-byte packed ChunkVertex instead.
 struct VoxelVertex {
     std::array<float, 3> position{};
     std::array<float, 3> normal{};
     std::array<float, 2> uv{};
     std::array<float, 4> color{};
-    std::uint32_t subVoxelData{0};
+    std::uint32_t subVoxelData{0}; ///< Reserved for sub-voxel detail encoding; currently unused.
 };
 
+/// Indexed triangle list in VoxelVertex format.
 struct MeshData {
     std::vector<VoxelVertex> vertices;
     std::vector<std::uint32_t> indices;

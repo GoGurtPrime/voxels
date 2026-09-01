@@ -1,3 +1,16 @@
+/**
+ * @file game_session.cpp
+ * @brief Implementation of the GameSession gameplay simulation façade.
+ *
+ * @details Drives one player's frame for the InGame state: ring-ordered chunk streaming
+ *          through the JobSystem (bounded in-flight jobs, hysteresis-based eviction), camera
+ *          and physics stepping, block break/place with hardness timing and inventory
+ *          updates, sound/particle/edited-block event buffers, achievement unlocks via
+ *          IPlatformServices, and replication through the optional network client. Remote
+ *          worlds (SetRemoteWorld) disable local generation and eviction — chunks arrive
+ *          from the host server instead.
+ */
+
 #include "voxels/app/game_session.hpp"
 
 #include <algorithm>

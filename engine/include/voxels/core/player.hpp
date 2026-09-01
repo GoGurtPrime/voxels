@@ -1,14 +1,13 @@
 #pragma once
 
-/*
- * Scope: Player runtime model and persistent save state.
+/**
+ * @file player.hpp
+ * @brief Legacy plain-data player record (name, vitals, position).
  *
- * This contract defines the in-memory player representation used by the gameplay systems,
- * spawn logic, and save serialization pipeline. Actual gameplay attributes and progression
- * systems will be expanded as the game design matures.
- *
- * Relation to the rest of the codebase: world placement, multiplayer synchronization, and
- * save serialization all consume this model.
+ * @details Early data model predating the gameplay layer. The runtime player type is
+ *          `voxels::Player` in voxels/gameplay/player.hpp (which wraps `PlayerState` with
+ *          physics/inventory fields); nothing currently includes this header, and the two
+ *          types share a name, so it must not be included alongside the gameplay one.
  */
 
 #include <cstdint>
@@ -16,6 +15,7 @@
 
 namespace voxels {
 
+/// Minimal persistent player record; position is world-space, in blocks.
 struct Player {
     std::string name;
     std::uint32_t health = 100;

@@ -1,0 +1,81 @@
+# Doxyfile.in — configured by CMake into <build>/Doxyfile; consumed by the `docs` target.
+#
+# Design rule: INPUT lists *directories*, never individual source files, and RECURSIVE is on.
+# Any new header or source file added under these roots is therefore picked up automatically —
+# no per-file registration step exists or is permitted (see AGENT_RULES.md §3, Documentation
+# Standard). Only a brand-new top-level source root requires editing this file.
+
+# --- Project ---------------------------------------------------------------------------------
+PROJECT_NAME           = "VoxelsEngine"
+PROJECT_NUMBER         = "@PROJECT_VERSION@"
+PROJECT_BRIEF          = "Cross-platform C++20 voxel sandbox game engine, game, and editor"
+OUTPUT_DIRECTORY       = "@CMAKE_BINARY_DIR@/docs"
+STRIP_FROM_PATH        = "@CMAKE_SOURCE_DIR@"
+STRIP_FROM_INC_PATH    = "@CMAKE_SOURCE_DIR@/engine/include"
+
+# --- Input -----------------------------------------------------------------------------------
+INPUT                  = "@CMAKE_SOURCE_DIR@/docs/api_mainpage.md" \
+                         "@CMAKE_SOURCE_DIR@/engine/include" \
+                         "@CMAKE_SOURCE_DIR@/engine/src" \
+                         "@CMAKE_SOURCE_DIR@/app/src" \
+                         "@CMAKE_SOURCE_DIR@/editor/src"
+RECURSIVE              = YES
+EXCLUDE                = "@CMAKE_SOURCE_DIR@/engine/third_party"
+EXCLUDE_PATTERNS       = */third_party/* \
+                         */build/*
+FILE_PATTERNS          = *.hpp *.cpp *.h *.c *.md
+USE_MDFILE_AS_MAINPAGE = "@CMAKE_SOURCE_DIR@/docs/api_mainpage.md"
+
+# --- Extraction ------------------------------------------------------------------------------
+# EXTRACT_ALL keeps the reference complete even for members that only have self-evident names;
+# the AGENT_RULES.md documentation standard still requires briefs on all non-trivial public API.
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+EXTRACT_ANON_NSPACES   = NO
+HIDE_UNDOC_MEMBERS     = NO
+INTERNAL_DOCS          = YES
+CASE_SENSE_NAMES       = NO
+SHOW_INCLUDE_FILES     = YES
+SORT_MEMBER_DOCS       = NO
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = NO
+MARKDOWN_SUPPORT       = YES
+BUILTIN_STL_SUPPORT    = YES
+
+# --- Preprocessing ---------------------------------------------------------------------------
+# Platform/backend guards are force-defined so conditionally compiled classes (SDL2 platform,
+# Steam services, console backends) always appear in the reference regardless of host config.
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = __DOXYGEN__=1 \
+                         VOXELS_HAS_SDL2=1 \
+                         VOXELS_ENABLE_STEAM=1 \
+                         VOXELS_ENABLE_DREAMCAST=1 \
+                         VOXELS_ENABLE_VULKAN=1 \
+                         VOXELS_ENABLE_DX12=1 \
+                         VOXELS_ENABLE_METAL=1
+
+# --- Warnings --------------------------------------------------------------------------------
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+
+# --- Output ----------------------------------------------------------------------------------
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_TREEVIEW      = YES
+DISABLE_INDEX          = NO
+FULL_SIDEBAR           = NO
+HTML_COLORSTYLE        = AUTO_DARK
+GENERATE_LATEX         = NO
+GENERATE_MAN           = NO
+GENERATE_XML           = NO
+SOURCE_BROWSER         = YES
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = NO
+ALPHABETICAL_INDEX     = YES
+HAVE_DOT               = NO
+CLASS_GRAPH            = TEXT

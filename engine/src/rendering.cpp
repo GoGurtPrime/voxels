@@ -1,12 +1,11 @@
-/*
- * Scope: Renderer backend integration scaffolding.
+/**
+ * @file rendering.cpp
+ * @brief Placeholder no-op renderer behind the IRenderer abstraction.
  *
- * This file is the placeholder for Vulkan, DirectX 12, and Metal implementation support.
- * The engine should later select a backend based on platform and project configuration,
- * but this initial version only establishes the interface boundaries and target capability.
- *
- * Relation to the rest of the codebase: all rendering code should be managed through the
- * renderer abstraction instead of hard-wired platform-specific graphics code.
+ * @details Defines an inert Renderer that accepts any config and reports a Vulkan backend
+ *          type; no factory exposes it, so nothing instantiates it yet. Actual drawing lives
+ *          in the OpenGL 3.3 render layer (engine/src/render/, engine/src/graphics/). Kept as
+ *          the seam where selectable Vulkan/D3D12/Metal backends would plug in later.
  */
 
 #include "voxels/graphics/renderer.hpp"

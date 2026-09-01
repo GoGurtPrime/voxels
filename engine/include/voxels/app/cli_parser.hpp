@@ -1,14 +1,16 @@
 #pragma once
 
-/*
- * Scope: Concrete command-line argument parser implementation.
+/**
+ * @file cli_parser.hpp
+ * @brief Concrete `--key=value` command-line parser for app startup.
  *
- * Supports `--fullscreen=<true|false>`, `--resolution=<WIDTHxHEIGHT>`, `--server`,
- * `--port=<PORT>`, `--join=<HOST:PORT>`, `--world=<NAME>`, `--seed=<SEED>`, and
- * `--render-distance=<CHUNKS>`, overriding whatever defaults come from the on-disk configuration file.
- *
- * Relation to the rest of the codebase: the app entry point runs this before constructing
- * `GamePreferences`/`WorldOptions` so CLI flags win over persisted settings.
+ * @details Recognizes display flags (`--fullscreen`, `--resolution=<WxH>`, `--vsync`,
+ *          `--headless`), networking flags (`--server`, `--port`, `--join=<HOST:PORT>`),
+ *          world flags (`--world`, `--seed`, `--render-distance`, `--max-ticks`,
+ *          `--max-frames`), and asset/tooling flags (`--dump-atlas`,
+ *          `--forge-interaction-assets`, `--forge-audio-assets`, `--gen-preview`, `--out`).
+ *          The app entry point runs this before constructing `GamePreferences`/
+ *          `WorldOptions`, so CLI flags win over persisted settings.
  */
 
 #include "voxels/app/command_line.hpp"

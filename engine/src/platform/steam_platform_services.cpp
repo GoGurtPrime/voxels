@@ -116,6 +116,10 @@ private:
     bool m_initialized = false;
     bool m_overlayActive = false;
     bool m_unlocked[kAchievementCount] = {};
+#ifdef __DOXYGEN__
+    /// Updates the overlay-active state from a Steamworks callback payload.
+    void OnOverlayActivated(GameOverlayActivated_t* data);
+#endif
     // STEAM_CALLBACK_MANUAL declares both `m_overlayCallback` (a CCallbackManual) and the
     // `OnOverlayActivated` handler method above; Register()/Unregister() are called explicitly
     // (in Initialize()/the destructor) rather than at construction time, since construction
@@ -123,8 +127,7 @@ private:
     STEAM_CALLBACK_MANUAL(SteamPlatformServices, OnOverlayActivated, GameOverlayActivated_t, m_overlayCallback);
 };
 
-// STEAM_CALLBACK_MANUAL only declares OnOverlayActivated inside the class; the definition must
-// live outside it (the standard Steamworks callback pattern).
+// The Steamworks macro declares this callback inside the class.
 void SteamPlatformServices::OnOverlayActivated(GameOverlayActivated_t* data) { m_overlayActive = data->m_bActive != 0; }
 
 std::unique_ptr<IPlatformServices> CreatePlatformServices() {

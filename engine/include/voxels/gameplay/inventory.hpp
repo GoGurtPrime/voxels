@@ -16,6 +16,7 @@
 
 namespace voxels::gameplay {
 
+/// One inventory slot: a block id plus count. Empty when the count is zero or the id is Air.
 struct ItemStack {
     BlockId blockId = static_cast<BlockId>(BlockType::Air);
     int count = 0;
@@ -31,6 +32,8 @@ public:
     static constexpr std::size_t kSlotCount = kHotbarSlots + kMainSlots;
     static constexpr int kStackLimit = 64;
 
+    /// Distributes into matching non-full stacks first, then empty slots. Returns the leftover
+    /// count that did not fit (0 = everything was added).
     [[nodiscard]] int AddItem(BlockId blockId, int count) noexcept {
         if (blockId == static_cast<BlockId>(BlockType::Air) || count <= 0) return count;
         for (auto& stack : m_slots) {
@@ -52,6 +55,7 @@ public:
         return count;
     }
 
+    /// False (and no change) when the slot is out of range or holds fewer than `count` items.
     [[nodiscard]] bool RemoveItem(std::size_t slot, int count) noexcept {
         if (slot >= kSlotCount || count <= 0 || m_slots[slot].count < count) return false;
         auto& stack = m_slots[slot];
@@ -60,10 +64,13 @@ public:
         return true;
     }
 
+    /// Out-of-range indices clamp to the last slot rather than faulting.
     [[nodiscard]] const ItemStack& GetSlot(std::size_t slot) const noexcept { return m_slots[std::min(slot, kSlotCount - 1)]; }
     [[nodiscard]] ItemStack& GetSlot(std::size_t slot) noexcept { return m_slots[std::min(slot, kSlotCount - 1)]; }
     [[nodiscard]] int GetSelectedSlot() const noexcept { return m_selectedSlot; }
+    /// Clamped to the hotbar range [0, kHotbarSlots).
     void SetSelectedSlot(int slot) noexcept { m_selectedSlot = std::clamp(slot, 0, static_cast<int>(kHotbarSlots) - 1); }
+    /// Steps the hotbar selection by `delta` (may be negative), wrapping at both ends.
     void CycleSelectedSlot(int delta) noexcept {
         constexpr int slots = static_cast<int>(kHotbarSlots);
         m_selectedSlot = ((m_selectedSlot + delta) % slots + slots) % slots;

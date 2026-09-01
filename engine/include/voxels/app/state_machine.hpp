@@ -1,14 +1,15 @@
 #pragma once
 
-/*
- * Scope: Application-level state machine driving the boot -> menu -> gameplay flow.
+/**
+ * @file state_machine.hpp
+ * @brief Application-level state machine driving the boot -> menu -> gameplay flow.
  *
- * States are plain polymorphic objects with `OnEnter`/`OnExit`/`Update`/`Render` hooks so the
- * loading, menu, and gameplay flow described in ARCHITECTURE.md can be composed and tested
- * without depending on rendering or platform code.
- *
- * Relation to the rest of the codebase: the app entry point drives this machine using input
- * from the UI layer (menu selections) and world generation progress callbacks.
+ * @details States are plain polymorphic objects with `OnEnter`/`OnExit`/`Update`/`Render`
+ *          hooks so the loading, menu, and gameplay flow described in ARCHITECTURE.md can
+ *          be composed and tested without rendering or platform code. The machine also
+ *          supports an overlay stack (pause menu, settings, controls card) drawn above the
+ *          base state. The app entry point drives it using menu selections from the UI
+ *          layer and world generation progress.
  */
 
 #include <memory>
@@ -62,6 +63,9 @@ class InGameState;
 namespace networking { class GameClient; }
 namespace networking { class GameServer; }
 
+/// Shared service bundle handed to every state. All pointers are borrowed from the app
+/// entry point (never owned); the request* callbacks defer machine mutations until the
+/// current Update pass finishes.
 struct AppContext {
     IPlatform* platform = nullptr;
     graphics::GLRenderer* renderer = nullptr;
@@ -90,6 +94,7 @@ struct AppContext {
     std::function<void()> resetNetworkToLocal;
 };
 
+/// Stable state name for logs and test assertions.
 [[nodiscard]] std::string_view ToString(AppStateId id) noexcept;
 
 /// Base class for every state managed by `AppStateMachine`. Concrete states override the
@@ -108,12 +113,15 @@ protected:
     AppContext* m_context = nullptr;
 };
 
+/// Inert initial state; the app transitions out of it once services are wired up.
 class BootState final : public IAppState {
 public:
     using IAppState::IAppState;
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::Boot; }
 };
 
+/// Title screen: Play/Join/Settings/Quit over a slowly orbiting background camera. On
+/// first run it pushes the `ControlsCardState` overlay automatically.
 class MainMenuState final : public IAppState {
 public:
     using IAppState::IAppState;
@@ -127,6 +135,8 @@ private:
     Camera m_camera{};
 };
 
+/// Save-slot browser: lists saves from the `SaveManager`, loads the selection, and deletes
+/// saves behind a type-the-name confirmation prompt.
 class WorldSelectState final : public IAppState {
 public:
     using IAppState::IAppState;
@@ -142,6 +152,8 @@ private:
     std::string m_deleteConfirmation;
 };
 
+/// New-world form (name, seed text, gameplay toggles) backed by `WorldCreationController`;
+/// on confirm it persists the new save and hands off to `LoadingScreenState`.
 class WorldCreationState final : public IAppState {
 public:
     using IAppState::IAppState;
@@ -157,6 +169,9 @@ private:
     std::string m_error;
 };
 
+/// Generates (or restores) the world for a named save while showing phase-based progress.
+/// Chunk generation runs on a private `JobSystem` and is integrated a couple of chunks per
+/// frame; saves from a newer generator version fail into `ErrorState` instead of loading.
 class LoadingScreenState final : public IAppState {
 public:
     using IAppState::IAppState;
@@ -165,8 +180,11 @@ public:
     void SetSaveManager(ISaveManager& manager) noexcept { m_saveManager = &manager; }
     void SetSaveName(std::string saveName) noexcept { m_saveName = std::move(saveName); }
     void SetWorldOptions(WorldOptions options) noexcept { m_options = std::move(options); }
+    /// Transfers ownership of the generated world to the caller (typically `InGameState`).
     [[nodiscard]] std::unique_ptr<World> ReleaseGeneratedWorld() noexcept { return std::move(m_world); }
 
+    /// Re-reads the save metadata (seed/generator version), then builds the initial chunk
+    /// queue and enqueues generation jobs. Called automatically by `OnEnter`.
     void RunGeneration();
     void OnEnter() override;
     void OnExit() override;
@@ -175,6 +193,7 @@ public:
     [[nodiscard]] const World& GetWorld() const noexcept { return *m_world; }
     [[nodiscard]] Vec3I GetSpawnPosition() const noexcept { return m_spawnPosition; }
     [[nodiscard]] GenerationPhase GetPhase() const noexcept { return m_phase; }
+    /// 0..1, quantized by phase (0.25 per completed phase); not per-chunk granular.
     [[nodiscard]] float GetProgress() const noexcept;
 
 private:
@@ -239,10 +258,10 @@ private:
     std::size_t m_lastAppliedChunks = 0;
 };
 
-/// The real playable gameplay state: generates a bounded voxel world and renders it through
-/// `ChunkRenderer` (work_items/05_chunk_mesh_pipeline_and_world_rendering.md). A full player
-/// controller (movement, mouse-look, collision) is work item 06; until then this state drives
-/// a slow automatic flythrough camera so the generated world is directly observable.
+/// The playable gameplay state. Drives a `GameSession` (player movement, physics, block
+/// interaction) and renders it through `ChunkRenderer` plus the HUD and remote-player
+/// renderers. Autosaves local sessions periodically on a background job, forwards
+/// networked block updates, and supports remote (server-streamed) sessions.
 class InGameState final : public IAppState {public:
     using IAppState::IAppState;
     [[nodiscard]] AppStateId GetId() const noexcept override { return AppStateId::InGame; }
@@ -254,6 +273,7 @@ class InGameState final : public IAppState {public:
     void SetPlayerCamera(Camera* camera) noexcept { m_cameraOverride = camera; }
     void SetPlatform(IPlatform* platform) noexcept { m_platform = platform; }
     void SetActiveSave(GameSave save) { m_activeSave = std::move(save); }
+    /// Adopts a world generated by `LoadingScreenState`, skipping in-state generation.
     void SetPreparedWorld(std::unique_ptr<World> world) noexcept { m_preparedWorld = std::move(world); }
     /// Marks this session as a remote join: the world is streamed from the host server and
     /// nothing is generated or persisted locally.
@@ -299,6 +319,9 @@ private:
     std::unique_ptr<World> m_preparedWorld;
 };
 
+/// Pause overlay pushed above `InGameState`. Offers resume/settings/controls, world
+/// visibility toggling (republished to the hosting server), and save-and-quit paths;
+/// remote sessions instead get leave-server options that reset networking to loopback.
 class PauseMenuState final : public IAppState {
 public:
     PauseMenuState(AppContext* context = nullptr, GameSave activeSave = {}, bool remoteSession = false)
@@ -314,6 +337,8 @@ private:
     bool m_remoteSession = false;
 };
 
+/// Settings overlay editing a pending copy of the shared `GamePreferences`; Apply commits
+/// to the live preferences, the running game/audio, and settings.json on disk.
 class SettingsState final : public IAppState {
 public:
     explicit SettingsState(AppContext* context) : IAppState(context) {}
@@ -337,6 +362,7 @@ public:
     void Render() override;
 };
 
+/// Terminal error screen showing a title/detail pair with a single path back to the main menu.
 class ErrorState final : public IAppState {
 public:
     ErrorState(AppContext* context, std::string title, std::string detail)
@@ -351,11 +377,14 @@ private:
     std::string m_detail;
 };
 
-/// Owns exactly one active `IAppState` at a time and guarantees `OnExit`/`OnEnter` are called
-/// in that order on every transition. Keeps a chronological log of transitions (state id plus
-/// "Enter"/"Exit") to make lifecycle ordering directly verifiable in tests.
+/// Injects the module-wide renderer that state `Render()` implementations draw through;
+/// the app sets it after GL init and resets it to nullptr before renderer teardown.
 void SetGlobalRenderer(voxels::graphics::GLRenderer* renderer) noexcept;
 
+/// Owns exactly one active `IAppState` (plus an overlay stack) and guarantees `OnExit`/
+/// `OnEnter` are called in that order on every transition. Keeps a chronological log of
+/// transitions (state id plus "Enter"/"Exit") to make lifecycle ordering directly
+/// verifiable in tests.
 class AppStateMachine {
 public:
     struct TransitionRecord {
@@ -366,16 +395,24 @@ public:
     /// Sets the initial state without exiting any previous state. Calls `OnEnter`.
     void Start(std::unique_ptr<IAppState> state);
 
-    /// Exits the current state (if any) and enters `state`, in that order.
+    /// Exits the current state (if any) and enters `state`, in that order. Pops and exits
+    /// every open overlay first.
     void TransitionTo(std::unique_ptr<IAppState> state);
 
+    /// Deferred `TransitionTo`: applied at the end of the next `Update`, so states can
+    /// safely request transitions from inside their own hooks.
     void RequestTransition(std::unique_ptr<IAppState> state);
+    /// Enters `state` on top of the current state; the base state keeps rendering beneath it.
     void PushOverlay(std::unique_ptr<IAppState> state);
     void RequestPushOverlay(std::unique_ptr<IAppState> state);
+    /// Exits and destroys the topmost overlay; no-op when none is open.
     void PopOverlay();
     void RequestPopOverlay();
 
+    /// Updates only the topmost overlay (or the base state when none), then applies any
+    /// deferred transition, overlay pop, and overlay push, in that order.
     void Update(double deltaSeconds);
+    /// Renders the base state, then overlays in push order (topmost last).
     void Render();
 
     /// Exits the current state (if any) without entering a replacement. Must be called before

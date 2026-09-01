@@ -21,6 +21,7 @@
 
 namespace voxels {
 
+/// Deterministic, seed-driven generator for every launch block texture and HUD overlay asset.
 class TextureForge {
 public:
     static constexpr int kDefaultTextureSize = 16;

@@ -26,6 +26,8 @@ struct RemotePlayerVisual {
     float yawRadians = 0.0f;
 };
 
+/// Smooths each player toward its latest replicated transform and forgets players missing from
+/// the frame's list. GL objects are created lazily and all GL calls are null-guarded.
 class RemotePlayerRenderer {
 public:
     ~RemotePlayerRenderer();

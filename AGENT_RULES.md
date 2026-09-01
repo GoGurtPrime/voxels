@@ -64,6 +64,25 @@ Every new `.hpp`/`.cpp` starts with:
  */
 ```
 
+### Documentation Standard
+
+* **Format:** Public API documentation uses Doxygen-compatible `///` or `/** ... */` comments.
+   Each non-trivial public class, enum, struct, function, constructor, and lifecycle callback has
+   one concise brief stating its responsibility or contract. Do not document self-evident accessors
+   merely to increase comment count.
+* **Contracts:** Document ownership/lifetime requirements, thread affinity, units, ranges,
+   failure behavior, and externally visible side effects whenever the signature cannot express
+   them. Use `@param`, `@return`, and `@throws` only when they clarify such a contract.
+* **Scope:** Document each subsystem's public boundary and its non-obvious internal algorithms.
+   Keep implementation comments focused on invariants and design rationale; do not narrate code.
+* **Generation:** API reference input is discovered recursively from `engine/include`,
+   `engine/src`, `app/src`, and `editor/src`. Run `cmake --build build --target docs` whenever
+   public APIs, source roots, or Doxygen configuration change. The generated output under
+   `build/docs/` is not tracked; `docs/api_mainpage.md` and `docs/Doxyfile.in` are the tracked
+   source of the reference.
+* **Review:** Resolve Doxygen warnings introduced by the change before commit. A new top-level
+   source root must be added to `docs/Doxyfile.in` in the same change.
+
 ---
 
 ## 🎯 4. Definition of Done

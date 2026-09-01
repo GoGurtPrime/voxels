@@ -1,20 +1,20 @@
 #pragma once
 
-/*
- * Scope: High-level app lifecycle state model.
+/**
+ * @file app_state.hpp
+ * @brief Minimal plain-data model of the high-level app lifecycle.
  *
- * The app uses explicit states to describe the loading flow, main menu, pause menu, and
- * active gameplay. This structure allows the game runtime and tool UI to evolve without
- * entangling state transitions with rendering or input code.
- *
- * Relation to the rest of the codebase: the application layer transitions between these
- * states while the engine services remain reusable across game and editor targets.
+ * @details Names the coarse phases (boot, menu, world setup, loading, play, pause, exit)
+ *          without any behavior or dependencies. The shipping menu/gameplay flow is driven
+ *          by `AppStateMachine`/`AppStateId` in state_machine.hpp; this header is a
+ *          standalone descriptive model that is not wired into that runtime flow.
  */
 
 #include <string>
 
 namespace voxels {
 
+/// Coarse lifecycle phase; a simplified view of the richer `AppStateId` set.
 enum class AppState {
     Boot,
     MainMenu,
@@ -25,10 +25,11 @@ enum class AppState {
     Exiting
 };
 
+/// Snapshot of the app's lifecycle: current phase, loaded world name, and run flag.
 struct AppLifecycle {
     AppState current = AppState::Boot;
-    std::string activeWorld;
-    bool running = true;
+    std::string activeWorld; ///< Save/world name; empty when no world is loaded.
+    bool running = true;     ///< Cleared to request main-loop exit.
 };
 
 } // namespace voxels

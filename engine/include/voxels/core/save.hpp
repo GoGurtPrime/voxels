@@ -1,14 +1,13 @@
 #pragma once
 
-/*
- * Scope: Save management schema for world and player persistence.
+/**
+ * @file save.hpp
+ * @brief Save persistence contract (`ISaveManager`) and the menu-facing `SaveSlot` view.
  *
- * This layer defines the save contract used to store world state, per-player data, and
- * progression metadata in a single, versioned format. The implementation can later be
- * upgraded with compression, integrity checks, and migration logic.
- *
- * Relation to the rest of the codebase: game state transitions and world loading depend on
- * these capabilities for starts, saves, and ongoing session continuity.
+ * @details Defines how world metadata (`GameSave`, versioned via its schemaVersion field)
+ *          is stored and enumerated. Menu state transitions and world loading depend on
+ *          this contract; `SaveManager` (voxels/app/save_manager.hpp) is the filesystem
+ *          implementation.
  */
 
 #include <string>
@@ -18,17 +17,22 @@
 
 namespace voxels {
 
+/// One entry in the main menu's save list.
 struct SaveSlot {
-    std::string slotName;
+    std::string slotName; ///< Save directory name; usually equals save.saveName.
     GameSave save;
-    std::vector<std::string> tags;
+    std::vector<std::string> tags; ///< Reserved; not currently populated by any producer.
 };
 
+/// Persistence contract for world save metadata.
 class ISaveManager {
 public:
     virtual ~ISaveManager() = default;
+    /// Persists `save` keyed by its saveName; false on invalid name or write failure.
     virtual bool Save(const GameSave& save) = 0;
+    /// Fills `outSave` for the named save; false (leaving no valid data) when missing or corrupt.
     virtual bool Load(const std::string& saveName, GameSave& outSave) = 0;
+    /// Enumerates all readable saves; implementations must skip corrupt entries, not fail.
     virtual std::vector<SaveSlot> ListSaves() const = 0;
 };
 

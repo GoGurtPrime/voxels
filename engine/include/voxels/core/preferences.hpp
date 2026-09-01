@@ -1,14 +1,14 @@
 #pragma once
 
-/*
- * Scope: Preference model for platform-aware settings.
+/**
+ * @file preferences.hpp
+ * @brief Load/save contract and JSON-backed implementation for `GamePreferences`.
  *
- * This abstraction captures hardware-sensitive settings such as window mode, rendering quality,
- * simulation distance, and controls, while allowing future platform-specific restrictions
- * such as Dreamcast display settings or console-only input mappings.
- *
- * Relation to the rest of the codebase: this state is consumed by the app configuration flow
- * and the input system.
+ * @details Captures hardware-sensitive settings (window mode, rendering quality,
+ *          simulation distance, controls) with platform-specific constraints applied on
+ *          every load and save (e.g. the Dreamcast target is locked to fullscreen
+ *          640x480). Consumed by the app configuration flow, the settings screen, and the
+ *          input system.
  */
 
 #include <filesystem>
@@ -18,9 +18,11 @@
 
 namespace voxels {
 
+/// Persistence contract for user settings.
 class IPreferencesManager {
 public:
     virtual ~IPreferencesManager() = default;
+    /// Implementations must return usable defaults when no settings have been persisted yet.
     virtual GamePreferences Load() const = 0;
     virtual void Save(const GamePreferences& preferences) = 0;
 };
@@ -32,14 +34,20 @@ public:
     explicit PreferencesManager(std::filesystem::path configPath,
                                  PlatformType platform = PlatformType::Windows);
 
+    /// Missing file yields platform-constrained defaults; a malformed file throws
+    /// std::runtime_error from the JSON parser.
     [[nodiscard]] GamePreferences Load() const override;
+    /// Atomic write (temp file + rename) that preserves unrecognized keys already present
+    /// in the file. Throws std::runtime_error on I/O failure.
     void Save(const GamePreferences& preferences) override;
 
     /// Returns a copy of `preferences` with any platform-mandated overrides applied.
     [[nodiscard]] static GamePreferences ApplyPlatformConstraints(GamePreferences preferences,
                                                                    PlatformType platform);
 
+    /// Round-trips every `GamePreferences` field except `particles`, which is session-only.
     [[nodiscard]] static std::string ToJson(const GamePreferences& preferences);
+    /// Missing keys keep their defaults; throws std::runtime_error on malformed JSON.
     [[nodiscard]] static GamePreferences FromJson(const std::string& json);
 
 private:

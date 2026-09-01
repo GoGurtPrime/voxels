@@ -1,14 +1,15 @@
 #pragma once
 
-/*
- * Scope: Networking session abstraction for game and peer-to-peer runtime connectivity.
+/**
+ * @file network_session.hpp
+ * @brief Transport-agnostic session vocabulary: roles, endpoints, and connection lifecycle.
  *
- * The network layer is intentionally generic so it can support loopback local-server play,
- * LAN discovery, and future peer-to-peer communication without binding the app to a single
- * transport implementation.
- *
- * Relation to the rest of the codebase: the app and future multiplayer systems use this
- * contract to connect clients and coordinate shared world updates.
+ * @details Abstract seam meant to decouple the app from any single transport (loopback
+ *          local-server play, LAN, future peer-to-peer). The shipping UDP stack lives in
+ *          packet.hpp, server.hpp, and client.hpp instead: protocol v2 with versioned packet
+ *          headers, ConnectAccept handing WorldInfo to joiners, and RLE chunk sections
+ *          streamed as <=1100-byte fragments under a per-peer in-flight window with 350 ms
+ *          retransmit until acked. No concrete INetworkSession implementation exists yet.
  */
 
 #include <cstdint>
@@ -16,6 +17,8 @@
 
 namespace voxels {
 
+/// Role a session plays in a game topology; Peer and Spectator are reserved for future
+/// topologies (the current stack is strictly client/server).
 enum class NetworkRole {
     Server,
     Client,
@@ -23,11 +26,14 @@ enum class NetworkRole {
     Spectator
 };
 
+/// Connectable address: host name or dotted IP plus UDP port.
 struct NetworkEndpoint {
     std::string host;
     std::uint16_t port = 0;
 };
 
+/// Abstract connect/disconnect lifecycle for one session; an implementation binds a role to
+/// a concrete transport.
 class INetworkSession {
 public:
     virtual ~INetworkSession() = default;

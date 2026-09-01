@@ -1,11 +1,12 @@
-/*
- * Scope: Sub-voxel geometry and greedy meshing face culling implementation.
+/**
+ * @file geometry.cpp
+ * @brief Dense-grid greedy meshing implementation.
  *
- * Implements a dense-grid greedy mesher (per axis mask sweep) that skips faces bordered by
- * another solid voxel and merges coplanar exposed faces into the largest possible quads.
- *
- * Relation to the rest of the codebase: chunk mesh generation and the editor preview use this
- * to turn dense block occupancy grids into a minimal set of renderable quads.
+ * @details Sweeps a signed face mask across each axis slice (+1/-1 encodes which side of the
+ *          boundary is solid), skips faces shared by two solid voxels, then grows each mask
+ *          entry first along width and then height to merge coplanar same-direction faces
+ *          into maximal quads. Serves as the reference mesher for tests; the render layer's
+ *          chunk mesher applies the same rules with material and lighting awareness.
  */
 
 #include "voxels/world/geometry.hpp"

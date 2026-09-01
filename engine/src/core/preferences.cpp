@@ -2,9 +2,11 @@
  * @file preferences.cpp
  * @brief JSON serialization and platform constraint enforcement for `GamePreferences`.
  *
- * @details Implements a small self-contained JSON reader/writer scoped to the
- *          `GamePreferences` schema, avoiding a general-purpose JSON dependency for a
- *          well-known, flat configuration format.
+ * @details Loading parses with a small self-contained JSON DOM scoped to the flat
+ *          `GamePreferences` schema. Save() additionally round-trips the existing file
+ *          through nlohmann::json to preserve unknown keys before merging current values
+ *          and atomically replacing the file via a temp-file rename. Platform constraints
+ *          are applied on both load and save.
  */
 
 #include "voxels/core/preferences.hpp"

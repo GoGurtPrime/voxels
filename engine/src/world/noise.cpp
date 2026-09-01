@@ -1,3 +1,13 @@
+/**
+ * @file noise.cpp
+ * @brief Seeded gradient-noise implementation backing world generation.
+ *
+ * @details Perlin-style 2D/3D gradient noise built on a 64-bit avalanche hash instead of
+ *          permutation tables, plus fractal Brownian motion, ridged, domain-warped, and
+ *          cellular (nearest-feature) variants. Every sample is a pure function of
+ *          (seed, coordinates), keeping generation deterministic across runs and threads.
+ */
+
 #include "voxels/world/noise.hpp"
 
 #include <algorithm>

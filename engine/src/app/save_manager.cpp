@@ -2,9 +2,11 @@
  * @file save_manager.cpp
  * @brief Implementation of `SaveManager` directory layout and metadata (de)serialization.
  *
- * @details Metadata uses a minimal `key=value` line format (mirroring the flat-schema
- *          rationale used for `PreferencesManager`'s JSON) since a `GameSave` has no nested
- *          structures. Keeps the on-disk format trivial to read by hand while debugging saves.
+ * @details Metadata is written to `level.json` (kMetaFileName) as a flat, hand-rolled JSON
+ *          object — scalar fields only, no JSON library — and read back by tolerant substring
+ *          scanning on `"key":` markers. Writes stage to a temp file and atomically replace
+ *          the target so a crash cannot truncate existing metadata. Player and world state
+ *          delegate to the binary persistence helpers rather than this metadata path.
  */
 
 #include "voxels/app/save_manager.hpp"

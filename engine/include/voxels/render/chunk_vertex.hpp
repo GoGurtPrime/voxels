@@ -26,8 +26,10 @@
 
 namespace voxels::graphics {
 
+/// Fixed-point position units per block (16 sub-block steps); divide x/y/z by this for blocks.
 inline constexpr float kChunkVertexPositionScale = 16.0f;
 
+/// 16-byte packed chunk vertex; the exact per-field packing is documented in the file header.
 struct ChunkVertex {
     std::uint16_t x = 0;
     std::uint16_t y = 0;
@@ -40,7 +42,7 @@ struct ChunkVertex {
     std::uint8_t u = 0;
     std::uint8_t v = 0;
     std::uint8_t tint = 0;
-    std::uint8_t reserved = 0;
+    std::uint8_t reserved = 0; ///< Padding to a 16-byte stride.
 
     [[nodiscard]] bool operator==(const ChunkVertex&) const noexcept = default;
 };

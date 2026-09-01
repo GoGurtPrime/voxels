@@ -17,6 +17,9 @@ namespace voxels::gameplay {
 
 class CameraController {
 public:
+    /// Applies mouse-look (radians; yaw wrapped to (-pi, pi], pitch clamped to +/-1.55) and sets
+    /// horizontal velocity in the yaw frame (4.3 walk / 7.0 sprint blocks/s), leaving vertical
+    /// velocity to Physics. `deltaTime` is currently unused - mouse deltas arrive per-frame.
     void Update(Player& player, const InputState& input, const GamePreferences& preferences,
                 float deltaTime) const;
 };

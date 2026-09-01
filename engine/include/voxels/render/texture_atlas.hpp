@@ -27,8 +27,12 @@
 
 namespace voxels {
 
+/// Name -> array-layer block texture atlas. Layer 0 is always the missing-texture checker and
+/// layer order is deterministic across runs. The GL sampler wraps with GL_REPEAT because greedy
+/// chunk UVs exceed [0,1] (the chunk shader applies fract); GL calls are null-guarded (headless).
 class TextureAtlas {
 public:
+    /// Reserved name of layer 0, the magenta/black checker returned for unregistered lookups.
     static constexpr const char* kMissingTextureKey = "__missing__";
 
     explicit TextureAtlas(int tileWidth = 16, int tileHeight = 16);

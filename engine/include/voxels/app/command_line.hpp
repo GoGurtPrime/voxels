@@ -1,13 +1,14 @@
 #pragma once
 
-/*
- * Scope: Command-line argument abstraction for app startup.
+/**
+ * @file command_line.hpp
+ * @brief Parser interface turning raw argv strings into `AppCommandLineOptions`.
  *
- * Command-line options override defaults and configuration files, supporting local server
- * execution and editor-specific launch modes without hard-coding game startup rules.
- *
- * Relation to the rest of the codebase: the runtime app and future tooling consume this
- * interface to determine which mode to boot in and what settings to apply.
+ * @details Command-line options override defaults and the on-disk configuration file,
+ *          supporting headless/server execution and tooling launch modes without
+ *          hard-coding startup rules. The runtime app consumes this interface to decide
+ *          which mode to boot in; `CliParser` (cli_parser.hpp) is the shipping
+ *          implementation.
  */
 
 #include <string>
@@ -17,9 +18,12 @@
 
 namespace voxels {
 
+/// Strategy interface for translating program arguments into typed startup options.
 class ICommandLineParser {
 public:
     virtual ~ICommandLineParser() = default;
+    /// Parses `args` (argv without the program name). Implementations must ignore unknown
+    /// or malformed flags rather than fail, so stale command lines never block startup.
     virtual AppCommandLineOptions Parse(const std::vector<std::string>& args) const = 0;
 };
 

@@ -16,11 +16,12 @@
 
 namespace voxels {
 
+/// Trivially-copyable player snapshot; equality-comparable so tests and replication can diff it.
 struct PlayerState {
-    Vec3 position{0.0f, 1.9f, 0.0f};
-    Vec3 velocity{0.0f};
-    float yaw = 0.0f;
-    float pitch = 0.0f;
+    Vec3 position{0.0f, 1.9f, 0.0f}; ///< World-space centre of the collision AABB, in blocks (half-extents in Physics).
+    Vec3 velocity{0.0f}; ///< Blocks per second.
+    float yaw = 0.0f; ///< Look yaw in radians; 0 faces -Z (Camera convention).
+    float pitch = 0.0f; ///< Look pitch in radians; positive looks up.
     bool onGround = false;
     float health = 100.0f;
     gameplay::Inventory inventory{};
@@ -28,6 +29,7 @@ struct PlayerState {
     [[nodiscard]] bool operator==(const PlayerState&) const noexcept = default;
 };
 
+/// Thin wrapper giving physics, input, and interaction one shared mutable PlayerState.
 class Player {
 public:
     Player() = default;

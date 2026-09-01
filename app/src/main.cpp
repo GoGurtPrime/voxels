@@ -1,11 +1,15 @@
-/*
- * Scope: Application bootstrap and lifecycle entry point.
+/**
+ * @file main.cpp
+ * @brief `voxels_app` entry point: bootstrap, frame loop, and dedicated-server mode.
  *
- * This file is the placeholder for launching the runtime game, parsing command-line options,
- * and transitioning through the menu, world setup, loading, and gameplay states.
- *
- * Relation to the rest of the codebase: the game app depends on the engine runtime services
- * and should remain focused on orchestration rather than low-level systems implementation.
+ * @details Parses the command line, brings up the engine (platform/window, GL renderer,
+ *          texture atlas, ImGui UI, input, audio, job system, platform services), drives the
+ *          AppStateMachine (Boot → MainMenu → … → InGame) inside a frame-paced loop until the
+ *          window closes, then tears everything down in reverse order — the state machine must
+ *          shut down before the renderer so GPU-owning states release GL objects while the
+ *          context is alive. `--server` instead runs the headless dedicated server loop.
+ *          See DIAGRAMS.md (boot sequence / frame loop) and AGENT_RULES.md §2 (no headless
+ *          fallback on the shipping path).
  */
 
 #include <chrono>

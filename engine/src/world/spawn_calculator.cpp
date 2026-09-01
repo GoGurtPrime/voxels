@@ -1,3 +1,14 @@
+/**
+ * @file spawn_calculator.cpp
+ * @brief Safe spawn-point selection over generated terrain.
+ *
+ * @details Scans columns top-down for the highest solid support with air headroom. The chunk
+ *          overload searches a single chunk in local coordinates (offset to world space by
+ *          the chunk origin); the world overload rings outward from a world-space center,
+ *          requiring a 3x3 flat surface of terrain-support blocks with two clear blocks
+ *          above. IsSafePlayerSpawn verifies a player-sized block volume is entirely air.
+ */
+
 #include "voxels/world/spawn_calculator.hpp"
 
 #include <algorithm>

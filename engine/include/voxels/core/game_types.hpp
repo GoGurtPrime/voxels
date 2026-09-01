@@ -1,14 +1,14 @@
 #pragma once
 
-/*
- * Scope: Core domain types for the engine runtime.
+/**
+ * @file game_types.hpp
+ * @brief Core plain-data domain types: preferences, save metadata, and CLI options.
  *
- * This header defines the base data model for player state, save data, world metadata,
- * preferences, and global runtime configuration. It must later be extended with actual
- * save serialization, world generation configuration, and platform-specific overrides.
- *
- * Relation to the rest of the codebase: all gameplay systems, world generation, app logic,
- * and networking rely on these types as the canonical representation of persistent state.
+ * @details Canonical representation of persistent state shared across gameplay, world
+ *          generation, app logic, and networking. `GamePreferences` is persisted by
+ *          `PreferencesManager` (settings.json), `GameSave` by `SaveManager`
+ *          (per-save level.json), and `AppCommandLineOptions` is produced by `CliParser`
+ *          at startup. Everything here is trivially copyable value data.
  */
 
 #include <cstdint>
@@ -20,6 +20,7 @@
 
 namespace voxels {
 
+/// Seed for deterministic world generation; identical seeds reproduce identical terrain.
 using WorldSeed = std::uint32_t;
 
 enum class WindowMode {
@@ -38,32 +39,34 @@ enum class ShadowQuality {
 struct Resolution {
     int width = 1280;
     int height = 720;
-    int refreshRate = 60;
+    int refreshRate = 60; ///< Hz.
 
     [[nodiscard]] bool operator==(const Resolution&) const noexcept = default;
 };
 
+/// User-tunable settings, persisted as settings.json by `PreferencesManager`.
 struct GamePreferences {
     WindowMode windowMode = WindowMode::Windowed;
     Resolution resolution;
-    int renderDistance = 8;
-    int simulationDistance = 4;
-    float fieldOfView = 90.0f;
-    float mouseSensitivity = 1.0f;
+    int renderDistance = 8;          ///< In chunks, per horizontal axis.
+    int simulationDistance = 4;      ///< In chunks; gameplay updates beyond this are skipped.
+    float fieldOfView = 90.0f;       ///< Degrees.
+    float mouseSensitivity = 1.0f;   ///< Multiplier on raw mouse deltas.
     bool invertY = false;
     int antiAliasingSamples = 4;
     ShadowQuality shadowQuality = ShadowQuality::Medium;
-    float masterVolume = 1.0f;
+    float masterVolume = 1.0f;       ///< Volumes are 0..1 linear gains.
     float musicVolume = 0.7f;
     float sfxVolume = 0.8f;
-    bool particles = true;
+    bool particles = true;           ///< Not serialized by PreferencesManager; resets each launch.
     /// Persisted so the first-run controls card (work_items/18 §4) is shown exactly once.
     bool controlsCardSeen = false;
-    std::map<std::string, std::string> keyBindings;
+    std::map<std::string, std::string> keyBindings; ///< Action name -> key name.
 
     [[nodiscard]] bool operator==(const GamePreferences&) const noexcept = default;
 };
 
+/// Per-player progression snapshot carried in save data.
 struct PlayerSaveData {
     std::string playerName;
     std::uint64_t experience = 0;
@@ -73,29 +76,32 @@ struct PlayerSaveData {
     bool permadeath = false;
 };
 
+/// Per-world save metadata, round-tripped through `SaveManager::ToMetaText`/`FromMetaText`.
 struct GameSave {
-    std::string saveName;
-    std::string worldName;
+    std::string saveName;    ///< Doubles as the save directory name; must be filesystem-safe.
+    std::string worldName;   ///< Display name shown in menus.
     std::string playerName;
     std::string createdUtc;
     std::string lastPlayedAt;
     WorldSeed seed = 0;
-    std::uint32_t schemaVersion = 1;
+    std::uint32_t schemaVersion = 1;  ///< Loaders reject saves from newer schemas.
     std::uint64_t playTimeSeconds = 0;
     float spawnX = 0.0f;
     float spawnY = 0.0f;
     float spawnZ = 0.0f;
-    std::uint32_t generatorVersion = 1;
+    std::uint32_t generatorVersion = 1; ///< Guards against regenerating chunks with a mismatched generator.
     std::string engineVersion = kEngineVersion;
     bool peaceful = false;
     bool permadeath = false;
     bool alwaysSunny = true;
-    bool sandboxMode = false;
+    bool sandboxMode = false;         ///< Instant block breaking, no inventory consumption.
     int renderDistanceChunks = 8;
     int simulationDistanceChunks = 4;
-    bool publicVisibility = true;
+    bool publicVisibility = true;     ///< Gates whether non-loopback players may join when hosting.
 };
 
+/// Startup options parsed from argv. Each `*Override` flag records that the corresponding
+/// CLI flag was present; the paired value is meaningful only when its flag is set.
 struct AppCommandLineOptions {
     bool fullscreenOverride = false;
     bool fullscreenValue = true;

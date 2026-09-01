@@ -19,9 +19,15 @@
 
 namespace voxels::graphics {
 
+/// Immediate-style GL overlay for gameplay feedback: crosshair, hotbar, target highlight, mining
+/// cracks, break particles, and the selected-item label. GL objects are created lazily on the
+/// first Render and every draw is skipped when GL is not loaded, so headless runs are safe.
 class GameplayHudRenderer {
 public:
     ~GameplayHudRenderer();
+    /// `breakProgress` in [0,1] selects one of the ten crack overlay stages on the targeted
+    /// block; `selectedItemLabelAge` is seconds since the hotbar selection changed (hold/fade);
+    /// `particleBursts` are world block coords to draw break particles at this frame.
     void Render(const Camera& camera, const RaycastHit& target, float breakProgress,
                 const gameplay::Inventory& inventory, const std::string& selectedItemLabel,
                 float selectedItemLabelAge, const std::vector<Vec3I>& particleBursts);

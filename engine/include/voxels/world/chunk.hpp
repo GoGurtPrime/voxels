@@ -1,14 +1,14 @@
 #pragma once
 
-/*
- * Scope: Chunk representation and streaming-friendly world storage.
+/**
+ * @file chunk.hpp
+ * @brief Dense voxel chunk storage: blocks, per-voxel light, and RLE serialization.
  *
- * This type is a contract for serialized chunk data, block storage, and object state
- * serialization. It is designed to support efficient streaming and low-memory operation
- * for low-end hardware while retaining enough structure for larger desktop markets.
- *
- * Relation to the rest of the codebase: world generation, simulation, and networking all
- * rely on chunk boundaries as the unit of loading, saving, and synchronization.
+ * @details Declares the 16^3-default Chunk (block ids, 2-bit block states, block/sky light
+ *          levels), the ChunkData transfer snapshot with its storage contract, and the
+ *          coordinate/hash types keying the World's sparse chunk map. Generation, simulation,
+ *          persistence, and networking all treat the chunk as the unit of loading, saving,
+ *          and synchronization (ARCHITECTURE.md §6.2).
  */
 
 #include <cstddef>
@@ -20,6 +20,7 @@
 
 namespace voxels {
 
+/// Position of a chunk on the chunk grid (units of whole chunks, not blocks).
 struct ChunkCoordinate {
     int x = 0;
     int y = 0;
@@ -38,22 +39,25 @@ struct ChunkCoordinateHash {
     }
 };
 
+/// Serialized state of a dynamic object anchored to a chunk (payload is opaque to the chunk).
 struct ChunkObjectState {
     std::string id;
     std::string type;
     std::string serializedState;
 };
 
+/// Plain-data chunk snapshot exchanged with IChunkStorage and network transfer code.
 struct ChunkData {
     ChunkCoordinate coordinate;
     std::uint32_t width = 16;
     std::uint32_t height = 16;
     std::uint32_t depth = 16;
-    std::vector<std::uint32_t> blockPalette;
+    std::vector<std::uint32_t> blockPalette; ///< Dense per-voxel block ids (not a palette, despite the name).
     std::vector<ChunkObjectState> objectStates;
     bool dirty = false;
 };
 
+/// Pluggable persistence backend that loads/saves chunk snapshots keyed by coordinate.
 class IChunkStorage {
 public:
     virtual ~IChunkStorage() = default;
@@ -66,6 +70,7 @@ public:
 /// run-length-encoded (de)serialization for compact disk/memory representation.
 class Chunk {
 public:
+    /// Default edge length in voxels; a standard chunk section is a 16^3 cube.
     static constexpr std::uint32_t kDefaultSize = 16;
 
     explicit Chunk(ChunkCoordinate coordinate,
@@ -73,15 +78,22 @@ public:
                    std::uint32_t sizeY = kDefaultSize,
                    std::uint32_t sizeZ = kDefaultSize);
 
+    /// Block id at chunk-local coordinates; out-of-bounds reads return Air.
     [[nodiscard]] BlockId GetBlock(int x, int y, int z) const noexcept;
+    /// Writes a block (resetting its state to 0) and marks the chunk dirty; false if out of bounds.
     bool SetBlock(int x, int y, int z, BlockId block) noexcept;
+    /// 2-bit auxiliary state (e.g. orientation) at chunk-local coordinates; 0 when out of bounds.
     [[nodiscard]] std::uint8_t GetBlockState(int x, int y, int z) const noexcept;
+    /// Stores the low 2 bits of `state`; false if out of bounds.
     bool SetBlockState(int x, int y, int z, std::uint8_t state) noexcept;
+    /// Writes block id and 2-bit state together in one dirty-marking update; false if out of bounds.
     bool SetBlockAndState(int x, int y, int z, BlockId block, std::uint8_t state) noexcept;
 
+    /// Block-emitted light level 0-15 at chunk-local coordinates; 0 when out of bounds.
     [[nodiscard]] std::uint8_t GetBlockLight(int x, int y, int z) const noexcept;
     bool SetBlockLight(int x, int y, int z, std::uint8_t level) noexcept;
 
+    /// Sky light level 0-15 (15 = direct sky) at chunk-local coordinates; 0 when out of bounds.
     [[nodiscard]] std::uint8_t GetSkyLight(int x, int y, int z) const noexcept;
     bool SetSkyLight(int x, int y, int z, std::uint8_t level) noexcept;
 
@@ -91,6 +103,7 @@ public:
     [[nodiscard]] std::uint32_t GetWidth() const noexcept { return m_width; }
     [[nodiscard]] std::uint32_t GetHeight() const noexcept { return m_height; }
     [[nodiscard]] std::uint32_t GetDepth() const noexcept { return m_depth; }
+    /// True if any voxel changed since the last ClearDirty(); streaming only evicts clean chunks.
     [[nodiscard]] bool IsDirty() const noexcept { return m_dirty; }
     void ClearDirty() noexcept { m_dirty = false; }
 

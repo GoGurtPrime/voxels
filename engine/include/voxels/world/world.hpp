@@ -1,14 +1,15 @@
 #pragma once
 
-/*
- * Scope: Runtime world manager and generation orchestration.
+/**
+ * @file world.hpp
+ * @brief Runtime world manager: sparse chunk map, world-space block access, and raycasting.
  *
- * This interface contracts the high-level world lifecycle: chunk loading, generation,
- * player placement, and persistent world state. The implementation is explicitly meant
- * to be extensible so additional generation stages and world rules can be added later.
- *
- * Relation to the rest of the codebase: the app uses this layer to implement the game flow
- * from world creation to active gameplay.
+ * @details World keys loaded chunks by ChunkCoordinate in a spatial hash and floor-divides
+ *          world-space block coordinates into chunk-local ones. It provides skylight queries
+ *          and column relighting after edits, radius-based eviction of clean chunks for
+ *          streaming, and Amanatides-Woo voxel traversal for block picking. GameSession and
+ *          the networking server drive it as the authoritative block store
+ *          (ARCHITECTURE.md §6.2).
  */
 
 #include <memory>
@@ -29,11 +30,12 @@ namespace voxels {
 /// Result of a voxel-grid raycast against loaded world chunks.
 struct RaycastHit {
     bool hit = false;
-    Vec3I blockPosition{};
-    Face face = Face::PosY;
-    float distance = 0.0f;
+    Vec3I blockPosition{};   ///< World-space coordinate of the solid block that was hit.
+    Face face = Face::PosY;  ///< Face the ray entered through (faces back toward the ray origin).
+    float distance = 0.0f;   ///< Distance from the ray origin in world units.
 };
 
+/// Abstract world lifecycle contract consumed by the app flow and tests.
 class IWorld {
 public:
     virtual ~IWorld() = default;
@@ -73,7 +75,9 @@ public:
         return m_chunks;
     }
 
+    /// Block id at a world-space position; Air when the containing chunk is not resident.
     [[nodiscard]] BlockId GetBlock(const Vec3I& worldBlockPos) const;
+    /// Writes a block at a world-space position, creating the containing chunk if needed.
     bool SetBlock(const Vec3I& worldBlockPos, BlockId block);
     /// Sky light (0-15) at a world-space block position; 0 for an unresident chunk. Zero means
     /// no direct line to the open sky — used as the "enclosed/underground" signal for the

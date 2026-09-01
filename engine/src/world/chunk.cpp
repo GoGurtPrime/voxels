@@ -1,12 +1,12 @@
-/*
- * Scope: Chunk block/light storage and RLE serialization implementation.
+/**
+ * @file chunk.cpp
+ * @brief Chunk block/light storage and RLE (de)serialization.
  *
- * Implements bounds-safe block and lighting accessors over a flat array plus a simple
- * run-length encoding scheme (16-bit block id, 32-bit run length pairs) for compact
- * serialization suited to low-memory streaming targets.
- *
- * Relation to the rest of the codebase: the world manager stores chunks in its spatial hash
- * map and (de)serializes them through this type for disk/network transfer.
+ * @details Bounds-checked accessors over flat row-major arrays (x fastest, then y, then z).
+ *          SerializeRLE emits little-endian 7-byte records — 16-bit block id, 8-bit block
+ *          state (low 2 bits kept), 32-bit run length — splitting runs when either id or
+ *          state changes; light maps are not serialized and are rebuilt after load.
+ *          DeserializeRLE tolerates truncated buffers, leaving remaining voxels as Air.
  */
 
 #include "voxels/world/chunk.hpp"

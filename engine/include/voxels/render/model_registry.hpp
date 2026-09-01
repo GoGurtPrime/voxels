@@ -21,15 +21,19 @@ class BlockRegistry;
 
 namespace graphics {
 
+/// Model geometry pre-baked into the packed chunk-vertex format (same 1/16-block fixed point),
+/// so model blocks splice straight into chunk meshes.
 struct BakedModelMesh {
     std::vector<ChunkVertex> vertices;
     std::vector<std::uint32_t> indices;
 };
 
+/// Cache of loaded VMDL models and their baked meshes, keyed by model id.
 class ModelRegistry {
 public:
     /// Loads every model referenced by `blocks`; corrupt or absent files receive a visible mesh.
     void LoadReferencedModels(const BlockRegistry& blocks, const std::filesystem::path& assetRoot);
+    /// Stores or replaces the model and immediately (re)bakes its mesh.
     void Register(std::string modelId, VoxelModel model);
     /// Bakes a model using the same exposed-face algorithm used by runtime model blocks.
     [[nodiscard]] static BakedModelMesh BakeModel(const VoxelModel& model);

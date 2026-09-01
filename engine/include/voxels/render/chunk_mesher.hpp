@@ -33,16 +33,18 @@ struct ChunkNeighborhood {
     std::array<const Chunk*, 6> neighbors{};
 };
 
+/// CPU-side greedy-meshing output, laid out for direct GPU upload.
 struct ChunkMeshData {
     std::vector<ChunkVertex> vertices;
     std::vector<std::uint32_t> indices;
     std::uint32_t opaqueIndexCount = 0;      // indices[0, opaqueIndexCount)
     std::uint32_t transparentIndexCount = 0; // indices[opaqueIndexCount, opaqueIndexCount + transparentIndexCount)
-    bool provisional = false;
+    bool provisional = false; ///< An absent neighbour was assumed occluding; re-mesh once it arrives.
 };
 
 /// Builds a chunk mesh. `chunk` and every present neighbour in `neighborhood` must share the
-/// same dimensions as `chunk`.
+/// same dimensions as `chunk`. `models` may be null: baked sub-voxel meshes for model-type
+/// blocks are emitted only when it is provided. Pure function - safe on worker threads.
 [[nodiscard]] ChunkMeshData BuildChunkMesh(const Chunk& chunk,
                                             const ChunkNeighborhood& neighborhood,
                                             const BlockRegistry& registry,

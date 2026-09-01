@@ -17,6 +17,9 @@
 
 namespace voxels {
 
+/// Perspective camera; right-handed, Y-up, positions in world blocks. Yaw and pitch are in
+/// radians: yaw 0 faces -Z and increases counter-clockwise around +Y, positive pitch looks up
+/// (no clamping here - callers such as CameraController clamp).
 struct Camera {
     glm::vec3 position{0.0f, 1.5f, 5.0f};
     float yaw{-90.0f};
@@ -31,9 +34,14 @@ struct Camera {
     [[nodiscard]] glm::mat4 ViewProjection() const;
 };
 
+/// View frustum as six inward-facing planes extracted from a view-projection matrix
+/// (Gribb-Hartmann); drives chunk AABB culling.
 class Frustum {
 public:
+    /// Re-extracts the six planes; call whenever the camera moves.
     void Update(const glm::mat4& viewProjection);
+    /// Conservative world-space AABB test (positive-vertex trick): true when the box is inside
+    /// or straddles the frustum. May keep borderline boxes but never falsely culls.
     [[nodiscard]] bool Intersects(const BoundingBox& bounds) const noexcept;
 
 private:

@@ -1,16 +1,16 @@
 #pragma once
 
-/*
- * Scope: Logic-layer controllers for the main menu, world creation, pause menu, and loading
- * screen described in work item 08.
+/**
+ * @file menus.hpp
+ * @brief Logic-layer controllers for the main menu, world creation, pause menu, and
+ *        loading screen (work item 08).
  *
- * These controllers hold state and behavior only; actual widget rendering is performed by the
- * UI layer (`voxels/ui/ui_manager.hpp`) so the menu flow can be exercised in headless unit
- * tests without a Dear ImGui backend or a graphics device.
- *
- * Relation to the rest of the codebase: the app state machine constructs and drives these
- * controllers while transitioning through `MainMenuState`, `WorldCreationState`,
- * `PauseMenuState`, and `LoadingScreenState`.
+ * @details These controllers hold state and behavior only; actual widget rendering is
+ *          performed by the UI layer (voxels/ui/ui_manager.hpp) so the menu flow can be
+ *          exercised in headless unit tests without a Dear ImGui backend or a graphics
+ *          device. The app state machine constructs and drives them while transitioning
+ *          through `MainMenuState`, `WorldCreationState`, `PauseMenuState`, and
+ *          `LoadingScreenState`.
  */
 
 #include <cstdint>
@@ -49,6 +49,8 @@ public:
     [[nodiscard]] const std::string& GetWorldName() const noexcept { return m_worldName; }
     [[nodiscard]] const WorldOptions& GetWorldOptions() const noexcept { return m_options; }
 
+    /// Builds a fresh `GameSave` (save/world name, seed, current generator version,
+    /// visibility); timestamps and play time are filled in later by the save flow.
     [[nodiscard]] GameSave BuildGameSave(const std::string& playerName) const;
 
 private:
@@ -56,7 +58,10 @@ private:
     WorldOptions m_options;
 };
 
+/// Deterministic FNV-1a hash of the seed text box, so any phrase maps to a stable seed.
 [[nodiscard]] std::uint64_t SeedFromText(std::string_view text) noexcept;
+/// True if `name` is usable as a save directory name: 1-48 chars, alphanumeric/space/'_'/'-'
+/// only, and not "." or "..".
 [[nodiscard]] bool IsFilesystemSafeWorldName(std::string_view name) noexcept;
 
 /// Actions exposed by the pause menu; the app layer maps these onto state machine transitions.
@@ -72,6 +77,8 @@ class PauseMenuController {
 public:
     explicit PauseMenuController(GameSave& activeSave) noexcept : m_activeSave(&activeSave) {}
 
+    /// Only `ToggleVisibility` mutates the save; the other actions are handled by the app
+    /// state machine transition that dispatched them.
     void Apply(PauseMenuAction action);
     [[nodiscard]] bool IsPublic() const noexcept { return m_activeSave->publicVisibility; }
 
@@ -88,6 +95,7 @@ enum class GenerationPhase {
     Complete
 };
 
+/// Stable phase name for logging and the loading screen's status line.
 [[nodiscard]] std::string_view ToString(GenerationPhase phase) noexcept;
 
 /// Tracks the current generation phase and exposes a 0..1 progress fraction for the loading
@@ -96,6 +104,7 @@ class LoadingScreenModel {
 public:
     void SetPhase(GenerationPhase phase) noexcept { m_phase = phase; }
     [[nodiscard]] GenerationPhase GetPhase() const noexcept { return m_phase; }
+    /// Fixed 0.25 step per phase (Shape=0 .. Complete=1); not interpolated within a phase.
     [[nodiscard]] float GetProgress() const noexcept;
 
 private:

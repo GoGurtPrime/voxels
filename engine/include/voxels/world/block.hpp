@@ -26,6 +26,8 @@ namespace voxels {
 /// Stable per-block identifier used for chunk storage and registry lookup.
 using BlockId = std::uint16_t;
 
+/// Launch-catalogue block types; the numeric values double as the default BlockIds. Enumerators
+/// sharing a value (CoalOre, Leaves, TreeTrunk, ...) are spelling aliases, not distinct blocks.
 enum class BlockType : std::uint32_t {
     Air = 0,
     Stone = 1,
@@ -69,6 +71,7 @@ struct BlockTextures {
     std::string west;
     std::string side;
 
+    /// Resolution order: the explicit per-face entry, then `side` (lateral faces only), then `all`.
     [[nodiscard]] std::string ResolveFaceTexture(Face face) const {
         switch (face) {
             case Face::PosY:
@@ -113,36 +116,39 @@ struct BlockDrop {
     [[nodiscard]] bool operator==(const BlockDrop&) const noexcept = default;
 };
 
+/// Collision AABB corners in block-local space; each axis spans [0, 1] blocks for a full cube.
 struct BlockCollisionBounds {
     std::array<float, 3> min = {0.0f, 0.0f, 0.0f};
     std::array<float, 3> max = {1.0f, 1.0f, 1.0f};
 };
 
+/// Complete data-driven description of one block, as loaded from blocks.json.
 struct BlockDefinition {
     BlockType type = BlockType::Air;
     BlockId id = 0;
     std::string name;
     std::string displayName;
-    bool isSolid = true;
+    bool isSolid = true; ///< Participates in collision (Physics).
     bool isTransparent = false;
-    bool isOpaque = true;
+    bool isOpaque = true; ///< Fully occludes adjacent faces; false routes the block to the transparent draw pass.
     bool isLiquid = false;
-    float hardness = 1.0f;
-    std::uint8_t lightEmission = 0;
+    float hardness = 1.0f; ///< Break time in seconds of held mining; negative marks the block unbreakable.
+    std::uint8_t lightEmission = 0; ///< Emitted block light, 0-15.
     std::string renderType = "cube"; // "cube" | "cross" | "liquid" | "model"
-    std::optional<std::string> modelId = std::nullopt;
+    std::optional<std::string> modelId = std::nullopt; ///< VMDL asset path (relative to the asset root) when renderType is "model".
     BlockCollisionBounds collisionBounds;
     BlockTextures textures;
     BlockSounds sounds;
     std::vector<BlockDrop> drops;
-    std::array<float, 4> tintColor = {1.0f, 1.0f, 1.0f, 1.0f};
-    std::unordered_map<std::string, std::string> metadata;
+    std::array<float, 4> tintColor = {1.0f, 1.0f, 1.0f, 1.0f}; ///< RGBA multiplier; a non-white RGB enables the shader foliage tint.
+    std::unordered_map<std::string, std::string> metadata; ///< Free-form key/value passthrough from blocks.json.
 
     [[nodiscard]] std::string GetFaceTexture(Face face) const {
         return textures.ResolveFaceTexture(face);
     }
 };
 
+/// Non-block item description (future inventory items beyond placeable blocks).
 struct ItemDefinition {
     std::string id;
     std::string name;
@@ -150,6 +156,8 @@ struct ItemDefinition {
     std::unordered_map<std::string, std::string> state;
 };
 
+/// Optional per-block gameplay hooks; declared for the catalogue contract, but no engine code
+/// implements or invokes these yet.
 class IBlockBehavior {
 public:
     virtual ~IBlockBehavior() = default;
@@ -174,6 +182,7 @@ public:
 
     [[nodiscard]] bool IsRegistered(BlockId id) const noexcept;
     [[nodiscard]] bool IsRegistered(const std::string& name) const noexcept;
+    /// Borrowed pointer into the registry, nullptr when unregistered; stable while the registry lives.
     [[nodiscard]] const BlockDefinition* GetDefinition(BlockId id) const noexcept;
     [[nodiscard]] const BlockDefinition* GetDefinition(const std::string& name) const noexcept;
     [[nodiscard]] std::size_t Count() const noexcept { return m_definitions.size(); }

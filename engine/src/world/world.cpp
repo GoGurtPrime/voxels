@@ -1,12 +1,12 @@
-/*
- * Scope: World manager implementation.
+/**
+ * @file world.cpp
+ * @brief World manager implementation: chunk map, block access, lighting, and raycasting.
  *
- * Implements the sparse spatial hash of loaded chunks, world-space block access (with
- * floor-division mapping into chunk-local coordinates), and Amanatides-Woo fast voxel
- * traversal raycasting for block picking and sub-voxel collision detection.
- *
- * Relation to the rest of the codebase: the app uses this module to orchestrate the world
- * setup flow and player spawn placement before gameplay begins.
+ * @details Maps world-space block coordinates onto chunks via floor division/modulo, lazily
+ *          allocating chunks on write. RebuildSkyLightAround recomputes one skylight column
+ *          top-down (world Y 255..0) across resident sections after an edit. Raycast is an
+ *          Amanatides-Woo voxel traversal reporting the entered face. IWorld's Generate()
+ *          and Serialize() remain stubs; generation lives in the WorldGenerator pipeline.
  */
 
 #include "voxels/world/world.hpp"

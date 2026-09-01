@@ -16,6 +16,7 @@ option(VOXELS_ENABLE_METAL "Enable the Metal renderer backend" OFF)
 option(VOXELS_ENABLE_DREAMCAST "Enable the Dreamcast renderer backend" OFF)
 option(VOXELS_ENABLE_STEAM "Enable optional Steamworks platform services (achievements, overlay, cloud saves)" OFF)
 option(VOXELS_WARNINGS_AS_ERRORS "Treat warnings as errors for first-party targets" ON)
+option(VOXELS_BUILD_DOCS "Enable the Doxygen API documentation 'docs' target (requires a Doxygen install)" ON)
 
 add_compile_definitions(VOXELS_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_compile_definitions(VOXELS_BINARY_DIR="${CMAKE_BINARY_DIR}")
@@ -192,6 +193,30 @@ if(VOXELS_BUILD_TESTS)
     endif()
 
     add_subdirectory(tests)
+endif()
+
+# --- API documentation (Doxygen) --------------------------------------------------------------
+# `cmake --build build --target docs` renders build/docs/html from the Doxygen comments in the
+# source tree. Doxyfile.in lists input *directories* recursively, so new source files are picked
+# up automatically with no registration step (AGENT_RULES.md §3, Documentation Standard).
+# Doxygen is a developer-only tool: it is never required to build or ship the game, so a missing
+# install degrades loudly (configure warning, no target) rather than failing the build.
+if(VOXELS_BUILD_DOCS)
+    find_package(Doxygen QUIET)
+    if(DOXYGEN_FOUND)
+        configure_file("${CMAKE_SOURCE_DIR}/docs/Doxyfile.in" "${CMAKE_BINARY_DIR}/Doxyfile" @ONLY)
+        add_custom_target(docs
+            COMMAND Doxygen::doxygen "${CMAKE_BINARY_DIR}/Doxyfile"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            COMMENT "Generating API documentation: ${CMAKE_BINARY_DIR}/docs/html/index.html"
+            VERBATIM
+        )
+    else()
+        message(WARNING
+            "VOXELS_BUILD_DOCS=ON but Doxygen was not found; the 'docs' target is unavailable. "
+            "Install Doxygen (Windows: winget install DimitriVanHeesch.Doxygen; "
+            "Linux: apt install doxygen; macOS: brew install doxygen) and re-run CMake.")
+    endif()
 endif()
 
 # --- Packaging (work_items/18_packaging_distribution_and_platform_services.md) ---------------

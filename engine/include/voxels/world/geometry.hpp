@@ -1,13 +1,14 @@
 #pragma once
 
-/*
- * Scope: Geometry and sub-voxel representation types.
+/**
+ * @file geometry.hpp
+ * @brief Voxel-grid geometry primitives and greedy-mesh quad generation.
  *
- * The groundwork supports large world blocks and shapes such as stairs or other partial
- * blocks that occupy a single logical block without behaving like full opaque voxels.
- *
- * Relation to the rest of the codebase: renderers, collision code, and editor previews use
- * these primitives to describe volumetric shapes and draw order.
+ * @details Declares the integer vector/box types shared by world and render code, the
+ *          sub-voxel collision shape for partial blocks (stairs, slabs, fences), and the
+ *          dense-grid GreedyMeshFaces() mesher. Tests exercise this mesher directly and it
+ *          serves as the reference for the render layer's material-aware chunk mesher
+ *          (render/chunk_mesher.hpp).
  */
 
 #include <array>
@@ -16,6 +17,7 @@
 
 namespace voxels {
 
+/// Integer 3-vector used for world-space block positions and grid coordinates.
 struct Vec3I {
     int x = 0;
     int y = 0;
@@ -24,17 +26,22 @@ struct Vec3I {
     [[nodiscard]] bool operator==(const Vec3I&) const noexcept = default;
 };
 
+/// Axis-aligned box spanning `min` to `max` in integer grid units.
 struct BoundingBox {
     Vec3I min;
     Vec3I max;
 };
 
+/// Volumetric cell that may span multiple voxels (`size` = edge length); groundwork for
+/// large-block shapes, not yet consumed by engine code.
 struct GeometryVoxel {
     Vec3I position;
     std::uint32_t size = 1;
     bool fullBlock = true;
 };
 
+/// Per-vertex attributes for simple mesh interchange; the render layer uses its own packed
+/// ChunkVertex format instead.
 struct MeshData {
     std::array<float, 3> position{0.0f, 0.0f, 0.0f};
     std::array<float, 3> normal{0.0f, 0.0f, 0.0f};
@@ -59,6 +66,7 @@ struct SubVoxelShape {
     std::array<BoundingBox, kMaxBoxes> collisionBoxes{};
     std::uint32_t boxCount = 0;
 
+    /// Appends a collision box; false once the kMaxBoxes capacity is exhausted.
     bool AddBox(const BoundingBox& box) {
         if (boxCount >= collisionBoxes.size()) {
             return false;
@@ -71,8 +79,8 @@ struct SubVoxelShape {
 /// A single merged quad face produced by greedy meshing, expressed in local grid units.
 struct MeshQuad {
     Vec3I position;
-    std::uint32_t width = 1;
-    std::uint32_t height = 1;
+    std::uint32_t width = 1;   ///< Extent along the first in-plane axis (axis pairing depends on face).
+    std::uint32_t height = 1;  ///< Extent along the second in-plane axis.
     Face face = Face::PosY;
 };
 

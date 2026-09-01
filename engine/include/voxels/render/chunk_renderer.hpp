@@ -6,13 +6,13 @@
  *
  * @details Owns the `chunkCoord -> GpuChunkMesh` cache described in ARCHITECTURE.md §6.2. Dirty
  *          chunks are meshed off the main thread via `JobSystem` (ADR-008); only GPU buffer
-#include <chrono>
  *          creation/upload and drawing happen on the render thread. Reference
-#include <limits>
  *          work_items/05_chunk_mesh_pipeline_and_world_rendering.md.
  */
 
+#include <chrono>
 #include <cstdint>
+#include <limits>
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
@@ -32,21 +32,26 @@
 
 namespace voxels::graphics {
 
+/// Frame-over-frame counters for meshing, upload, and draw work; read via GetMetrics().
 struct ChunkRenderMetrics {
     std::size_t loadedChunks = 0;
     std::size_t meshedChunks = 0;
-    std::size_t visibleChunks = 0;
+    std::size_t visibleChunks = 0; ///< Meshes that survived frustum culling in the last Render().
     std::size_t drawCalls = 0;
     std::size_t triangles = 0;
-    std::size_t meshQueueDepth = 0;
+    std::size_t meshQueueDepth = 0; ///< Dirty + in-flight + deferred-upload chunks not yet GPU-resident.
     double lastUploadMilliseconds = 0.0;
-    double lastEditMeshingMilliseconds = 0.0;
-    double lastEditLatencyMilliseconds = 0.0;
+    double lastEditMeshingMilliseconds = 0.0; ///< Worker time meshing the most recent edit-priority chunk.
+    double lastEditLatencyMilliseconds = 0.0; ///< MarkBlockEdited to GPU upload for the most recent edit.
     std::size_t completedEditMeshes = 0;
 };
 
+/// Owns the chunkCoord -> GPU mesh cache. Meshing runs on JobSystem workers over immutable chunk
+/// copies; uploads and draws stay on the main thread (ADR-008). Block edits mesh at high priority
+/// and bypass the upload budget. All GL calls are null-guarded so scheduling logic runs headless.
 class ChunkRenderer {
 public:
+    /// All three dependencies are borrowed and must outlive the renderer.
     ChunkRenderer(voxels::BlockRegistry& registry, voxels::TextureAtlas& atlas, voxels::JobSystem& jobSystem);
     ~ChunkRenderer();
 
@@ -71,6 +76,7 @@ public:
 
     /// Registers a chunk arrival or removal and invalidates only the affected chunk boundaries.
     void OnChunkArrived(const voxels::ChunkCoordinate& coordinate, const voxels::World& world);
+    /// Releases the chunk's GPU mesh and re-dirties resident neighbours that bordered it.
     void OnChunkRemoved(const voxels::ChunkCoordinate& coordinate, const voxels::World& world);
 
     /// Enqueues bounded async mesh work for dirty resident chunks nearest to `cameraPosition`.

@@ -26,6 +26,8 @@ enum class EngineStatus {
     Error
 };
 
+/// Top-level engine orchestrator: owns the platform layer and tracks runtime lifecycle state.
+/// Move-only; exactly one instance drives the process (created in the executable's main).
 class Engine {
 public:
     Engine();
@@ -36,11 +38,20 @@ public:
     Engine(Engine&&) noexcept;
     Engine& operator=(Engine&&) noexcept;
 
+    /// Creates the platform layer (window/context unless `headless`) and transitions to
+    /// Initialized. Returns false on unrecoverable platform failure — fatal at startup.
     bool initialize(bool headless = false);
+
+    /// Tears down the platform layer; idempotent, and also invoked by the destructor.
     void shutdown();
+
     [[nodiscard]] bool isInitialized() const noexcept;
     [[nodiscard]] EngineStatus getStatus() const noexcept;
+
+    /// Semantic version string of the engine build (matches the CMake project version).
     [[nodiscard]] std::string getVersion() const;
+
+    /// Borrowed pointer to the active platform; null before initialize()/after shutdown().
     [[nodiscard]] IPlatform* getPlatform() const noexcept;
 
     static constexpr std::string_view kVersionString = "0.1.0";
