@@ -4,25 +4,19 @@ A cross-platform, first-person **block-based voxel sandbox game** and the custom
 
 ---
 
-## Project Status — Honest Assessment
+## Project Status
 
-**The game is playable.** Launching `voxels_app` opens a rendered main menu; you can create a
-world, spawn into lit, textured terrain with water and trees, walk/jump/collide, break and place
-blocks with a HUD (crosshair/hotbar/highlight), hear audio, pause/save/resume, and host or join
-over LAN. Work items 01–17 closed the original "black screen" gap; this session (work item 18)
-adds packaging, an install/CPack pipeline, versioning, a first-run experience, and optional
-Steam platform services.
+`voxels_app` provides a rendered main menu, world creation, lit and textured terrain with water
+and trees, player movement and collision, block interaction, a HUD, audio, save and resume
+support, and LAN hosting and joining. The project also includes packaging, an install/CPack
+pipeline, versioning, a first-run experience, and optional Steam platform services.
 
-Per-subsystem status (kept current in [ARCHITECTURE.md](ARCHITECTURE.md) §2 — read that table,
-not this paragraph, for the authoritative detail): world generation, chunk meshing/rendering,
-physics/input/block-interaction, the ImGui UI and app-state flow, local-AppData persistence, the
-audio pipeline, and singleplayer/LAN networking are **Real** or **Partial** and genuinely wired
-into the running game. Vulkan/DX12/Metal renderer backends and Dreamcast/console targets are
-**declared but deliberately unimplemented** (ADR-001/ADR-013) — OpenGL 3.3 Core is the one
-backend that ships. Full lateral cross-chunk light propagation, OGG music streaming, and
-server-authoritative input prediction (ADR-007) remain open follow-ups.
+For subsystem status and architectural decisions, see [ARCHITECTURE.md](ARCHITECTURE.md).
+The project currently ships with an OpenGL 3.3 Core renderer. Vulkan, DirectX 12, Metal, and
+Dreamcast/console targets are documented future backends. Cross-chunk lateral light propagation,
+OGG music streaming, and server-authoritative input prediction remain planned work.
 
-The roadmap that got here — and what's left — is in **[work_items/README.md](work_items/README.md)**.
+The development roadmap is maintained in [work_items/README.md](work_items/README.md).
 
 ---
 
@@ -30,12 +24,12 @@ The roadmap that got here — and what's left — is in **[work_items/README.md]
 
 | Document | Purpose |
 | :--- | :--- |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | System design, architectural decision records, honest subsystem status, contracts, performance budget |
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | System design, architectural decision records, subsystem status, contracts, performance budget |
 | **[DIAGRAMS.md](DIAGRAMS.md)** | Mermaid diagrams: layering, boot, state machine, frame loop, simulation tick, render pipeline, chunk lifecycle, generation, input, persistence, content pipeline, networking, audio |
-| **[AGENT_RULES.md](AGENT_RULES.md)** | Engineering standards, the Anti-Shell Rule, definition of done, testing bar, content protocol, git workflow |
+| **[AGENT_RULES.md](AGENT_RULES.md)** | Engineering standards, completion requirements, testing, content protocol, and project workflow |
 | **[work_items/README.md](work_items/README.md)** | The 18-item roadmap with milestones and execution rules |
 | **[work_items/WORK_ITEM_PROMPT_TEMPLATE.md](work_items/WORK_ITEM_PROMPT_TEMPLATE.md)** | The prompt used to start each work item |
-| **[ASSET_REQUESTS.md](ASSET_REQUESTS.md)** | Art, audio, fonts, and SDKs the human operator needs to supply |
+| **[ASSET_REQUESTS.md](ASSET_REQUESTS.md)** | Art, audio, fonts, and SDKs required for development |
 | **[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)** | Steps to work through before tagging and shipping a release |
 
 ---
@@ -88,9 +82,9 @@ cmake --build --preset windows-debug
 ctest --preset windows-debug --output-on-failure
 ```
 
-If you have [vcpkg](https://github.com/microsoft/vcpkg) installed with `VCPKG_ROOT` set, `vcpkg
-install sdl2:x64-windows` first and pass `-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake`
-(or add it to your own preset) to use a real SDL2 install instead of the fetched copy. Visual
+If you have [vcpkg](https://github.com/microsoft/vcpkg) installed with `VCPKG_ROOT` set, run `vcpkg
+install sdl2:x64-windows` and pass `-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake`
+(or add it to a local preset) to use an installed SDL2 package instead of the fetched copy. Visual
 Studio is a multi-config generator, so built binaries land at `build/app/Debug/voxels_app.exe`
 (or `Release/`), not `build/app/voxels_app`.
 
@@ -113,13 +107,14 @@ ctest --test-dir build --output-on-failure
 ### Running
 
 ```bash
-./build/app/Debug/voxels_app.exe          # Windows (multi-config); the real desktop game — leave it open for the human operator to close
+./build/app/Debug/voxels_app.exe          # Windows (multi-config)
 ./build/app/voxels_app                    # Linux/macOS (single-config)
 ./build/app/Debug/voxels_app.exe --server # dedicated server
 ./build/editor/Debug/voxels_editor.exe    # the content editor
 ```
 
-Important: do not run the desktop smoke test in `--headless` mode. The real windowed app is the verification target, and if it stays open the operator closes it manually. `--headless` is a CI/test-only flag and must not be used to claim the shipping runtime works.
+Use `--headless` only in CI or automated tests. Run the windowed application to verify desktop
+runtime behavior.
 
 Useful flags: `--fullscreen=<true|false>`, `--resolution=<WxH>`, `--vsync=<true|false>`, `--world=<name>`, `--server`, `--join=<host:port>`, `--headless` (tests/CI only).
 
@@ -162,9 +157,12 @@ Off by default, and the default build has zero Steam dependency. When the SDK is
 
 ---
 
-## Contributing / Working the Roadmap
+## Contributing
 
-Work items are executed **in order, one at a time**. Start one by copying the prompt from [work_items/WORK_ITEM_PROMPT_TEMPLATE.md](work_items/WORK_ITEM_PROMPT_TEMPLATE.md). Every item ends with a completion report stating what a human can newly see, hear, or do — and what content or tooling the operator needs to supply next.
+Follow the ordered work items in [work_items/README.md](work_items/README.md). Use
+[work_items/WORK_ITEM_PROMPT_TEMPLATE.md](work_items/WORK_ITEM_PROMPT_TEMPLATE.md) when starting
+a work item, and record its completion criteria and any required content or tooling.
 
-The governing rule is [AGENT_RULES.md](AGENT_RULES.md) § 2, the Anti-Shell Rule: a subsystem that is only observable through its unit tests is not finished.
+See [AGENT_RULES.md](AGENT_RULES.md) for engineering standards, completion requirements, and the
+project workflow.
 
