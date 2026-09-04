@@ -132,3 +132,24 @@ TEST_CASE("Settings.PreserveUnknownKeysAcrossAtomicRewrite", "[persistence]") {
     input.close();
     std::filesystem::remove(path);
 }
+
+TEST_CASE("Settings.RendererSelectionPersistsAndRespectsPlatformAvailability", "[persistence][graphics]") {
+    const auto path = std::filesystem::temp_directory_path() / "voxels_renderer_settings.json";
+    std::filesystem::remove(path);
+    voxels::PreferencesManager windowsManager(path, voxels::PlatformType::Windows);
+    voxels::GamePreferences preferences{};
+    preferences.rendererBackend = voxels::RendererBackend::OpenGL;
+    windowsManager.Save(preferences);
+    REQUIRE(windowsManager.Load().rendererBackend == voxels::RendererBackend::OpenGL);
+
+    REQUIRE(voxels::PreferencesManager::ResolveRendererBackend(voxels::RendererBackend::Automatic,
+                                                               voxels::PlatformType::Windows) ==
+            voxels::RendererBackend::Direct3D11);
+    REQUIRE(voxels::PreferencesManager::ResolveRendererBackend(voxels::RendererBackend::Automatic,
+                                                               voxels::PlatformType::Linux) ==
+            voxels::RendererBackend::OpenGL);
+    REQUIRE(voxels::PreferencesManager::ResolveRendererBackend(voxels::RendererBackend::Direct3D11,
+                                                               voxels::PlatformType::MacOS) ==
+            voxels::RendererBackend::OpenGL);
+    std::filesystem::remove(path);
+}

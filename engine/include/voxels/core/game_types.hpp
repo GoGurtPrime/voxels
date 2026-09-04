@@ -36,6 +36,14 @@ enum class ShadowQuality {
     High
 };
 
+/// Graphics API selected at process start. Automatic resolves to the platform default;
+/// changing this preference takes effect on the next launch.
+enum class RendererBackend {
+    Automatic,
+    OpenGL,
+    Direct3D11
+};
+
 struct Resolution {
     int width = 1280;
     int height = 720;
@@ -48,6 +56,7 @@ struct Resolution {
 struct GamePreferences {
     WindowMode windowMode = WindowMode::Windowed;
     Resolution resolution;
+    RendererBackend rendererBackend = RendererBackend::Automatic;
     int renderDistance = 8;          ///< In chunks, per horizontal axis.
     int simulationDistance = 4;      ///< In chunks; gameplay updates beyond this are skipped.
     float fieldOfView = 90.0f;       ///< Degrees.

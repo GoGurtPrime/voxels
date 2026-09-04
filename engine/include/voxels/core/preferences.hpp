@@ -45,6 +45,10 @@ public:
     [[nodiscard]] static GamePreferences ApplyPlatformConstraints(GamePreferences preferences,
                                                                    PlatformType platform);
 
+    /// Resolves Automatic and unavailable APIs to a backend supported by the target platform.
+    [[nodiscard]] static RendererBackend ResolveRendererBackend(RendererBackend requested,
+                                                                 PlatformType platform) noexcept;
+
     /// Round-trips every `GamePreferences` field except `particles`, which is session-only.
     [[nodiscard]] static std::string ToJson(const GamePreferences& preferences);
     /// Missing keys keep their defaults; throws std::runtime_error on malformed JSON.

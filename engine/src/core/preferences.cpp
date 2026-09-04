@@ -59,6 +59,21 @@ ShadowQuality ShadowQualityFromString(const std::string& value) noexcept {
     return ShadowQuality::Medium;
 }
 
+std::string_view ToString(RendererBackend backend) noexcept {
+    switch (backend) {
+        case RendererBackend::Automatic: return "Automatic";
+        case RendererBackend::OpenGL: return "OpenGL";
+        case RendererBackend::Direct3D11: return "Direct3D11";
+    }
+    return "Automatic";
+}
+
+RendererBackend RendererBackendFromString(const std::string& value) noexcept {
+    if (value == "OpenGL") return RendererBackend::OpenGL;
+    if (value == "Direct3D11") return RendererBackend::Direct3D11;
+    return RendererBackend::Automatic;
+}
+
 void WriteJsonString(std::ostringstream& out, std::string_view value) {
     out << '"';
     for (const char c : value) {
@@ -273,7 +288,21 @@ GamePreferences PreferencesManager::ApplyPlatformConstraints(GamePreferences pre
         preferences.windowMode = WindowMode::Fullscreen;
         preferences.resolution = Resolution{640, 480, 60};
     }
+    if (preferences.rendererBackend == RendererBackend::Direct3D11 && platform != PlatformType::Windows) {
+        preferences.rendererBackend = RendererBackend::OpenGL;
+    }
     return preferences;
+}
+
+RendererBackend PreferencesManager::ResolveRendererBackend(RendererBackend requested,
+                                                             PlatformType platform) noexcept {
+    if (requested == RendererBackend::Automatic) {
+        return platform == PlatformType::Windows ? RendererBackend::Direct3D11 : RendererBackend::OpenGL;
+    }
+    if (requested == RendererBackend::Direct3D11 && platform != PlatformType::Windows) {
+        return RendererBackend::OpenGL;
+    }
+    return requested;
 }
 
 std::string PreferencesManager::ToJson(const GamePreferences& preferences) {
@@ -287,6 +316,9 @@ std::string PreferencesManager::ToJson(const GamePreferences& preferences) {
     out << "    \"height\": " << preferences.resolution.height << ",\n";
     out << "    \"refreshRate\": " << preferences.resolution.refreshRate << "\n";
     out << "  },\n";
+    out << "  \"rendererBackend\": ";
+    WriteJsonString(out, ToString(preferences.rendererBackend));
+    out << ",\n";
     out << "  \"renderDistance\": " << preferences.renderDistance << ",\n";
     out << "  \"simulationDistance\": " << preferences.simulationDistance << ",\n";
     out << "  \"fieldOfView\": " << preferences.fieldOfView << ",\n";
@@ -328,6 +360,7 @@ GamePreferences PreferencesManager::FromJson(const std::string& json) {
         preferences.resolution.refreshRate =
             resolution->GetInt("refreshRate", preferences.resolution.refreshRate);
     }
+            preferences.rendererBackend = RendererBackendFromString(root.GetString("rendererBackend", "Automatic"));
     preferences.renderDistance = root.GetInt("renderDistance", preferences.renderDistance);
     preferences.simulationDistance = root.GetInt("simulationDistance", preferences.simulationDistance);
     preferences.fieldOfView = root.GetFloat("fieldOfView", preferences.fieldOfView);
