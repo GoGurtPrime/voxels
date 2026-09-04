@@ -53,15 +53,17 @@ current architecture and tested desktop build.
 | **16** | [Multiplayer Runtime Integration](16_multiplayer_runtime_integration.md) | F · Production Hardening | Complete | Host and join over LAN; singleplayer is genuinely server-authoritative |
 | **17** | [Performance, Stability & Hardening](17_performance_stability_and_hardening.md) | F | Complete | 60 FPS, no leaks, no crashes, survives hostile input and long sessions |
 | **18** | [Packaging, Distribution & Platform Services](18_packaging_distribution_and_platform_services.md) | F | Complete | A redistributable build a non-developer can unzip and play |
+| **19** | [World Light Propagation & Edit Relighting](19_world_light_propagation_and_edit_relighting.md) | G · Lighting Foundation | Planned | Opened terrain, caves, and emissive blocks receive correct, seamless voxel light |
+| **20** | [Celestial Cycle & Renderer-Neutral Lighting](20_celestial_cycle_and_renderer_neutral_lighting.md) | G | Planned | Daylight, twilight, and moonlight progress consistently in local and joined worlds |
+| **21** | [Cascaded Soft Directional Shadows](21_cascaded_soft_directional_shadows.md) | G | Planned | Terrain and structures cast stable, soft sun and moon shadows |
 
 ## Next-Round Candidates
 
 Candidates are intentionally not work items until scoped and approved:
 
-1. Cross-chunk lighting propagation and persistence for seamless day/night illumination.
-2. Server-authoritative input simulation with prediction and correction, closing ADR-007's multiplayer gap.
-3. Automated clean-machine package smoke tests on Windows, Linux, and macOS in CI.
-4. Release-grade audio: streamed music, mixer groups, and replacement licensed sound assets.
+1. Server-authoritative input simulation with prediction and correction, closing ADR-007's multiplayer gap.
+2. Automated clean-machine package smoke tests on Windows, Linux, and macOS in CI.
+3. Release-grade audio: streamed music, mixer groups, and replacement licensed sound assets.
 
 ---
 
