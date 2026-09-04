@@ -7,9 +7,9 @@
       "command": "cmake",
       "args": [
         "-S",
-        "${workspaceFolder}",
+        ".",
         "-B",
-        "${workspaceFolder}/build",
+        "./build_workitem19",
         "-DCMAKE_BUILD_TYPE=Debug"
       ],
       "options": {
@@ -23,7 +23,9 @@
       "command": "cmake",
       "args": [
         "--build",
-        "${workspaceFolder}/build"
+        "./build_workitem19",
+        "--config",
+        "Debug"
       ],
       "options": {
         "cwd": "${workspaceFolder}"

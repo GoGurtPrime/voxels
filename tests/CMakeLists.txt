@@ -46,6 +46,15 @@ add_custom_command(TARGET voxels_tests POST_BUILD
     COMMENT "Staging app assets next to the test executable"
 )
 
+if(WIN32 AND TARGET SDL2::SDL2)
+    add_custom_command(TARGET voxels_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:SDL2::SDL2>"
+            "$<TARGET_FILE_DIR:voxels_tests>"
+        COMMENT "Staging SDL2 runtime next to the test executable"
+    )
+endif()
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(voxels_tests PRIVATE -Wall -Wextra -Wpedantic)
 elseif(MSVC)
