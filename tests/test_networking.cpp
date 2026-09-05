@@ -187,6 +187,7 @@ TEST_CASE("Protocol.ConnectAcceptRoundTripsWorldInfo", "[networking][packet]") {
     source.world.sandboxMode = true;
     source.world.alwaysSunny = true;
     source.world.spawnPosition = {8.5f, 41.9f, 8.5f};
+    source.world.dayTimeSeconds = 317.5f;
 
     const std::vector<std::uint8_t> bytes = voxels::networking::SerializeConnectAccept(source);
     voxels::networking::ConnectAccept decoded;
@@ -198,6 +199,7 @@ TEST_CASE("Protocol.ConnectAcceptRoundTripsWorldInfo", "[networking][packet]") {
     REQUIRE(decoded.world.sandboxMode);
     REQUIRE_FALSE(decoded.world.peaceful);
     REQUIRE(decoded.world.spawnPosition == source.world.spawnPosition);
+    REQUIRE(decoded.world.dayTimeSeconds == source.world.dayTimeSeconds);
 
     const voxels::networking::ConnectAccept notReady{{3, {}}, false, {}};
     const std::vector<std::uint8_t> notReadyBytes = voxels::networking::SerializeConnectAccept(notReady);
@@ -215,6 +217,12 @@ TEST_CASE("Protocol.ConnectAcceptRoundTripsWorldInfo", "[networking][packet]") {
     oversized.push_back(0);
     voxels::networking::ConnectAccept scratch;
     REQUIRE_FALSE(voxels::networking::DeserializeConnectAccept(oversized, scratch));
+
+    float decodedTime = 0.0f;
+    REQUIRE(voxels::networking::DeserializeWorldTime(voxels::networking::SerializeWorldTime(42.5f), decodedTime));
+    REQUIRE(decodedTime == 42.5f);
+    REQUIRE(voxels::networking::SerializeWorldTime(-1.0f).empty());
+    REQUIRE(voxels::networking::SerializeWorldTime(voxels::kWorldDayDurationSeconds).empty());
 }
 
 TEST_CASE("Fragmentation.LargeChunkPayloadReassemblesExactly", "[networking][packet]") {
@@ -283,11 +291,12 @@ TEST_CASE("Streaming.RemoteClientReceivesHostWorldAndAppliesIt", "[networking][i
     voxels::networking::GameClient joiner;
     REQUIRE(joiner.Connect("127.0.0.1", server.Port(), voxels::networking::ClientKind::Remote));
     voxels::World joinerWorld;
+    const voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
     voxels::RemoteChunkApplier applier;
     for (int tick = 0; tick < 50 && !applier.IsColumnComplete(0, 0); ++tick) {
         server.Tick();
         joiner.Tick();
-        (void)applier.Apply(joiner, joinerWorld);
+        (void)applier.Apply(joiner, joinerWorld, registry);
     }
     REQUIRE(joiner.HasReceivedConnectAck());
     REQUIRE(joiner.IsWorldReadyOnServer());

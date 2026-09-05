@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
@@ -22,7 +23,9 @@
 #include <glm/glm.hpp>
 
 #include "voxels/core/job_system.hpp"
+#include "voxels/graphics/renderer.hpp"
 #include "voxels/render/camera.hpp"
+#include "voxels/render/celestial_lighting.hpp"
 #include "voxels/render/chunk_mesher.hpp"
 #include "voxels/render/model_registry.hpp"
 #include "voxels/render/texture_atlas.hpp"
@@ -31,6 +34,8 @@
 #include "voxels/world/world.hpp"
 
 namespace voxels::graphics {
+
+struct DX11ChunkState;
 
 /// Frame-over-frame counters for meshing, upload, and draw work; read via GetMetrics().
 struct ChunkRenderMetrics {
@@ -52,7 +57,8 @@ struct ChunkRenderMetrics {
 class ChunkRenderer {
 public:
     /// All three dependencies are borrowed and must outlive the renderer.
-    ChunkRenderer(voxels::BlockRegistry& registry, voxels::TextureAtlas& atlas, voxels::JobSystem& jobSystem);
+    ChunkRenderer(voxels::BlockRegistry& registry, voxels::TextureAtlas& atlas, voxels::JobSystem& jobSystem,
+                  IGraphicsRenderer* renderer = nullptr);
     ~ChunkRenderer();
 
     ChunkRenderer(const ChunkRenderer&) = delete;
@@ -88,6 +94,7 @@ public:
     /// Frustum-culls resident meshes against `camera` and draws opaque front-to-back, then
     /// transparent back-to-front.
     void Render(const voxels::Camera& camera);
+    void SetCelestialLighting(const CelestialLighting& lighting) noexcept { m_celestialLighting = lighting; }
 
     /// Releases every GPU resource owned by this renderer.
     void Shutdown();
@@ -112,6 +119,8 @@ private:
         GLuint ibo = 0;
         std::size_t vboCapacityBytes = 0;
         std::size_t iboCapacityBytes = 0;
+        std::shared_ptr<void> nativeVertexBuffer;
+        std::shared_ptr<void> nativeIndexBuffer;
         std::uint32_t opaqueIndexCount = 0;
         std::uint32_t transparentIndexCount = 0;
         voxels::BoundingBox aabb{};
@@ -129,6 +138,9 @@ private:
     void MarkChunkDirtyForEdit(const voxels::ChunkCoordinate& coordinate);
 
     bool EnsureProgram();
+    bool EnsureDX11Resources();
+    void UploadDX11Mesh(GpuChunkMesh& mesh, const ChunkMeshData& data);
+    void RenderDX11(const voxels::Camera& camera);
     void UploadMesh(const voxels::ChunkCoordinate& coordinate, ChunkMeshData&& data);
     static void ReleaseMesh(GpuChunkMesh& mesh);
     static void ConfigureVertexAttributes();
@@ -137,6 +149,8 @@ private:
     voxels::TextureAtlas& m_atlas;
     voxels::JobSystem& m_jobSystem;
     ModelRegistry m_models;
+    IGraphicsRenderer* m_renderer = nullptr;
+    std::unique_ptr<DX11ChunkState> m_dx11;
 
     GLuint m_program = 0;
     GLint m_uniformViewProj = -1;
@@ -144,6 +158,10 @@ private:
     GLint m_uniformCameraPos = -1;
     GLint m_uniformTexture = -1;
     GLint m_uniformFoliageTint = -1;
+    GLint m_uniformSunDirection = -1;
+    GLint m_uniformSunColor = -1;
+    GLint m_uniformAmbientColor = -1;
+    GLint m_uniformSkyColor = -1;
 
     std::unordered_map<voxels::ChunkCoordinate, GpuChunkMesh, voxels::ChunkCoordinateHash> m_meshes;
     std::unordered_set<voxels::ChunkCoordinate, voxels::ChunkCoordinateHash> m_dirty;
@@ -163,6 +181,7 @@ private:
     std::uint32_t m_uploadBudgetChunksPerFrame = 4;
     double m_uploadBudgetMilliseconds = 2.0;
     std::size_t m_backgroundMeshQueueLimit = std::numeric_limits<std::size_t>::max();
+    CelestialLighting m_celestialLighting{};
 
     ChunkRenderMetrics m_metrics;
 };

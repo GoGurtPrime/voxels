@@ -38,8 +38,12 @@ Engine& Engine::operator=(Engine&& other) noexcept {
 }
 
 bool Engine::initialize(bool headless) {
+    return initialize(headless, WindowConfig{});
+}
+
+bool Engine::initialize(bool headless, const WindowConfig& windowConfig) {
     m_platform = CreateDefaultPlatform(headless);
-    if (!m_platform->Initialize(WindowConfig{})) {
+    if (!m_platform->Initialize(windowConfig)) {
         m_platform.reset();
         m_status = EngineStatus::Error;
         return false;

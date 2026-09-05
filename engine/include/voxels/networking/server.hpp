@@ -42,6 +42,7 @@ public:
     /// Ends the hosted session: remote peers are disconnected and the world is dropped.
     void ClearWorld();
     [[nodiscard]] bool IsWorldReady() const noexcept;
+    [[nodiscard]] float GetWorldTimeSeconds() const noexcept;
 
     [[nodiscard]] bool IsRunning() const noexcept;
     [[nodiscard]] std::uint16_t Port() const noexcept;

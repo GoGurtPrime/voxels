@@ -35,6 +35,13 @@ struct RaycastHit {
     float distance = 0.0f;   ///< Distance from the ray origin in world units.
 };
 
+/// Result of a deterministic local light rebuild after an authoritative world mutation.
+struct LightingUpdate {
+    std::size_t touchedVoxels = 0;
+    std::size_t examinedVoxels = 0;
+    std::vector<ChunkCoordinate> dirtyChunks;
+};
+
 /// Abstract world lifecycle contract consumed by the app flow and tests.
 class IWorld {
 public:
@@ -83,9 +90,16 @@ public:
     /// no direct line to the open sky — used as the "enclosed/underground" signal for the
     /// first-cave-entered platform achievement (work_items/18).
     [[nodiscard]] std::uint8_t GetSkyLight(const Vec3I& worldBlockPos) const;
+    [[nodiscard]] std::uint8_t GetBlockLight(const Vec3I& worldBlockPos) const;
 
     /// Rebuilds the edited skylight column across resident sections and returns touched voxels.
     [[nodiscard]] std::size_t RebuildSkyLightAround(const Vec3I& center, int radiusBlocks = 0);
+
+    /// Rebuilds direct/laterally propagated skylight and emitted block light in a bounded
+    /// resident region. Opaque/emissive behavior comes from the block registry, so future light
+    /// blocks require data changes rather than lighting-code changes.
+    [[nodiscard]] LightingUpdate RebuildLightingAround(const Vec3I& center, const BlockRegistry& registry,
+                                                        int radiusBlocks = 4);
 
     /// Casts a ray through the voxel grid starting at `origin` along `direction` (need not be
     /// normalized), up to `maxDistance` world units, returning the first solid block hit.

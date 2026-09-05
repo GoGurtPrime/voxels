@@ -11,12 +11,20 @@
 #include "voxels/assets/texture_loader.hpp"
 
 #include "voxels/core/logger.hpp"
+#include "voxels/platform/platform.hpp"
 #include "voxels/render/texture_forge.hpp"
 
 namespace voxels::graphics {
 
 GLRenderer::~GLRenderer() {
     Shutdown();
+}
+
+bool GLRenderer::Initialize(IPlatform& platform, TextureAtlas& atlas, bool vSync) {
+    m_platform = &platform;
+    m_atlas = &atlas;
+    platform.SetVSync(vSync);
+    return Initialize();
 }
 
 bool GLRenderer::Initialize() {
@@ -53,6 +61,7 @@ void GLRenderer::Shutdown() {
         m_ownedAtlas->Shutdown();
         m_ownedAtlas.reset();
     }
+    m_platform = nullptr;
     m_initialized = false;
 }
 
@@ -74,6 +83,10 @@ bool GLRenderer::CaptureScreenshot(const std::filesystem::path& path) const {
         std::swap_ranges(first, first + m_viewportWidth * 4, last);
     }
     return TextureLoader::WritePngToFile(path, m_viewportWidth, m_viewportHeight, 4, pixels.data());
+}
+
+bool GLRenderer::BeginFrame(const std::array<float, 4>& clearColor) {
+    return BeginFrame(clearColor, 0, 0);
 }
 
 bool GLRenderer::BeginFrame(const std::array<float, 4>& clearColor, int viewportWidth, int viewportHeight) {
@@ -103,6 +116,12 @@ bool GLRenderer::EndFrame() {
         return false;
     }
     glFlush();
+    return true;
+}
+
+bool GLRenderer::Present() {
+    if (!m_initialized || m_platform == nullptr) return false;
+    m_platform->SwapBuffers();
     return true;
 }
 

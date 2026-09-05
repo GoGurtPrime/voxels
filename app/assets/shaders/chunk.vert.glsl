@@ -8,13 +8,14 @@ layout(location = 3) in vec4 aUvTint;     // u, v (whole tile units, GL_REPEAT t
 
 uniform mat4 uViewProj;
 uniform vec3 uChunkOrigin;
+uniform vec3 uSunDirection;
 
 out vec2 vUV;
 out float vLayer;
 out float vAO;
 out float vSkyLight;
 out float vBlockLight;
-out float vBrightness;
+out float vSunTerm;
 out float vTint;
 out vec3 vWorldPos;
 
@@ -37,9 +38,7 @@ void main() {
     vTint = aUvTint.z;
 
     int faceIdx = int(aFaceAoLight.x + 0.5);
-    vec3 sunDir = normalize(vec3(-0.6, 1.0, -0.5));
-    float sunTerm = max(dot(kFaceNormal[faceIdx], sunDir), 0.0);
-    vBrightness = kFaceAmbient[faceIdx] * (0.55 + 0.45 * sunTerm);
+    vSunTerm = max(dot(kFaceNormal[faceIdx], normalize(uSunDirection)), 0.0) * kFaceAmbient[faceIdx];
 
     gl_Position = uViewProj * vec4(worldPos, 1.0);
 }

@@ -51,6 +51,7 @@ public:
     bool receivedConnectAck = false;
     bool worldReady = false;
     WorldInfo worldInfo{};
+    std::chrono::steady_clock::time_point worldTimeReceivedAt = std::chrono::steady_clock::now();
     bool rejected = false;
     RejectReason rejectReason = RejectReason::ServerFull;
     bool disconnectedByServer = false;
@@ -160,7 +161,10 @@ void GameClient::Tick() {
                 m_impl->receivedEntityStates.insert_or_assign(accept.state.entityId, accept.state);
                 m_impl->receivedConnectAck = true;
                 m_impl->worldReady = accept.worldReady;
-                if (accept.worldReady) m_impl->worldInfo = accept.world;
+                if (accept.worldReady) {
+                    m_impl->worldInfo = accept.world;
+                    m_impl->worldTimeReceivedAt = now;
+                }
             }
         } else if (packet.header.id == PacketId::S2C_EntityState) {
             EntityState state;
@@ -171,6 +175,12 @@ void GameClient::Tick() {
             BlockModify modify;
             if (DeserializeBlockModify(packet.payload, modify)) {
                 m_impl->receivedBlockUpdates.push_back(modify);
+            }
+        } else if (packet.header.id == PacketId::S2C_WorldTime) {
+            float worldTime = 0.0f;
+            if (DeserializeWorldTime(packet.payload, worldTime)) {
+                m_impl->worldInfo.dayTimeSeconds = worldTime;
+                m_impl->worldTimeReceivedAt = now;
             }
         } else if (packet.header.id == PacketId::S2C_ChunkData) {
             ChunkFragment fragment;
@@ -270,6 +280,13 @@ std::vector<std::uint32_t> GameClient::TakeDepartedPlayers() {
 bool GameClient::IsWorldReadyOnServer() const noexcept { return m_impl->worldReady; }
 
 const WorldInfo& GameClient::GetWorldInfo() const noexcept { return m_impl->worldInfo; }
+
+float GameClient::GetEstimatedWorldTimeSeconds() const noexcept {
+    if (!m_impl->worldReady || m_impl->worldInfo.alwaysSunny) return m_impl->worldInfo.dayTimeSeconds;
+    const float elapsed = std::chrono::duration<float>(
+        std::chrono::steady_clock::now() - m_impl->worldTimeReceivedAt).count();
+    return std::fmod(m_impl->worldInfo.dayTimeSeconds + elapsed, kWorldDayDurationSeconds);
+}
 
 bool GameClient::WasRejected() const noexcept { return m_impl->rejected; }
 

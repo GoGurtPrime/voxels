@@ -39,7 +39,11 @@
 #include "voxels/core/preferences.hpp"
 #include "voxels/core/version.hpp"
 #include "voxels/engine.hpp"
+#if defined(_WIN32)
+#include "voxels/graphics/dx11_renderer.hpp"
+#endif
 #include "voxels/graphics/gl_renderer.hpp"
+#include "voxels/graphics/renderer.hpp"
 #include "voxels/input/input_manager.hpp"
 #include "voxels/networking/client.hpp"
 #include "voxels/networking/server.hpp"
@@ -70,7 +74,7 @@ voxels::Logger& BootLog() {
 
 class WindowEventListener final : public voxels::IPlatformEventListener {
 public:
-    WindowEventListener(bool& runningFlag, voxels::graphics::GLRenderer& renderer, voxels::InputManager& inputManager,
+    WindowEventListener(bool& runningFlag, voxels::graphics::IGraphicsRenderer& renderer, voxels::InputManager& inputManager,
                         voxels::ImGuiUIManager& uiManager)
         : m_running(runningFlag), m_renderer(renderer), m_inputManager(inputManager), m_uiManager(uiManager) {}
 
@@ -107,7 +111,7 @@ public:
 
 private:
     bool& m_running;
-    voxels::graphics::GLRenderer& m_renderer;
+    voxels::graphics::IGraphicsRenderer& m_renderer;
     voxels::InputManager& m_inputManager;
     voxels::ImGuiUIManager& m_uiManager;
 };
@@ -146,6 +150,18 @@ void RemoveUnversionedSaves() {
 std::string GetOpenGLString(GLenum name) {
     const auto* value = glGetString(name);
     return value == nullptr ? "Unavailable" : reinterpret_cast<const char*>(value);
+}
+
+constexpr voxels::PlatformType HostPlatformType() noexcept {
+#if defined(_WIN32)
+    return voxels::PlatformType::Windows;
+#elif defined(__APPLE__)
+    return voxels::PlatformType::MacOS;
+#elif defined(__linux__)
+    return voxels::PlatformType::Linux;
+#else
+    return voxels::PlatformType::Unknown;
+#endif
 }
 
 voxels::AudioCategory AudioCategoryFromString(const std::string& category) {
@@ -333,8 +349,25 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    const std::filesystem::path settingsPath = voxels::Paths::UserDataDir() / "settings.json";
+    const bool firstRun = !std::filesystem::exists(settingsPath);
+    voxels::PreferencesManager preferencesManager(settingsPath, HostPlatformType());
+    voxels::GamePreferences preferences = preferencesManager.Load();
+    const voxels::RendererBackend activeBackend =
+        voxels::PreferencesManager::ResolveRendererBackend(preferences.rendererBackend, HostPlatformType());
+
+    voxels::WindowConfig windowConfig{};
+    windowConfig.title = "Voxels Engine";
+    windowConfig.width = options.resolutionOverride ? options.resolutionWidth : preferences.resolution.width;
+    windowConfig.height = options.resolutionOverride ? options.resolutionHeight : preferences.resolution.height;
+    windowConfig.fullscreen = options.fullscreenOverride ? options.fullscreenValue
+                                                         : preferences.windowMode != voxels::WindowMode::Windowed;
+    windowConfig.graphicsApi = activeBackend == voxels::RendererBackend::OpenGL
+                                   ? voxels::WindowGraphicsApi::OpenGL
+                                   : voxels::WindowGraphicsApi::Native;
+
     voxels::Engine engine;
-    if (!engine.initialize(false)) {
+    if (!engine.initialize(false, windowConfig)) {
         std::cerr << "Voxels engine failed to initialize." << std::endl;
         return 1;
     }
@@ -380,31 +413,32 @@ int main(int argc, char** argv) {
         }
     }
 
-    voxels::graphics::GLRenderer renderer;
-    renderer.SetTextureAtlas(&textureAtlas);
-    if (!renderer.Initialize()) {
-        std::cerr << "Voxels GL renderer failed to initialize." << std::endl;
+    std::unique_ptr<voxels::graphics::IGraphicsRenderer> renderer;
+#if defined(_WIN32)
+    if (activeBackend == voxels::RendererBackend::Direct3D11) {
+        renderer = std::make_unique<voxels::graphics::DX11Renderer>();
+    }
+#endif
+    if (!renderer) renderer = std::make_unique<voxels::graphics::GLRenderer>();
+    const bool vSync = options.vsyncOverride ? options.vsyncValue : true;
+    if (!renderer->Initialize(*platform, textureAtlas, vSync)) {
+        std::cerr << "Voxels " << renderer->GetName() << " renderer failed to initialize." << std::endl;
         engine.shutdown();
         return 1;
     }
+    BootLog().Info("Active renderer: " + std::string(renderer->GetName()));
 
     voxels::ImGuiUIManager uiManager;
-    if (!uiManager.Initialize(platform, nullptr)) {
+    if (!uiManager.Initialize(platform, renderer.get())) {
         std::cerr << "Voxels ImGui UI failed to initialize." << std::endl;
-        renderer.Shutdown();
+        renderer->Shutdown();
         engine.shutdown();
         return 1;
     }
 
-    voxels::SetGlobalRenderer(&renderer);
+    voxels::SetGlobalRenderer(renderer.get());
 
     voxels::InputManager inputManager;
-    const std::filesystem::path settingsPath = voxels::Paths::UserDataDir() / "settings.json";
-    // No settings.json yet is the first-run signal (work_items/18 §4): the user directory tree
-    // was just created above by the Paths::*Dir() calls, and defaults are persisted below.
-    const bool firstRun = !std::filesystem::exists(settingsPath);
-    voxels::PreferencesManager preferencesManager(settingsPath, platform->GetContext().type);
-    voxels::GamePreferences preferences = preferencesManager.Load();
     if (firstRun) {
         preferencesManager.Save(preferences);
         BootLog().Info("First run detected: wrote default settings to " + settingsPath.string());
@@ -432,7 +466,7 @@ int main(int argc, char** argv) {
     voxels::AppStateMachine stateMachine;
     voxels::AppContext appContext{};
     appContext.platform = platform;
-    appContext.renderer = &renderer;
+    appContext.renderer = renderer.get();
     appContext.ui = &uiManager;
     appContext.input = &inputManager;
     appContext.blockRegistry = &blockRegistry;
@@ -461,7 +495,7 @@ int main(int argc, char** argv) {
         uiManager.ShowToast("Local server could not bind a UDP port.");
         stateMachine.Shutdown();
         uiManager.Shutdown();
-        renderer.Shutdown();
+        renderer->Shutdown();
         engine.shutdown();
         return 1;
     }
@@ -478,7 +512,7 @@ int main(int argc, char** argv) {
             uiManager.ShowToast("Join address must use HOST:PORT.");
             stateMachine.Shutdown();
             uiManager.Shutdown();
-            renderer.Shutdown();
+            renderer->Shutdown();
             engine.shutdown();
             return 1;
         }
@@ -507,12 +541,12 @@ int main(int argc, char** argv) {
             &appContext, joinHost + ":" + std::to_string(joinPort)));
     }
 
-    WindowEventListener windowListener(running, renderer, inputManager, uiManager);
+    WindowEventListener windowListener(running, *renderer, inputManager, uiManager);
     if (platform != nullptr) {
         platform->RegisterEventListener(&uiManager, 1000);
         platform->RegisterEventListener(&windowListener, 100);
         const auto [drawableW, drawableH] = platform->GetDrawableSize();
-        renderer.SetViewport(drawableW, drawableH);
+        renderer->SetViewport(drawableW, drawableH);
     }
 
     voxels::FrameAccumulator frameAccumulator;
@@ -544,7 +578,7 @@ int main(int argc, char** argv) {
         voxels::UIDebugMetrics debugMetrics{};
         debugMetrics.frameMilliseconds = static_cast<float>(deltaSeconds * 1000.0);
         debugMetrics.framesPerSecond = deltaSeconds > 0.0 ? static_cast<float>(1.0 / deltaSeconds) : 0.0f;
-        const auto& camera = renderer.GetCamera();
+        const auto& camera = renderer->GetCamera();
         debugMetrics.playerX = camera.position.x;
         debugMetrics.playerY = camera.position.y;
         debugMetrics.playerZ = camera.position.z;
@@ -562,15 +596,19 @@ int main(int argc, char** argv) {
                 debugMetrics.meshQueueDepth = metrics.meshQueueDepth;
             }
         }
-        debugMetrics.glVendor = GetOpenGLString(GL_VENDOR);
-        debugMetrics.glRenderer = GetOpenGLString(GL_RENDERER);
-        debugMetrics.glVersion = GetOpenGLString(GL_VERSION);
+        if (renderer->GetBackend() == voxels::RendererBackend::OpenGL) {
+            debugMetrics.glVendor = GetOpenGLString(GL_VENDOR);
+            debugMetrics.glRenderer = GetOpenGLString(GL_RENDERER);
+            debugMetrics.glVersion = GetOpenGLString(GL_VERSION);
+        } else {
+            debugMetrics.glVendor = "Microsoft / hardware adapter";
+            debugMetrics.glRenderer = std::string(renderer->GetName());
+            debugMetrics.glVersion = "Feature Level 11";
+        }
         uiManager.SetDebugMetrics(std::move(debugMetrics));
         uiManager.EndFrame();
-        renderer.EndFrame();
-        if (platform != nullptr) {
-            platform->SwapBuffers();
-        }
+        static_cast<void>(renderer->EndFrame());
+        static_cast<void>(renderer->Present());
 
         ++frameCount;
     }
@@ -590,7 +628,7 @@ int main(int argc, char** argv) {
     audio->Shutdown();
     platformServices->Shutdown();
     voxels::SetGlobalRenderer(nullptr);
-    renderer.Shutdown();
+    renderer->Shutdown();
     engine.shutdown();
     return 0;
 }

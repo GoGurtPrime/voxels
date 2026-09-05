@@ -85,7 +85,6 @@ bool Chunk::SetBlockLight(int x, int y, int z, std::uint8_t level) noexcept {
         return false;
     }
     m_blockLight[Index(x, y, z)] = level;
-    m_dirty = true;
     return true;
 }
 
@@ -101,7 +100,6 @@ bool Chunk::SetSkyLight(int x, int y, int z, std::uint8_t level) noexcept {
         return false;
     }
     m_skyLight[Index(x, y, z)] = level;
-    m_dirty = true;
     return true;
 }
 

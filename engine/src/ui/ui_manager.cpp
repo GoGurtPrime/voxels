@@ -18,7 +18,7 @@ float ComputeUIScale(const UIDisplayMetrics& metrics, int baseWidth, int baseHei
     return std::min(scaleX, scaleY) * metrics.dpiScale;
 }
 
-bool NullUIManager::Initialize(IPlatform* platform, IRenderer* renderer) {
+bool NullUIManager::Initialize(IPlatform* platform, graphics::IGraphicsRenderer* renderer) {
     m_platform = platform;
     m_renderer = renderer;
     if (m_platform) {

@@ -35,6 +35,7 @@ public:
     void SetCursorVisible(bool visible) override;
     void SetVSync(bool enabled) override;
     std::pair<int, int> GetDrawableSize() const override;
+    [[nodiscard]] void* GetNativeWindowHandle() const noexcept override { return m_window; }
     double GetHighResTimeSeconds() const override;
     void RegisterEventListener(IPlatformEventListener* listener, int priority = 0) override;
     void UnregisterEventListener(IPlatformEventListener* listener) override;
@@ -53,6 +54,7 @@ private:
     int m_height = 720;
     bool m_fullscreen = false;
     bool m_vsync = true;
+    WindowGraphicsApi m_graphicsApi = WindowGraphicsApi::OpenGL;
     std::vector<ListenerEntry> m_listeners;
     IPlatformEventListener* m_defaultListener = nullptr;
     int m_defaultListenerPriority = 0;

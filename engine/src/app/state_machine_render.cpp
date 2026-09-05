@@ -13,7 +13,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "voxels/core/logger.hpp"
-#include "voxels/graphics/gl_renderer.hpp"
+#include "voxels/graphics/renderer.hpp"
 #include "voxels/networking/client.hpp"
 #include "voxels/networking/server.hpp"
 #include "voxels/platform/platform.hpp"
@@ -24,7 +24,7 @@
 namespace voxels {
 
 namespace {
-voxels::graphics::GLRenderer* g_renderer = nullptr;
+voxels::graphics::IGraphicsRenderer* g_renderer = nullptr;
 
 Logger& RenderStateLog() {
     static Logger logger;
@@ -62,7 +62,7 @@ std::string ScreenshotName() {
 }
 } // namespace
 
-void SetGlobalRenderer(voxels::graphics::GLRenderer* renderer) noexcept {
+void SetGlobalRenderer(voxels::graphics::IGraphicsRenderer* renderer) noexcept {
     g_renderer = renderer;
 }
 
@@ -132,7 +132,8 @@ void InGameState::OnEnter() {
 
     if (m_registry != nullptr && m_atlas != nullptr) {
         if (m_chunkRenderer == nullptr) {
-            m_chunkRenderer = std::make_unique<graphics::ChunkRenderer>(*m_registry, *m_atlas, *m_jobSystem);
+            m_chunkRenderer = std::make_unique<graphics::ChunkRenderer>(
+                *m_registry, *m_atlas, *m_jobSystem, m_context != nullptr ? m_context->renderer : nullptr);
             m_chunkRenderer->SetUploadBudget(2, 1.0);
             m_chunkRenderer->SetBackgroundMeshQueueLimit(1);
         }
@@ -167,7 +168,8 @@ void InGameState::OnEnter() {
         }
         const int chunkSize = static_cast<int>(world.GetChunkSize());
         for (const Vec3I& position : m_session.GetEditedBlocks()) {
-            (void)world.RebuildSkyLightAround(position);
+            const LightingUpdate lighting = world.RebuildLightingAround(position, *m_registry);
+            for (const ChunkCoordinate& dirty : lighting.dirtyChunks) m_chunkRenderer->MarkChunkDirty(dirty);
             const ChunkCoordinate coordinate{static_cast<int>(std::floor(static_cast<float>(position.x) / chunkSize)),
                                              static_cast<int>(std::floor(static_cast<float>(position.y) / chunkSize)),
                                              static_cast<int>(std::floor(static_cast<float>(position.z) / chunkSize))};
@@ -314,7 +316,8 @@ void InGameState::Update(double deltaSeconds) {
             m_chunkRenderer->OnChunkArrived(coordinate, world);
         }
         if (m_remoteSession && m_context != nullptr && m_context->networkClient != nullptr) {
-            for (const ChunkCoordinate& coordinate : m_remoteChunkApplier.Apply(*m_context->networkClient, world)) {
+              for (const ChunkCoordinate& coordinate :
+                  m_remoteChunkApplier.Apply(*m_context->networkClient, world, *m_registry)) {
                 m_chunkRenderer->OnChunkArrived(coordinate, world);
             }
         }
@@ -325,6 +328,8 @@ void InGameState::Update(double deltaSeconds) {
         }
         const int chunkSize = static_cast<int>(world.GetChunkSize());
         for (const Vec3I& position : m_session.GetEditedBlocks()) {
+            const LightingUpdate lighting = world.RebuildLightingAround(position, *m_registry);
+            for (const ChunkCoordinate& dirty : lighting.dirtyChunks) m_chunkRenderer->MarkChunkDirty(dirty);
             const ChunkCoordinate coordinate{static_cast<int>(std::floor(static_cast<float>(position.x) / chunkSize)),
                                              static_cast<int>(std::floor(static_cast<float>(position.y) / chunkSize)),
                                              static_cast<int>(std::floor(static_cast<float>(position.z) / chunkSize))};
@@ -344,8 +349,9 @@ void InGameState::ApplyNetworkedBlockUpdates() {
     World& world = m_session.GetWorld();
     const int chunkSize = static_cast<int>(world.GetChunkSize());
     const auto relightAndRemesh = [this, &world, chunkSize](const Vec3I& position) {
-        (void)world.RebuildSkyLightAround(position);
+        const LightingUpdate lighting = world.RebuildLightingAround(position, *m_registry);
         if (m_chunkRenderer == nullptr) return;
+        for (const ChunkCoordinate& dirty : lighting.dirtyChunks) m_chunkRenderer->MarkChunkDirty(dirty);
         const ChunkCoordinate coordinate{static_cast<int>(std::floor(static_cast<float>(position.x) / chunkSize)),
                                          static_cast<int>(std::floor(static_cast<float>(position.y) / chunkSize)),
                                          static_cast<int>(std::floor(static_cast<float>(position.z) / chunkSize))};
@@ -391,8 +397,18 @@ void InGameState::Render() {
     }
     const Camera camera = m_cameraOverride != nullptr ? *m_cameraOverride : m_session.GetCamera();
     g_renderer->SetCamera(camera);
-    g_renderer->BeginFrame({0.58f, 0.72f, 0.88f, 1.0f});
+    float worldTime = graphics::kDayDurationSeconds * 0.25f;
+    if (m_remoteSession && m_context != nullptr && m_context->networkClient != nullptr) {
+        worldTime = m_context->networkClient->GetEstimatedWorldTimeSeconds();
+    } else if (m_context != nullptr && m_context->networkServer != nullptr) {
+        worldTime = m_context->networkServer->GetWorldTimeSeconds();
+    }
+    const graphics::CelestialLighting celestial =
+        graphics::EvaluateCelestialLighting(worldTime, m_options.alwaysSunny);
+    static_cast<void>(g_renderer->BeginFrame(
+        {celestial.skyColor.r, celestial.skyColor.g, celestial.skyColor.b, 1.0f}));
     if (m_chunkRenderer) {
+        m_chunkRenderer->SetCelestialLighting(celestial);
         m_chunkRenderer->Render(camera);
     }
     if (m_remotePlayerRenderer && m_context != nullptr && m_context->networkClient != nullptr) {

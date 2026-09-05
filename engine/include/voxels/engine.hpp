@@ -17,6 +17,7 @@
 namespace voxels {
 
 class IPlatform;
+struct WindowConfig;
 
 enum class EngineStatus {
     Uninitialized,
@@ -41,6 +42,7 @@ public:
     /// Creates the platform layer (window/context unless `headless`) and transitions to
     /// Initialized. Returns false on unrecoverable platform failure — fatal at startup.
     bool initialize(bool headless = false);
+    bool initialize(bool headless, const WindowConfig& windowConfig);
 
     /// Tears down the platform layer; idempotent, and also invoked by the destructor.
     void shutdown();

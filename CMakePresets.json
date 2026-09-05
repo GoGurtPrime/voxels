@@ -10,7 +10,7 @@
             "name": "windows-debug",
             "displayName": "Windows Debug",
             "generator": "Visual Studio 18 2026",
-            "binaryDir": "${sourceDir}/build_workitem19",
+            "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "VOXELS_BUILD_APP": "ON",

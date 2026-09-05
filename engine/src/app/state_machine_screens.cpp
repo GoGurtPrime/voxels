@@ -49,7 +49,9 @@ void CenterNextWindow() {
 }
 
 void BeginMenuFrame(AppContext* context) {
-    if (context != nullptr && context->renderer != nullptr) context->renderer->BeginFrame({0.12f, 0.16f, 0.19f, 1.0f});
+    if (context != nullptr && context->renderer != nullptr) {
+        static_cast<void>(context->renderer->BeginFrame({0.12f, 0.16f, 0.19f, 1.0f}));
+    }
 }
 
 void SetResponsivePanelSize(float preferredWidth, float preferredHeight) {
@@ -344,7 +346,7 @@ void JoinLoadingState::Update(double deltaSeconds) {
     }
     const networking::WorldInfo& info = client.GetWorldInfo();
     const std::size_t appliedBefore = m_applier.AppliedChunkCount();
-    (void)m_applier.Apply(client, *m_world);
+    (void)m_applier.Apply(client, *m_world, *m_context->blockRegistry);
     if (m_applier.AppliedChunkCount() != appliedBefore) {
         m_lastProgressSeconds = m_elapsedSeconds;
         m_lastAppliedChunks = m_applier.AppliedChunkCount();
@@ -568,6 +570,10 @@ void PauseMenuState::Render() {
 void SettingsState::OnEnter() {
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
     if (m_context != nullptr && m_context->preferences != nullptr) m_pending = *m_context->preferences;
+    if (m_context != nullptr && m_context->renderer != nullptr) {
+        m_activeRenderer = m_context->renderer->GetBackend();
+        if (m_pending.rendererBackend == RendererBackend::Automatic) m_pending.rendererBackend = m_activeRenderer;
+    }
 }
 void SettingsState::Update(double) {}
 void SettingsState::Render() {
@@ -579,10 +585,28 @@ void SettingsState::Render() {
     if (ImGui::BeginTabBar("Settings Tabs")) {
         if (ImGui::BeginTabItem("Video")) {
             if (BeginSettingsTable("VideoSettings")) {
+                const PlatformType platformType = m_context->platform != nullptr
+                                                      ? m_context->platform->GetContext().type
+                                                      : PlatformType::Unknown;
+                const std::vector<RendererBackend> available = graphics::AvailableRendererBackends(platformType);
+                std::vector<const char*> labels;
+                labels.reserve(available.size());
+                int selectedBackend = 0;
+                for (std::size_t index = 0; index < available.size(); ++index) {
+                    labels.push_back(graphics::RendererBackendName(available[index]).data());
+                    if (available[index] == m_pending.rendererBackend) selectedBackend = static_cast<int>(index);
+                }
+                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Renderer"); EndSettingsRow();
+                if (!labels.empty() && ImGui::Combo("##renderer", &selectedBackend, labels.data(), static_cast<int>(labels.size()))) {
+                    m_pending.rendererBackend = available[static_cast<std::size_t>(selectedBackend)];
+                }
                 ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Field of View"); EndSettingsRow(); ui::SettingSlider("##fov", &m_pending.fieldOfView, 60.0f, 110.0f, "%.0f deg");
                 ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Render Distance"); EndSettingsRow(); ImGui::SliderInt("##renderDistance", &m_pending.renderDistance, 2, 16, "%d chunks");
                 ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Simulation Distance"); EndSettingsRow(); ImGui::SliderInt("##simulationDistance", &m_pending.simulationDistance, 2, 12, "%d chunks");
                 ImGui::EndTable();
+            }
+            if (m_pending.rendererBackend != m_activeRenderer) {
+                ImGui::TextColored({0.95f, 0.24f, 0.20f, 1.0f}, "Restart required to change renderer");
             }
             ImGui::EndTabItem();
         }

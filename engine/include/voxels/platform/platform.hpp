@@ -35,6 +35,11 @@ struct PlatformContext {
     int patchVersion = 0;
 };
 
+enum class WindowGraphicsApi {
+    OpenGL,
+    Native
+};
+
 /// Requested window/display parameters passed to `IPlatform::Initialize`. Platforms with fixed
 /// hardware displays (e.g. Dreamcast) may ignore fields that do not apply.
 struct WindowConfig {
@@ -43,6 +48,7 @@ struct WindowConfig {
     int height = 720;
     bool fullscreen = false;
     bool resizable = true;
+    WindowGraphicsApi graphicsApi = WindowGraphicsApi::OpenGL;
 };
 
 enum class PlatformEventType {
@@ -130,6 +136,10 @@ public:
     /// Returns the drawable framebuffer size in pixels, which may differ from the logical
     /// window size on high-DPI displays.
     virtual std::pair<int, int> GetDrawableSize() const = 0;
+
+    /// Opaque native window object used by graphics/UI adapters. SDL platforms return the
+    /// SDL_Window pointer; headless platforms return null.
+    [[nodiscard]] virtual void* GetNativeWindowHandle() const noexcept { return nullptr; }
 
     /// Monotonic high-resolution timestamp in seconds; the frame loop's time source.
     virtual double GetHighResTimeSeconds() const = 0;

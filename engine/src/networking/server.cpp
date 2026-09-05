@@ -49,6 +49,8 @@ public:
     World world;
     WorldOptions worldOptions{};
     Vec3 worldSpawn{};
+    float worldTimeSeconds = kWorldDayDurationSeconds * 0.25f;
+    std::uint32_t worldTimeBroadcastTicks = 0;
     bool worldReady = false;
     std::unordered_map<std::string, Peer> peers;
     std::unordered_map<std::uint32_t, EntityState> playerStates;
@@ -131,6 +133,7 @@ ConnectAccept MakeConnectAccept(const ServerImpl& impl, const EntityState& state
         accept.world.alwaysSunny = impl.worldOptions.alwaysSunny;
         accept.world.permadeath = impl.worldOptions.permadeath;
         accept.world.spawnPosition = impl.worldSpawn;
+        accept.world.dayTimeSeconds = impl.worldTimeSeconds;
     }
     return accept;
 }
@@ -272,6 +275,8 @@ void GameServer::Stop() {
 void GameServer::SetWorldReady(const WorldOptions& options, const Vec3& spawn) {
     m_impl->worldOptions = options;
     m_impl->worldSpawn = spawn;
+    m_impl->worldTimeSeconds = kWorldDayDurationSeconds * 0.25f;
+    m_impl->worldTimeBroadcastTicks = 0;
     m_impl->worldReady = true;
     for (auto& [key, peer] : m_impl->peers) {
         (void)key;
@@ -310,6 +315,8 @@ void GameServer::ClearWorld() {
 }
 
 bool GameServer::IsWorldReady() const noexcept { return m_impl->worldReady; }
+
+float GameServer::GetWorldTimeSeconds() const noexcept { return m_impl->worldTimeSeconds; }
 
 std::vector<ChunkCoordinate> GameServer::TakeNewlyGeneratedChunks() {
     std::vector<ChunkCoordinate> chunks;
@@ -443,6 +450,20 @@ void GameServer::Tick() {
         BroadcastPlayerLeft(*m_impl, playerId);
     }
     if (m_impl->worldReady) {
+        if (!m_impl->worldOptions.alwaysSunny) {
+            m_impl->worldTimeSeconds = std::fmod(
+                m_impl->worldTimeSeconds + std::chrono::duration<float>(kTickInterval).count(),
+                kWorldDayDurationSeconds);
+        }
+        ++m_impl->worldTimeBroadcastTicks;
+        if (m_impl->worldTimeBroadcastTicks >= 20) {
+            m_impl->worldTimeBroadcastTicks = 0;
+            const std::vector<std::uint8_t> worldTime = SerializeWorldTime(m_impl->worldTimeSeconds);
+            for (const auto& [key, peer] : m_impl->peers) {
+                (void)key;
+                SendPacket(*m_impl, peer.endpoint, PacketId::S2C_WorldTime, worldTime);
+            }
+        }
         GenerateColumnsAroundRemotePeers(*m_impl);
         for (auto& [key, peer] : m_impl->peers) {
             (void)key;

@@ -52,6 +52,8 @@ public:
 
     [[nodiscard]] bool IsWorldReadyOnServer() const noexcept;
     [[nodiscard]] const WorldInfo& GetWorldInfo() const noexcept;
+    /// Latest server world time extrapolated with the local monotonic clock between corrections.
+    [[nodiscard]] float GetEstimatedWorldTimeSeconds() const noexcept;
     [[nodiscard]] bool WasRejected() const noexcept;
     [[nodiscard]] RejectReason GetRejectReason() const noexcept;
     [[nodiscard]] bool WasDisconnectedByServer() const noexcept;

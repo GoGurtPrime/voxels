@@ -12,7 +12,11 @@
 #include "voxels/world/world.hpp"
 
 #include <cmath>
+#include <algorithm>
+#include <array>
+#include <deque>
 #include <limits>
+#include <unordered_set>
 
 namespace voxels {
 
@@ -33,13 +37,6 @@ int FloorMod(int value, int divisor) noexcept {
         modulo += divisor;
     }
     return modulo;
-}
-
-bool IsOpaqueForSkyLight(BlockId block) noexcept {
-    return block != static_cast<BlockId>(BlockType::Air) &&
-           block != static_cast<BlockId>(BlockType::Water) &&
-           block != static_cast<BlockId>(BlockType::Glass) &&
-           block != static_cast<BlockId>(BlockType::Leaf);
 }
 
 } // namespace
@@ -137,28 +134,224 @@ std::uint8_t World::GetSkyLight(const Vec3I& worldBlockPos) const {
                                     FloorMod(worldBlockPos.z, size));
 }
 
+std::uint8_t World::GetBlockLight(const Vec3I& worldBlockPos) const {
+    const int size = static_cast<int>(m_chunkSize);
+    const ChunkCoordinate coordinate{FloorDiv(worldBlockPos.x, size), FloorDiv(worldBlockPos.y, size),
+                                      FloorDiv(worldBlockPos.z, size)};
+    const auto it = m_chunks.find(coordinate);
+    if (it == m_chunks.end()) return 0;
+    return it->second->GetBlockLight(FloorMod(worldBlockPos.x, size), FloorMod(worldBlockPos.y, size),
+                                      FloorMod(worldBlockPos.z, size));
+}
+
 std::size_t World::RebuildSkyLightAround(const Vec3I& center, int radiusBlocks) {
-    (void)radiusBlocks;
-    const int chunkSize = static_cast<int>(m_chunkSize);
-    std::size_t touched = 0;
-    const auto setLightIfResident = [this, center, chunkSize, &touched](int worldY, std::uint8_t light) {
-        const Vec3I position{center.x, worldY, center.z};
-        const ChunkCoordinate coordinate{FloorDiv(position.x, chunkSize), FloorDiv(position.y, chunkSize),
-                                         FloorDiv(position.z, chunkSize)};
+    const BlockRegistry registry = CreateDefaultBlockRegistry();
+    return RebuildLightingAround(center, registry, radiusBlocks).touchedVoxels;
+}
+
+LightingUpdate World::RebuildLightingAround(const Vec3I& center, const BlockRegistry& registry,
+                                             int radiusBlocks) {
+    LightingUpdate update;
+    if (m_chunks.empty()) return update;
+    radiusBlocks = std::clamp(radiusBlocks, 0, 15);
+    const int size = static_cast<int>(m_chunkSize);
+    int minimumY = 255;
+    int maximumY = 0;
+    for (const auto& [coordinate, chunk] : m_chunks) {
+        (void)chunk;
+        minimumY = std::min(minimumY, coordinate.y * size);
+        maximumY = std::max(maximumY, (coordinate.y + 1) * size - 1);
+    }
+    minimumY = std::max(minimumY, 0);
+    maximumY = std::min(maximumY, 255);
+
+    const auto residentChunk = [&](const Vec3I& position) -> Chunk* {
+        const ChunkCoordinate coordinate{FloorDiv(position.x, size), FloorDiv(position.y, size),
+                                         FloorDiv(position.z, size)};
         const auto found = m_chunks.find(coordinate);
-        if (found == m_chunks.end()) return false;
-        const bool changed = found->second->SetSkyLight(FloorMod(position.x, chunkSize), FloorMod(position.y, chunkSize),
-                                                         FloorMod(position.z, chunkSize), light);
-        if (changed) ++touched;
+        return found == m_chunks.end() ? nullptr : found->second.get();
+    };
+    const auto isOpaque = [&](BlockId block) {
+        const BlockDefinition* definition = registry.GetDefinition(block);
+        return definition == nullptr ? block != static_cast<BlockId>(BlockType::Air) : definition->isOpaque;
+    };
+
+    int minimumYRebuild = std::max(minimumY, center.y - radiusBlocks);
+    int maximumYRebuild = std::min(maximumY, center.y + radiusBlocks);
+    bool exposed = true;
+    int firstDirectMismatch = maximumY + 1;
+    int lastDirectMismatch = minimumY - 1;
+    for (int y = maximumY; y >= minimumY; --y) {
+        const Vec3I position{center.x, y, center.z};
+        if (residentChunk(position) == nullptr) continue;
+        const bool opaque = isOpaque(GetBlock(position));
+        const bool expectedDirectSky = exposed && !opaque;
+        if ((GetSkyLight(position) == 15) != expectedDirectSky) {
+            firstDirectMismatch = std::min(firstDirectMismatch, y);
+            lastDirectMismatch = std::max(lastDirectMismatch, y);
+        }
+        if (opaque) exposed = false;
+    }
+    if (lastDirectMismatch >= firstDirectMismatch) {
+        minimumYRebuild = std::min(minimumYRebuild,
+                                   std::max(minimumY, firstDirectMismatch - radiusBlocks));
+        maximumYRebuild = std::max(maximumYRebuild,
+                                   std::min(maximumY, lastDirectMismatch + radiusBlocks));
+    }
+    if (minimumYRebuild > maximumYRebuild) return update;
+
+    const int minimumX = center.x - radiusBlocks;
+    const int maximumX = center.x + radiusBlocks;
+    const int minimumZ = center.z - radiusBlocks;
+    const int maximumZ = center.z + radiusBlocks;
+    struct LightSnapshot {
+        Vec3I position;
+        std::uint8_t sky;
+        std::uint8_t block;
+    };
+    std::vector<LightSnapshot> snapshots;
+    const std::size_t width = static_cast<std::size_t>(maximumX - minimumX + 1);
+    const std::size_t depth = static_cast<std::size_t>(maximumZ - minimumZ + 1);
+    const std::size_t height = static_cast<std::size_t>(maximumYRebuild - minimumYRebuild + 1);
+    snapshots.reserve(width * depth * height);
+    for (int z = minimumZ; z <= maximumZ; ++z) {
+        for (int y = minimumYRebuild; y <= maximumYRebuild; ++y) {
+            for (int x = minimumX; x <= maximumX; ++x) {
+                const Vec3I position{x, y, z};
+                if (residentChunk(position) == nullptr) continue;
+                snapshots.push_back({position, GetSkyLight(position), GetBlockLight(position)});
+            }
+        }
+    }
+    update.examinedVoxels = snapshots.size();
+
+    const auto setSky = [&](const Vec3I& position, std::uint8_t level) {
+        Chunk* chunk = residentChunk(position);
+        if (chunk == nullptr) return false;
+        const std::uint8_t clamped = std::min<std::uint8_t>(level, 15);
+        const int localX = FloorMod(position.x, size);
+        const int localY = FloorMod(position.y, size);
+        const int localZ = FloorMod(position.z, size);
+        if (chunk->GetSkyLight(localX, localY, localZ) == clamped) return false;
+        chunk->SetSkyLight(localX, localY, localZ, clamped);
         return true;
     };
-    bool exposed = true;
-    for (int worldY = 255; worldY >= 0; --worldY) {
-        const BlockId block = GetBlock({center.x, worldY, center.z});
-        setLightIfResident(worldY, exposed ? 15 : 0);
-        if (IsOpaqueForSkyLight(block)) exposed = false;
+    const auto setBlockLight = [&](const Vec3I& position, std::uint8_t level) {
+        Chunk* chunk = residentChunk(position);
+        if (chunk == nullptr) return false;
+        const std::uint8_t clamped = std::min<std::uint8_t>(level, 15);
+        const int localX = FloorMod(position.x, size);
+        const int localY = FloorMod(position.y, size);
+        const int localZ = FloorMod(position.z, size);
+        if (chunk->GetBlockLight(localX, localY, localZ) == clamped) return false;
+        chunk->SetBlockLight(localX, localY, localZ, clamped);
+        return true;
+    };
+
+    for (int z = minimumZ; z <= maximumZ; ++z) {
+        for (int x = minimumX; x <= maximumX; ++x) {
+            bool columnExposed = maximumYRebuild == maximumY;
+            if (!columnExposed) {
+                const Vec3I above{x, maximumYRebuild + 1, z};
+                columnExposed = residentChunk(above) == nullptr ||
+                                (GetSkyLight(above) == 15 && !isOpaque(GetBlock(above)));
+            }
+            for (int y = maximumYRebuild; y >= minimumYRebuild; --y) {
+                const Vec3I position{x, y, z};
+                if (residentChunk(position) == nullptr) continue;
+                const BlockId block = GetBlock(position);
+                const bool opaque = isOpaque(block);
+                setSky(position, columnExposed && !opaque ? 15 : 0);
+                setBlockLight(position, 0);
+                if (opaque) columnExposed = false;
+            }
+        }
     }
-    return touched;
+
+    struct LightNode { Vec3I position; std::uint8_t level; };
+    std::deque<LightNode> skyQueue;
+    std::deque<LightNode> blockQueue;
+    static constexpr std::array<Vec3I, 6> neighbors = {
+        Vec3I{1, 0, 0}, Vec3I{-1, 0, 0}, Vec3I{0, 1, 0},
+        Vec3I{0, -1, 0}, Vec3I{0, 0, 1}, Vec3I{0, 0, -1}};
+    const auto inRegion = [&](const Vec3I& position) {
+        return position.x >= minimumX && position.x <= maximumX &&
+               position.y >= minimumYRebuild && position.y <= maximumYRebuild &&
+               position.z >= minimumZ && position.z <= maximumZ;
+    };
+    for (int z = minimumZ; z <= maximumZ; ++z) {
+        for (int x = minimumX; x <= maximumX; ++x) {
+            for (int y = minimumYRebuild; y <= maximumYRebuild; ++y) {
+                const Vec3I position{x, y, z};
+                if (residentChunk(position) == nullptr) continue;
+                const std::uint8_t sky = GetSkyLight(position);
+                if (sky == 15) {
+                    const bool bordersUnlitVoxel = std::any_of(
+                        neighbors.begin(), neighbors.end(), [&](const Vec3I& offset) {
+                            const Vec3I neighbor{position.x + offset.x, position.y + offset.y,
+                                                 position.z + offset.z};
+                            return inRegion(neighbor) && residentChunk(neighbor) != nullptr &&
+                                   !isOpaque(GetBlock(neighbor)) && GetSkyLight(neighbor) < 14;
+                        });
+                    if (bordersUnlitVoxel) skyQueue.push_back({position, sky});
+                }
+                const BlockDefinition* definition = registry.GetDefinition(GetBlock(position));
+                if (definition != nullptr && definition->lightEmission > 0) {
+                    setBlockLight(position, definition->lightEmission);
+                    blockQueue.push_back({position, definition->lightEmission});
+                }
+                const bool boundary = x == minimumX || x == maximumX || y == minimumYRebuild ||
+                                      y == maximumYRebuild || z == minimumZ || z == maximumZ;
+                if (!boundary || isOpaque(GetBlock(position))) continue;
+                for (const Vec3I& offset : neighbors) {
+                    const Vec3I outside{position.x + offset.x, position.y + offset.y,
+                                        position.z + offset.z};
+                    if (inRegion(outside) || residentChunk(outside) == nullptr) continue;
+                    const std::uint8_t outsideSky = GetSkyLight(outside);
+                    if (outsideSky > 1 && GetSkyLight(position) < outsideSky - 1) {
+                        const std::uint8_t level = static_cast<std::uint8_t>(outsideSky - 1);
+                        setSky(position, level);
+                        skyQueue.push_back({position, level});
+                    }
+                }
+            }
+        }
+    }
+    const auto propagate = [&](std::deque<LightNode>& queue, bool skyLight) {
+        while (!queue.empty()) {
+            const LightNode current = queue.front();
+            queue.pop_front();
+            if (current.level <= 1) continue;
+            const std::uint8_t nextLevel = static_cast<std::uint8_t>(current.level - 1);
+            for (const Vec3I& offset : neighbors) {
+                const Vec3I next{current.position.x + offset.x, current.position.y + offset.y,
+                                 current.position.z + offset.z};
+                if (!inRegion(next) || residentChunk(next) == nullptr || isOpaque(GetBlock(next))) continue;
+                const std::uint8_t existing = skyLight ? GetSkyLight(next) : GetBlockLight(next);
+                if (existing >= nextLevel) continue;
+                if (skyLight) setSky(next, nextLevel); else setBlockLight(next, nextLevel);
+                queue.push_back({next, nextLevel});
+            }
+        }
+    };
+    propagate(skyQueue, true);
+    propagate(blockQueue, false);
+    std::unordered_set<ChunkCoordinate, ChunkCoordinateHash> dirtyChunks;
+    for (const LightSnapshot& snapshot : snapshots) {
+        if (snapshot.sky == GetSkyLight(snapshot.position) &&
+            snapshot.block == GetBlockLight(snapshot.position)) continue;
+        ++update.touchedVoxels;
+        dirtyChunks.insert({FloorDiv(snapshot.position.x, size), FloorDiv(snapshot.position.y, size),
+                            FloorDiv(snapshot.position.z, size)});
+    }
+    update.dirtyChunks.assign(dirtyChunks.begin(), dirtyChunks.end());
+    std::sort(update.dirtyChunks.begin(), update.dirtyChunks.end(), [](const ChunkCoordinate& lhs,
+                                                                       const ChunkCoordinate& rhs) {
+        if (lhs.x != rhs.x) return lhs.x < rhs.x;
+        if (lhs.y != rhs.y) return lhs.y < rhs.y;
+        return lhs.z < rhs.z;
+    });
+    return update;
 }
 
 RaycastHit World::Raycast(const Vec3& origin, const Vec3& direction, float maxDistance) const {

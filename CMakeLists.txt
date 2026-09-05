@@ -81,6 +81,10 @@ if(NOT TARGET voxels_imgui)
         ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
         ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
     )
+    if(WIN32)
+        target_sources(voxels_imgui PRIVATE ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp)
+        target_link_libraries(voxels_imgui PUBLIC d3d11)
+    endif()
     target_include_directories(voxels_imgui SYSTEM PUBLIC
         ${imgui_SOURCE_DIR}
         ${imgui_SOURCE_DIR}/backends

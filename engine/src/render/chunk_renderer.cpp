@@ -8,13 +8,42 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstring>
 
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "voxels/core/logger.hpp"
 #include "voxels/render/chunk_vertex.hpp"
 
+#if defined(_WIN32)
+#include <d3d11.h>
+#include <d3dcompiler.h>
+#include <wrl/client.h>
+#endif
+
 namespace voxels::graphics {
+
+#if defined(_WIN32)
+using Microsoft::WRL::ComPtr;
+
+struct DX11ChunkState {
+    ComPtr<ID3D11VertexShader> vertexShader;
+    ComPtr<ID3D11PixelShader> pixelShader;
+    ComPtr<ID3D11InputLayout> inputLayout;
+    ComPtr<ID3D11Buffer> constants;
+    ComPtr<ID3D11Texture2D> atlasTexture;
+    ComPtr<ID3D11ShaderResourceView> atlasView;
+    ComPtr<ID3D11SamplerState> sampler;
+    ComPtr<ID3D11RasterizerState> opaqueRasterizer;
+    ComPtr<ID3D11RasterizerState> transparentRasterizer;
+    ComPtr<ID3D11DepthStencilState> opaqueDepth;
+    ComPtr<ID3D11DepthStencilState> transparentDepth;
+    ComPtr<ID3D11BlendState> opaqueBlend;
+    ComPtr<ID3D11BlendState> alphaBlend;
+};
+#else
+struct DX11ChunkState {};
+#endif
 
 namespace {
 
@@ -27,13 +56,14 @@ layout(location = 3) in vec4 aUvTint;
 
 uniform mat4 uViewProj;
 uniform vec3 uChunkOrigin;
+uniform vec3 uSunDirection;
 
 out vec2 vUV;
 out float vLayer;
 out float vAO;
 out float vSkyLight;
 out float vBlockLight;
-out float vBrightness;
+out float vSunTerm;
 out float vTint;
 out vec3 vWorldPos;
 
@@ -56,9 +86,7 @@ void main() {
     vTint = aUvTint.z;
 
     int faceIdx = int(aFaceAoLight.x + 0.5);
-    vec3 sunDir = normalize(vec3(-0.6, 1.0, -0.5));
-    float sunTerm = max(dot(kFaceNormal[faceIdx], sunDir), 0.0);
-    vBrightness = kFaceAmbient[faceIdx] * (0.55 + 0.45 * sunTerm);
+    vSunTerm = max(dot(kFaceNormal[faceIdx], normalize(uSunDirection)), 0.0) * kFaceAmbient[faceIdx];
 
     gl_Position = uViewProj * vec4(worldPos, 1.0);
 })";
@@ -70,13 +98,16 @@ in float vLayer;
 in float vAO;
 in float vSkyLight;
 in float vBlockLight;
-in float vBrightness;
+in float vSunTerm;
 in float vTint;
 in vec3 vWorldPos;
 
 uniform sampler2DArray uTextureAtlas;
 uniform vec3 uCameraPos;
 uniform vec3 uFoliageTint;
+uniform vec3 uSunColor;
+uniform vec3 uAmbientColor;
+uniform vec3 uSkyColor;
 
 out vec4 FragColor;
 
@@ -94,12 +125,14 @@ void main() {
     }
 
     float aoFactor = 0.35 + 0.65 * (vAO / 3.0);
-    float lightFactor = clamp(max(vSkyLight, vBlockLight) / 15.0, 0.15, 1.0);
-    vec3 lit = baseColor * (aoFactor * lightFactor * vBrightness);
+    float skyFactor = clamp(vSkyLight / 15.0, 0.0, 1.0);
+    float blockFactor = clamp(vBlockLight / 15.0, 0.0, 1.0);
+    vec3 skyLighting = skyFactor * (uAmbientColor + uSunColor * vSunTerm);
+    vec3 blockLighting = blockFactor * vec3(1.0, 0.58, 0.28);
+    vec3 lit = baseColor * aoFactor * max(skyLighting + blockLighting, vec3(0.015));
 
     float fog = clamp((length(vWorldPos - uCameraPos) - 24.0) / 48.0, 0.0, 1.0);
-    vec3 skyTint = vec3(0.55, 0.70, 0.92);
-    FragColor = vec4(mix(lit, skyTint, fog), texColor.a);
+    FragColor = vec4(mix(lit, uSkyColor, fog), texColor.a);
 })";
 
 bool CompileShader(GLenum type, const char* source, GLuint& outShader) {
@@ -156,8 +189,9 @@ glm::vec3 ChunkOrigin(const voxels::ChunkCoordinate& coordinate, std::uint32_t c
 
 } // namespace
 
-ChunkRenderer::ChunkRenderer(voxels::BlockRegistry& registry, voxels::TextureAtlas& atlas, voxels::JobSystem& jobSystem)
-    : m_registry(registry), m_atlas(atlas), m_jobSystem(jobSystem) {
+ChunkRenderer::ChunkRenderer(voxels::BlockRegistry& registry, voxels::TextureAtlas& atlas, voxels::JobSystem& jobSystem,
+                             IGraphicsRenderer* renderer)
+    : m_registry(registry), m_atlas(atlas), m_jobSystem(jobSystem), m_renderer(renderer) {
     m_models.LoadReferencedModels(m_registry, "assets");
 }
 
@@ -339,7 +373,248 @@ bool ChunkRenderer::EnsureProgram() {
     m_uniformCameraPos = glGetUniformLocation(m_program, "uCameraPos");
     m_uniformTexture = glGetUniformLocation(m_program, "uTextureAtlas");
     m_uniformFoliageTint = glGetUniformLocation(m_program, "uFoliageTint");
+    m_uniformSunDirection = glGetUniformLocation(m_program, "uSunDirection");
+    m_uniformSunColor = glGetUniformLocation(m_program, "uSunColor");
+    m_uniformAmbientColor = glGetUniformLocation(m_program, "uAmbientColor");
+    m_uniformSkyColor = glGetUniformLocation(m_program, "uSkyColor");
     return true;
+}
+
+bool ChunkRenderer::EnsureDX11Resources() {
+#if defined(_WIN32)
+    if (m_dx11 != nullptr) return true;
+    if (m_renderer == nullptr || m_renderer->GetBackend() != RendererBackend::Direct3D11) return false;
+    auto* device = static_cast<ID3D11Device*>(m_renderer->GetNativeDevice());
+    if (device == nullptr) return false;
+
+    constexpr char vertexSource[] = R"(
+cbuffer FrameConstants : register(b0) {
+    column_major float4x4 viewProjection;
+    float4 chunkOrigin;
+    float4 cameraPosition;
+    float4 foliageTint;
+    float4 sunDirection;
+    float4 sunColor;
+    float4 ambientColor;
+    float4 skyColor;
+};
+struct VSInput {
+    uint4 packedPosition : POSITION;
+    uint2 light : LIGHT;
+    uint atlasLayer : ATLAS;
+    uint4 uvTint : UVTINT;
+};
+struct VSOutput {
+    float4 position : SV_POSITION;
+    float3 worldPosition : TEXCOORD0;
+    float2 uv : TEXCOORD1;
+    nointerpolation uint layer : TEXCOORD2;
+    float ao : TEXCOORD3;
+    float skyLight : TEXCOORD4;
+    float blockLight : TEXCOORD5;
+    float sunTerm : TEXCOORD6;
+    float tint : TEXCOORD7;
+};
+VSOutput main(VSInput input) {
+    const float3 normals[6] = {
+        float3(1,0,0), float3(-1,0,0), float3(0,1,0),
+        float3(0,-1,0), float3(0,0,1), float3(0,0,-1)
+    };
+    const float ambient[6] = {0.8, 0.8, 1.0, 0.5, 0.8, 0.8};
+    VSOutput output;
+    uint face = input.packedPosition.w & 255;
+    uint ao = input.packedPosition.w >> 8;
+    output.worldPosition = chunkOrigin.xyz + float3(input.packedPosition.xyz) / 16.0;
+    output.position = mul(viewProjection, float4(output.worldPosition, 1.0));
+    output.position.z = output.position.z * 0.5 + output.position.w * 0.5;
+    output.uv = float2(input.uvTint.xy);
+    output.layer = input.atlasLayer;
+    output.ao = float(ao);
+    output.skyLight = float(input.light.x);
+    output.blockLight = float(input.light.y);
+    float sun = max(dot(normals[min(face, 5)], normalize(sunDirection.xyz)), 0.0);
+    output.sunTerm = ambient[min(face, 5)] * sun;
+    output.tint = float(input.uvTint.z);
+    return output;
+})";
+    constexpr char pixelSource[] = R"(
+Texture2DArray atlas : register(t0);
+SamplerState atlasSampler : register(s0);
+cbuffer FrameConstants : register(b0) {
+    column_major float4x4 viewProjection;
+    float4 chunkOrigin;
+    float4 cameraPosition;
+    float4 foliageTint;
+    float4 sunDirection;
+    float4 sunColor;
+    float4 ambientColor;
+    float4 skyColor;
+};
+struct PSInput {
+    float4 position : SV_POSITION;
+    float3 worldPosition : TEXCOORD0;
+    float2 uv : TEXCOORD1;
+    nointerpolation uint layer : TEXCOORD2;
+    float ao : TEXCOORD3;
+    float skyLight : TEXCOORD4;
+    float blockLight : TEXCOORD5;
+    float sunTerm : TEXCOORD6;
+    float tint : TEXCOORD7;
+};
+float4 main(PSInput input) : SV_TARGET {
+    float4 texel = atlas.Sample(atlasSampler, float3(frac(input.uv), input.layer));
+    clip(texel.a - 0.05);
+    float3 base = input.tint > 0.5 ? texel.rgb * foliageTint.rgb : texel.rgb;
+    float aoFactor = 0.35 + 0.65 * (input.ao / 3.0);
+    float skyFactor = clamp(input.skyLight / 15.0, 0.0, 1.0);
+    float blockFactor = clamp(input.blockLight / 15.0, 0.0, 1.0);
+    float3 skyLighting = skyFactor * (ambientColor.rgb + sunColor.rgb * input.sunTerm);
+    float3 blockLighting = blockFactor * float3(1.0, 0.58, 0.28);
+    float3 lit = base * aoFactor * max(skyLighting + blockLighting, 0.015);
+    float fog = clamp((distance(input.worldPosition, cameraPosition.xyz) - 24.0) / 48.0, 0.0, 1.0);
+    return float4(lerp(lit, skyColor.rgb, fog), texel.a);
+})";
+
+    ComPtr<ID3DBlob> vertexBytecode;
+    ComPtr<ID3DBlob> pixelBytecode;
+    ComPtr<ID3DBlob> errors;
+    UINT compileFlags = D3DCOMPILE_ENABLE_STRICTNESS;
+#if defined(_DEBUG)
+    compileFlags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+    compileFlags |= D3DCOMPILE_OPTIMIZATION_LEVEL3;
+#endif
+    HRESULT result = D3DCompile(vertexSource, sizeof(vertexSource), "chunk_vs", nullptr, nullptr, "main",
+                                "vs_5_0", compileFlags, 0, &vertexBytecode, &errors);
+    if (FAILED(result)) {
+        Logger logger;
+        logger.Error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "DX11 chunk vertex shader failed.");
+        return false;
+    }
+    errors.Reset();
+    result = D3DCompile(pixelSource, sizeof(pixelSource), "chunk_ps", nullptr, nullptr, "main",
+                        "ps_5_0", compileFlags, 0, &pixelBytecode, &errors);
+    if (FAILED(result)) {
+        Logger logger;
+        logger.Error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "DX11 chunk pixel shader failed.");
+        return false;
+    }
+
+    auto state = std::make_unique<DX11ChunkState>();
+    if (FAILED(device->CreateVertexShader(vertexBytecode->GetBufferPointer(), vertexBytecode->GetBufferSize(),
+                                          nullptr, &state->vertexShader)) ||
+        FAILED(device->CreatePixelShader(pixelBytecode->GetBufferPointer(), pixelBytecode->GetBufferSize(),
+                                         nullptr, &state->pixelShader))) return false;
+    const D3D11_INPUT_ELEMENT_DESC layout[] = {
+        {"POSITION", 0, DXGI_FORMAT_R16G16B16A16_UINT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"LIGHT", 0, DXGI_FORMAT_R8G8_UINT, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"ATLAS", 0, DXGI_FORMAT_R16_UINT, 0, 10, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"UVTINT", 0, DXGI_FORMAT_R8G8B8A8_UINT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    if (FAILED(device->CreateInputLayout(layout, static_cast<UINT>(std::size(layout)),
+                                         vertexBytecode->GetBufferPointer(), vertexBytecode->GetBufferSize(),
+                                         &state->inputLayout))) return false;
+
+    D3D11_BUFFER_DESC constantDesc{};
+    constantDesc.ByteWidth = 176;
+    constantDesc.Usage = D3D11_USAGE_DYNAMIC;
+    constantDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    constantDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    if (FAILED(device->CreateBuffer(&constantDesc, nullptr, &state->constants))) return false;
+
+    const int layerCount = m_atlas.GetLayerCount();
+    if (layerCount <= 0) return false;
+    std::vector<D3D11_SUBRESOURCE_DATA> initialData(static_cast<std::size_t>(layerCount));
+    for (int layer = 0; layer < layerCount; ++layer) {
+        const ImageData* image = m_atlas.GetLayerImage(layer);
+        if (image == nullptr || image->pixels.empty()) return false;
+        initialData[static_cast<std::size_t>(layer)].pSysMem = image->pixels.data();
+        initialData[static_cast<std::size_t>(layer)].SysMemPitch = static_cast<UINT>(m_atlas.GetTileWidth() * 4);
+    }
+    D3D11_TEXTURE2D_DESC textureDesc{};
+    textureDesc.Width = static_cast<UINT>(m_atlas.GetTileWidth());
+    textureDesc.Height = static_cast<UINT>(m_atlas.GetTileHeight());
+    textureDesc.MipLevels = 1;
+    textureDesc.ArraySize = static_cast<UINT>(layerCount);
+    textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    textureDesc.SampleDesc.Count = 1;
+    textureDesc.Usage = D3D11_USAGE_IMMUTABLE;
+    textureDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    if (FAILED(device->CreateTexture2D(&textureDesc, initialData.data(), &state->atlasTexture))) return false;
+    D3D11_SHADER_RESOURCE_VIEW_DESC viewDesc{};
+    viewDesc.Format = textureDesc.Format;
+    viewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+    viewDesc.Texture2DArray.MipLevels = 1;
+    viewDesc.Texture2DArray.ArraySize = textureDesc.ArraySize;
+    if (FAILED(device->CreateShaderResourceView(state->atlasTexture.Get(), &viewDesc, &state->atlasView))) return false;
+
+    D3D11_SAMPLER_DESC samplerDesc{};
+    samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
+    samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
+    if (FAILED(device->CreateSamplerState(&samplerDesc, &state->sampler))) return false;
+
+    D3D11_RASTERIZER_DESC rasterDesc{};
+    rasterDesc.FillMode = D3D11_FILL_SOLID;
+    rasterDesc.CullMode = D3D11_CULL_BACK;
+    rasterDesc.FrontCounterClockwise = TRUE;
+    rasterDesc.DepthClipEnable = TRUE;
+    if (FAILED(device->CreateRasterizerState(&rasterDesc, &state->opaqueRasterizer))) return false;
+    rasterDesc.CullMode = D3D11_CULL_NONE;
+    if (FAILED(device->CreateRasterizerState(&rasterDesc, &state->transparentRasterizer))) return false;
+
+    D3D11_DEPTH_STENCIL_DESC depthDesc{};
+    depthDesc.DepthEnable = TRUE;
+    depthDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    depthDesc.DepthFunc = D3D11_COMPARISON_LESS;
+    if (FAILED(device->CreateDepthStencilState(&depthDesc, &state->opaqueDepth))) return false;
+    depthDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    if (FAILED(device->CreateDepthStencilState(&depthDesc, &state->transparentDepth))) return false;
+
+    D3D11_BLEND_DESC blendDesc{};
+    blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    if (FAILED(device->CreateBlendState(&blendDesc, &state->opaqueBlend))) return false;
+    blendDesc.RenderTarget[0].BlendEnable = TRUE;
+    blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    if (FAILED(device->CreateBlendState(&blendDesc, &state->alphaBlend))) return false;
+    m_dx11 = std::move(state);
+    return true;
+#else
+    return false;
+#endif
+}
+
+void ChunkRenderer::UploadDX11Mesh(GpuChunkMesh& mesh, const ChunkMeshData& data) {
+#if defined(_WIN32)
+    if (!EnsureDX11Resources()) return;
+    auto* device = static_cast<ID3D11Device*>(m_renderer->GetNativeDevice());
+    const auto makeBuffer = [device](const void* source, std::size_t bytes, UINT bindFlags) -> std::shared_ptr<void> {
+        if (bytes == 0) return {};
+        D3D11_BUFFER_DESC description{};
+        description.ByteWidth = static_cast<UINT>(bytes);
+        description.Usage = D3D11_USAGE_IMMUTABLE;
+        description.BindFlags = bindFlags;
+        D3D11_SUBRESOURCE_DATA initial{};
+        initial.pSysMem = source;
+        ID3D11Buffer* buffer = nullptr;
+        if (FAILED(device->CreateBuffer(&description, &initial, &buffer))) return {};
+        return {buffer, [](void* object) { static_cast<ID3D11Buffer*>(object)->Release(); }};
+    };
+    mesh.nativeVertexBuffer = makeBuffer(data.vertices.data(), data.vertices.size() * sizeof(ChunkVertex),
+                                         D3D11_BIND_VERTEX_BUFFER);
+    mesh.nativeIndexBuffer = makeBuffer(data.indices.data(), data.indices.size() * sizeof(std::uint32_t),
+                                        D3D11_BIND_INDEX_BUFFER);
+#else
+    (void)mesh;
+    (void)data;
+#endif
 }
 
 void ChunkRenderer::ConfigureVertexAttributes() {
@@ -371,6 +646,11 @@ void ChunkRenderer::UploadMesh(const voxels::ChunkCoordinate& coordinate, ChunkM
     mesh.opaqueIndexCount = data.opaqueIndexCount;
     mesh.transparentIndexCount = data.transparentIndexCount;
     mesh.provisional = data.provisional;
+
+    if (m_renderer != nullptr && m_renderer->GetBackend() == RendererBackend::Direct3D11) {
+        UploadDX11Mesh(mesh, data);
+        return;
+    }
 
     if (glGenVertexArrays == nullptr) {
         // No live GL context (headless unit test): cache mesh metadata without touching the driver.
@@ -445,7 +725,11 @@ void ChunkRenderer::UploadCompletedMeshes() {
             continue;
         }
 
-        EnsureProgram(); // best-effort; UploadMesh() degrades gracefully without a GL context
+        if (m_renderer != nullptr && m_renderer->GetBackend() == RendererBackend::Direct3D11) {
+            static_cast<void>(EnsureDX11Resources());
+        } else {
+            static_cast<void>(EnsureProgram());
+        }
         UploadMesh(batch[i].coordinate, std::move(batch[i].data));
         if (batch[i].editPriority) {
             m_metrics.lastEditMeshingMilliseconds = batch[i].meshingMilliseconds;
@@ -468,6 +752,10 @@ void ChunkRenderer::UploadCompletedMeshes() {
 }
 
 void ChunkRenderer::Render(const voxels::Camera& camera) {
+    if (m_renderer != nullptr && m_renderer->GetBackend() == RendererBackend::Direct3D11) {
+        RenderDX11(camera);
+        return;
+    }
     if (m_program == 0 || m_meshes.empty()) {
         m_metrics.visibleChunks = 0;
         m_metrics.drawCalls = 0;
@@ -507,6 +795,10 @@ void ChunkRenderer::Render(const voxels::Camera& camera) {
     glUniformMatrix4fv(m_uniformViewProj, 1, GL_FALSE, &viewProj[0][0]);
     glUniform3fv(m_uniformCameraPos, 1, &camera.position[0]);
     glUniform3f(m_uniformFoliageTint, 0.45f, 0.75f, 0.35f);
+    glUniform3fv(m_uniformSunDirection, 1, &m_celestialLighting.sunDirection[0]);
+    glUniform3fv(m_uniformSunColor, 1, &m_celestialLighting.sunColor[0]);
+    glUniform3fv(m_uniformAmbientColor, 1, &m_celestialLighting.ambientColor[0]);
+    glUniform3fv(m_uniformSkyColor, 1, &m_celestialLighting.skyColor[0]);
     glUniform1i(m_uniformTexture, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D_ARRAY, m_atlas.GetTextureHandle());
@@ -548,6 +840,117 @@ void ChunkRenderer::Render(const voxels::Camera& camera) {
     m_metrics.loadedChunks = m_meshes.size();
 }
 
+void ChunkRenderer::RenderDX11(const voxels::Camera& camera) {
+#if defined(_WIN32)
+    if (!EnsureDX11Resources() || m_meshes.empty()) {
+        m_metrics.visibleChunks = 0;
+        m_metrics.drawCalls = 0;
+        m_metrics.triangles = 0;
+        return;
+    }
+    auto* context = static_cast<ID3D11DeviceContext*>(m_renderer->GetNativeContext());
+    if (context == nullptr) return;
+
+    voxels::Frustum frustum;
+    frustum.Update(camera.ViewProjection());
+    std::vector<std::pair<const voxels::ChunkCoordinate*, GpuChunkMesh*>> visibleOpaque;
+    std::vector<std::pair<const voxels::ChunkCoordinate*, GpuChunkMesh*>> visibleTransparent;
+    for (auto& [coordinate, mesh] : m_meshes) {
+        if (!frustum.Intersects(mesh.aabb) || !mesh.nativeVertexBuffer || !mesh.nativeIndexBuffer) continue;
+        if (mesh.opaqueIndexCount > 0) visibleOpaque.emplace_back(&coordinate, &mesh);
+        if (mesh.transparentIndexCount > 0) visibleTransparent.emplace_back(&coordinate, &mesh);
+    }
+    const auto distanceTo = [&](const voxels::ChunkCoordinate& coordinate) {
+        return DistanceSq(ChunkOrigin(coordinate, m_chunkSize) +
+                              glm::vec3(static_cast<float>(m_chunkSize) * 0.5f),
+                          camera.position);
+    };
+    std::sort(visibleOpaque.begin(), visibleOpaque.end(), [&](const auto& lhs, const auto& rhs) {
+        return distanceTo(*lhs.first) < distanceTo(*rhs.first);
+    });
+    std::sort(visibleTransparent.begin(), visibleTransparent.end(), [&](const auto& lhs, const auto& rhs) {
+        return distanceTo(*lhs.first) > distanceTo(*rhs.first);
+    });
+
+    struct alignas(16) FrameConstants {
+        glm::mat4 viewProjection;
+        glm::vec4 chunkOrigin;
+        glm::vec4 cameraPosition;
+        glm::vec4 foliageTint;
+        glm::vec4 sunDirection;
+        glm::vec4 sunColor;
+        glm::vec4 ambientColor;
+        glm::vec4 skyColor;
+    };
+    const glm::mat4 viewProjection = camera.ViewProjection();
+    context->IASetInputLayout(m_dx11->inputLayout.Get());
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(m_dx11->vertexShader.Get(), nullptr, 0);
+    context->PSSetShader(m_dx11->pixelShader.Get(), nullptr, 0);
+    ID3D11Buffer* constantBuffer = m_dx11->constants.Get();
+    context->VSSetConstantBuffers(0, 1, &constantBuffer);
+    context->PSSetConstantBuffers(0, 1, &constantBuffer);
+    ID3D11ShaderResourceView* atlasView = m_dx11->atlasView.Get();
+    ID3D11SamplerState* sampler = m_dx11->sampler.Get();
+    context->PSSetShaderResources(0, 1, &atlasView);
+    context->PSSetSamplers(0, 1, &sampler);
+
+    std::size_t drawCalls = 0;
+    std::size_t triangles = 0;
+    const auto drawMesh = [&](const voxels::ChunkCoordinate& coordinate, GpuChunkMesh& mesh,
+                              std::uint32_t count, std::uint32_t startIndex) {
+        auto* vertexBuffer = static_cast<ID3D11Buffer*>(mesh.nativeVertexBuffer.get());
+        auto* indexBuffer = static_cast<ID3D11Buffer*>(mesh.nativeIndexBuffer.get());
+        constexpr UINT stride = sizeof(ChunkVertex);
+        constexpr UINT offset = 0;
+        context->IASetVertexBuffers(0, 1, &vertexBuffer, &stride, &offset);
+        context->IASetIndexBuffer(indexBuffer, DXGI_FORMAT_R32_UINT, 0);
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        if (SUCCEEDED(context->Map(m_dx11->constants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+            const glm::vec3 origin = ChunkOrigin(coordinate, m_chunkSize);
+            const FrameConstants constants{viewProjection, glm::vec4(origin, 0.0f),
+                                           glm::vec4(camera.position, 0.0f),
+                                           glm::vec4(0.45f, 0.75f, 0.35f, 0.0f),
+                                           glm::vec4(m_celestialLighting.sunDirection, 0.0f),
+                                           glm::vec4(m_celestialLighting.sunColor, 0.0f),
+                                           glm::vec4(m_celestialLighting.ambientColor, 0.0f),
+                                           glm::vec4(m_celestialLighting.skyColor, 0.0f)};
+            std::memcpy(mapped.pData, &constants, sizeof(constants));
+            context->Unmap(m_dx11->constants.Get(), 0);
+        }
+        context->DrawIndexed(count, startIndex, 0);
+    };
+
+    constexpr float blendFactor[4]{};
+    context->RSSetState(m_dx11->opaqueRasterizer.Get());
+    context->OMSetDepthStencilState(m_dx11->opaqueDepth.Get(), 0);
+    context->OMSetBlendState(m_dx11->opaqueBlend.Get(), blendFactor, 0xffffffffU);
+    for (auto& [coordinate, mesh] : visibleOpaque) {
+        drawMesh(*coordinate, *mesh, mesh->opaqueIndexCount, 0);
+        ++drawCalls;
+        triangles += mesh->opaqueIndexCount / 3;
+    }
+
+    context->RSSetState(m_dx11->transparentRasterizer.Get());
+    context->OMSetDepthStencilState(m_dx11->transparentDepth.Get(), 0);
+    context->OMSetBlendState(m_dx11->alphaBlend.Get(), blendFactor, 0xffffffffU);
+    for (auto& [coordinate, mesh] : visibleTransparent) {
+        drawMesh(*coordinate, *mesh, mesh->transparentIndexCount, mesh->opaqueIndexCount);
+        ++drawCalls;
+        triangles += mesh->transparentIndexCount / 3;
+    }
+    ID3D11ShaderResourceView* emptyView = nullptr;
+    context->PSSetShaderResources(0, 1, &emptyView);
+
+    m_metrics.visibleChunks = visibleOpaque.size() + visibleTransparent.size();
+    m_metrics.drawCalls = drawCalls;
+    m_metrics.triangles = triangles;
+    m_metrics.loadedChunks = m_meshes.size();
+#else
+    (void)camera;
+#endif
+}
+
 void ChunkRenderer::ReleaseMesh(GpuChunkMesh& mesh) {
     if (mesh.vao != 0) glDeleteVertexArrays(1, &mesh.vao);
     if (mesh.vbo != 0) glDeleteBuffers(1, &mesh.vbo);
@@ -564,6 +967,7 @@ void ChunkRenderer::Shutdown() {
         glDeleteProgram(m_program);
         m_program = 0;
     }
+    m_dx11.reset();
 }
 
 } // namespace voxels::graphics

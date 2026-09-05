@@ -1,54 +1,48 @@
-#pragma once
-
 /**
  * @file renderer.hpp
- * @brief Backend-agnostic renderer interface (`IRenderer`) and backend selection types.
+ * @brief Backend-agnostic interface used by the desktop runtime and render passes.
  *
- * @details The minimal frame-lifecycle contract every graphics backend implements. OpenGL 3.3
- *          Core (`GLRenderer`) is the shipping implementation; Vulkan/DX12/Metal/Dreamcast are
- *          declared-but-unimplemented placeholders per ADR-001/ADR-013, and MockRenderer is a
- *          test fixture that must never appear on the shipping path (AGENT_RULES.md §2).
- *          See voxels/graphics/rhi.hpp for the richer resource-level RHI used by chunk
- *          rendering.
+ * @details Defines the process-lifetime graphics backend used by application state, Dear ImGui,
+ *          and backend-specific render adapters. The interface contains no native API headers;
+ *          optional native handles are opaque and remain confined to platform adapters.
  */
 
-#include <cstdint>
-#include <string>
+#pragma once
 
-namespace voxels {
+#include <array>
+#include <filesystem>
+#include <string_view>
+#include <vector>
 
-enum class RendererBackendType {
-    Vulkan,
-    DirectX12,
-    Metal,
-    Dreamcast,
-    Unknown
-};
+#include "voxels/core/game_types.hpp"
+#include "voxels/render/camera.hpp"
 
-struct RendererConfig {
-    RendererBackendType backend = RendererBackendType::Vulkan;
-    int renderScale = 100;
-    bool vSync = true;
-    std::string shaderPath;
-};
+namespace voxels { class IPlatform; class TextureAtlas; enum class PlatformType; }
 
-/// Frame-lifecycle contract for a graphics backend. All calls are main-thread only (ADR-008).
-class IRenderer {
+namespace voxels::graphics {
+
+/// Human-readable backend label used by settings and diagnostics.
+[[nodiscard]] std::string_view RendererBackendName(RendererBackend backend) noexcept;
+/// Backends compiled for and supported by the target platform, in preferred order.
+[[nodiscard]] std::vector<RendererBackend> AvailableRendererBackends(PlatformType platform);
+
+/// Process-lifetime graphics device and presentation contract. All calls are main-thread only.
+class IGraphicsRenderer {
 public:
-    virtual ~IRenderer() = default;
-
-    /// Acquires API resources for the given configuration. Returns false on failure, which is
-    /// fatal at startup.
-    virtual bool Initialize(const RendererConfig& config) = 0;
+    virtual ~IGraphicsRenderer() = default;
+    [[nodiscard]] virtual bool Initialize(IPlatform& platform, TextureAtlas& atlas, bool vSync) = 0;
     virtual void Shutdown() = 0;
-
-    /// Begins a frame: clears targets and prepares per-frame state. Pair with EndFrame().
-    virtual void BeginFrame() = 0;
-
-    /// Finishes the frame's command submission; presentation happens via the platform's
-    /// SwapBuffers, not here.
-    virtual void EndFrame() = 0;
-    virtual RendererBackendType GetBackendType() const = 0;
+    [[nodiscard]] virtual bool BeginFrame(const std::array<float, 4>& clearColor) = 0;
+    [[nodiscard]] virtual bool EndFrame() = 0;
+    [[nodiscard]] virtual bool Present() = 0;
+    virtual void SetViewport(int width, int height) = 0;
+    virtual void SetCamera(const Camera& camera) = 0;
+    [[nodiscard]] virtual const Camera& GetCamera() const noexcept = 0;
+    [[nodiscard]] virtual RendererBackend GetBackend() const noexcept = 0;
+    [[nodiscard]] virtual std::string_view GetName() const noexcept = 0;
+    [[nodiscard]] virtual bool CaptureScreenshot(const std::filesystem::path& path) const = 0;
+    [[nodiscard]] virtual void* GetNativeDevice() const noexcept { return nullptr; }
+    [[nodiscard]] virtual void* GetNativeContext() const noexcept { return nullptr; }
 };
 
-} // namespace voxels
+} // namespace voxels::graphics

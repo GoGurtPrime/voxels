@@ -11,6 +11,7 @@
 #include "voxels/world/chunk.hpp"
 #include "voxels/world/geometry.hpp"
 #include "voxels/world/world.hpp"
+#include "voxels/render/celestial_lighting.hpp"
 
 TEST_CASE("BlockRegistry.RegistrationAndLookup", "[world][block]") {
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
@@ -154,6 +155,133 @@ TEST_CASE("World.SkylightRebuildUpdatesTheEditedColumnAcrossSections", "[world][
     REQUIRE(world.SetBlock({15, 8, 0}, stone));
     REQUIRE(world.RebuildSkyLightAround({15, 7, 0}) > 0);
     REQUIRE(world.GetChunks().at({0, 0, 0})->GetSkyLight(15, 7, 0) == 0);
+}
+
+TEST_CASE("World.LightingPropagatesEmissionAcrossChunkBoundariesAndRemovesIt", "[world][lighting]") {
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::BlockDefinition lamp{};
+    lamp.id = 100;
+    lamp.name = "test_lamp";
+    lamp.displayName = "Test Lamp";
+    lamp.isOpaque = true;
+    lamp.lightEmission = 15;
+    registry.RegisterBlock(lamp);
+
+    voxels::World world;
+    REQUIRE(world.SetBlock({15, 8, 0}, lamp.id));
+    REQUIRE(world.SetBlock({16, 8, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Air)));
+    const voxels::LightingUpdate lit = world.RebuildLightingAround({15, 8, 0}, registry, 4);
+    REQUIRE(lit.touchedVoxels > 0);
+    REQUIRE(world.GetBlockLight({15, 8, 0}) == 15);
+    REQUIRE(world.GetBlockLight({16, 8, 0}) == 14);
+    REQUIRE(lit.dirtyChunks.size() >= 2);
+
+    REQUIRE(world.SetBlock({15, 8, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Air)));
+    static_cast<void>(world.RebuildLightingAround({15, 8, 0}, registry, 4));
+    REQUIRE(world.GetBlockLight({15, 8, 0}) == 0);
+    REQUIRE(world.GetBlockLight({16, 8, 0}) == 0);
+}
+
+TEST_CASE("World.SkylightBleedsLaterallyBelowOverhangs", "[world][lighting]") {
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::World world;
+    REQUIRE(world.SetBlock({0, 10, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Stone)));
+    REQUIRE(world.SetBlock({1, 9, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Air)));
+    static_cast<void>(world.RebuildLightingAround({0, 9, 0}, registry, 3));
+    REQUIRE(world.GetSkyLight({1, 9, 0}) == 15);
+    REQUIRE(world.GetSkyLight({0, 9, 0}) == 14);
+}
+
+TEST_CASE("World.LightingUsesRegistryOpacity", "[world][lighting]") {
+    const voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::World world;
+    REQUIRE(world.SetBlock({0, 9, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Stone)));
+    REQUIRE(world.SetBlock({0, 8, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Air)));
+    static_cast<void>(world.RebuildLightingAround({0, 8, 0}, registry, 0));
+    REQUIRE(world.GetSkyLight({0, 9, 0}) == 0);
+    REQUIRE(world.GetSkyLight({0, 8, 0}) == 0);
+
+    REQUIRE(world.SetBlock({0, 9, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Glass)));
+    static_cast<void>(world.RebuildLightingAround({0, 8, 0}, registry, 0));
+    REQUIRE(world.GetSkyLight({0, 9, 0}) == 15);
+    REQUIRE(world.GetSkyLight({0, 8, 0}) == 15);
+}
+
+TEST_CASE("World.LightingRecomputationIsDeterministicForReplicatedEdits", "[world][lighting][networking]") {
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::BlockDefinition lamp{};
+    lamp.id = 100;
+    lamp.name = "replicated_lamp";
+    lamp.displayName = "Replicated Lamp";
+    lamp.isOpaque = true;
+    lamp.lightEmission = 12;
+    registry.RegisterBlock(lamp);
+    voxels::World host;
+    voxels::World client;
+    for (voxels::World* world : {&host, &client}) {
+        REQUIRE(world->SetBlock({15, 8, 0}, lamp.id));
+        REQUIRE(world->SetBlock({16, 9, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Stone)));
+        REQUIRE(world->SetBlock({16, 8, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Air)));
+    }
+
+    const voxels::LightingUpdate hostUpdate = host.RebuildLightingAround({15, 8, 0}, registry, 4);
+    const voxels::LightingUpdate clientUpdate = client.RebuildLightingAround({15, 8, 0}, registry, 4);
+    REQUIRE(clientUpdate.touchedVoxels == hostUpdate.touchedVoxels);
+    REQUIRE(clientUpdate.dirtyChunks == hostUpdate.dirtyChunks);
+    for (int z = -4; z <= 4; ++z) {
+        for (int y = 4; y <= 12; ++y) {
+            for (int x = 11; x <= 19; ++x) {
+                const voxels::Vec3I position{x, y, z};
+                REQUIRE(client.GetSkyLight(position) == host.GetSkyLight(position));
+                REQUIRE(client.GetBlockLight(position) == host.GetBlockLight(position));
+            }
+        }
+    }
+}
+
+TEST_CASE("World.EditRelightingIsBoundedAndReportsOnlyFinalChanges", "[world][lighting][performance]") {
+    const voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    constexpr std::size_t kMaximumDefaultEditVoxels = 9U * 9U * 256U;
+    voxels::World world;
+    for (int chunkZ = -1; chunkZ <= 1; ++chunkZ) {
+        for (int chunkY = 0; chunkY <= 8; ++chunkY) {
+            for (int chunkX = -1; chunkX <= 1; ++chunkX) {
+                world.GetOrCreateChunk({chunkX, chunkY, chunkZ});
+            }
+        }
+    }
+    REQUIRE(world.SetBlock({0, 62, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Stone)));
+    REQUIRE(world.SetBlock({0, 63, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Stone)));
+    static_cast<void>(world.RebuildLightingAround({0, 63, 0}, registry));
+
+    REQUIRE(world.SetBlock({0, 63, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Air)));
+    const voxels::LightingUpdate edit = world.RebuildLightingAround({0, 63, 0}, registry);
+    REQUIRE(edit.examinedVoxels <= kMaximumDefaultEditVoxels);
+    REQUIRE(edit.touchedVoxels > 0);
+    REQUIRE(edit.dirtyChunks.size() <= 2);
+
+    const voxels::LightingUpdate stable = world.RebuildLightingAround({0, 63, 0}, registry);
+    REQUIRE(stable.examinedVoxels <= kMaximumDefaultEditVoxels);
+    REQUIRE(stable.touchedVoxels == 0);
+    REQUIRE(stable.dirtyChunks.empty());
+}
+
+TEST_CASE("CelestialLighting.CyclesDeterministicallyAndAlwaysDayPinsNoon", "[render][lighting]") {
+    using voxels::graphics::EvaluateCelestialLighting;
+    using voxels::graphics::kDayDurationSeconds;
+    const auto noon = EvaluateCelestialLighting(kDayDurationSeconds * 0.25f, false);
+    const auto midnight = EvaluateCelestialLighting(kDayDurationSeconds * 0.75f, false);
+    const auto wrappedNoon = EvaluateCelestialLighting(kDayDurationSeconds * 1.25f, false);
+    const auto alwaysDay = EvaluateCelestialLighting(kDayDurationSeconds * 0.75f, true);
+
+    REQUIRE(glm::length(noon.sunDirection) == Catch::Approx(1.0f));
+    REQUIRE(noon.sunDirection.y > 0.9f);
+    REQUIRE(midnight.sunDirection.y < -0.9f);
+    REQUIRE(glm::length(noon.ambientColor) > glm::length(midnight.ambientColor) * 4.0f);
+    REQUIRE(wrappedNoon.skyColor == noon.skyColor);
+    REQUIRE(alwaysDay.sunDirection == noon.sunDirection);
+    REQUIRE(alwaysDay.skyColor == noon.skyColor);
+    REQUIRE(voxels::graphics::NormalizeDayTime(-1.0f) == Catch::Approx(kDayDurationSeconds - 1.0f));
 }
 
 TEST_CASE("GreedyMeshing.FaceCulling", "[world][geometry]") {

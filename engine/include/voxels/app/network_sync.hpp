@@ -25,7 +25,8 @@ public:
 
     /// Drains completed chunks from the client into `world` and returns the coordinates that
     /// became renderable (whole columns only).
-    [[nodiscard]] std::vector<ChunkCoordinate> Apply(networking::GameClient& client, World& world);
+    [[nodiscard]] std::vector<ChunkCoordinate> Apply(networking::GameClient& client, World& world,
+                                                      const BlockRegistry& registry);
 
     [[nodiscard]] std::size_t AppliedChunkCount() const noexcept { return m_appliedChunks; }
     [[nodiscard]] std::size_t CompletedColumnCount() const noexcept { return m_completedColumns.size(); }

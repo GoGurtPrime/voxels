@@ -14,6 +14,7 @@
 #include "voxels/gameplay/player.hpp"
 #include "voxels/app/save_manager.hpp"
 #include "voxels/core/preferences.hpp"
+#include "voxels/graphics/renderer.hpp"
 #include "voxels/world/chunk.hpp"
 #include "voxels/world/world.hpp"
 #include "voxels/world/world_serialization.hpp"
@@ -27,7 +28,7 @@ TEST_CASE("Save.ChunkEditsTrackDirtyState", "[persistence]") {
 
     chunk.ClearDirty();
     REQUIRE(chunk.SetBlockLight(2, 3, 4, 12));
-    REQUIRE(chunk.IsDirty());
+    REQUIRE_FALSE(chunk.IsDirty());
 
     const auto restored = voxels::Chunk::DeserializeRLE(chunk.SerializeRLE(), {0, 0, 0});
     REQUIRE_FALSE(restored.IsDirty());
@@ -151,5 +152,14 @@ TEST_CASE("Settings.RendererSelectionPersistsAndRespectsPlatformAvailability", "
     REQUIRE(voxels::PreferencesManager::ResolveRendererBackend(voxels::RendererBackend::Direct3D11,
                                                                voxels::PlatformType::MacOS) ==
             voxels::RendererBackend::OpenGL);
+
+    const auto linuxBackends = voxels::graphics::AvailableRendererBackends(voxels::PlatformType::Linux);
+    REQUIRE(linuxBackends.size() == 1);
+    REQUIRE(linuxBackends.front() == voxels::RendererBackend::OpenGL);
+    const auto windowsBackends = voxels::graphics::AvailableRendererBackends(voxels::PlatformType::Windows);
+    REQUIRE_FALSE(windowsBackends.empty());
+#if defined(VOXELS_HAS_DX11)
+    REQUIRE(windowsBackends.front() == voxels::RendererBackend::Direct3D11);
+#endif
     std::filesystem::remove(path);
 }

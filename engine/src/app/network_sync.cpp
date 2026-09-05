@@ -7,7 +7,8 @@
 
 namespace voxels {
 
-std::vector<ChunkCoordinate> RemoteChunkApplier::Apply(networking::GameClient& client, World& world) {
+std::vector<ChunkCoordinate> RemoteChunkApplier::Apply(networking::GameClient& client, World& world,
+                                                       const BlockRegistry& registry) {
     std::vector<ChunkCoordinate> renderable;
     const int chunkSize = static_cast<int>(world.GetChunkSize());
     for (networking::NetworkChunk& networkChunk : client.TakeCompletedChunks()) {
@@ -28,12 +29,9 @@ std::vector<ChunkCoordinate> RemoteChunkApplier::Apply(networking::GameClient& c
         }
         if (!complete) continue;
         m_completedColumns.insert(column);
-        for (int blockZ = 0; blockZ < chunkSize; ++blockZ) {
-            for (int blockX = 0; blockX < chunkSize; ++blockX) {
-                (void)world.RebuildSkyLightAround(
-                    {coordinate.x * chunkSize + blockX, 0, coordinate.z * chunkSize + blockZ});
-            }
-        }
+        const Vec3I columnCenter{coordinate.x * chunkSize + chunkSize / 2, 0,
+                                 coordinate.z * chunkSize + chunkSize / 2};
+        static_cast<void>(world.RebuildLightingAround(columnCenter, registry, chunkSize));
         for (int y = 0; y < kColumnSectionCount; ++y) {
             renderable.push_back({coordinate.x, y, coordinate.z});
         }

@@ -27,6 +27,7 @@ add_library(voxels_engine
     src/platform/platform_services.cpp
     src/rendering.cpp
     src/render/camera.cpp
+    src/render/celestial_lighting.cpp
     src/render/texture_forge.cpp
     src/render/texture_atlas.cpp
     src/render/chunk_mesher.cpp
@@ -72,6 +73,12 @@ add_library(voxels_engine
     src/ui/ui_manager.cpp
     src/ui/imgui_ui_manager.cpp
 )
+
+if(WIN32)
+    target_sources(voxels_engine PRIVATE src/graphics/dx11_renderer.cpp)
+    target_link_libraries(voxels_engine PUBLIC d3d11 dxgi d3dcompiler)
+    target_compile_definitions(voxels_engine PUBLIC VOXELS_HAS_DX11=1)
+endif()
 
 target_include_directories(voxels_engine
     PUBLIC

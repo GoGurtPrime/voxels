@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
     voxels::graphics::GLRenderer renderer;
     if (!renderer.Initialize()) { std::cerr << "Editor failed to initialize OpenGL renderer.\n"; engine.shutdown(); return 1; }
     voxels::ImGuiUIManager ui;
-    if (!ui.Initialize(platform, nullptr)) { std::cerr << "Editor failed to initialize ImGui.\n"; renderer.Shutdown(); engine.shutdown(); return 1; }
+    if (!ui.Initialize(platform, &renderer)) { std::cerr << "Editor failed to initialize ImGui.\n"; renderer.Shutdown(); engine.shutdown(); return 1; }
     ui.SetInputContext(voxels::InputContext::Menu);
     const std::filesystem::path layoutPath = voxels::Paths::UserDataDir() / "editor_layout.ini";
     ImGui::LoadIniSettingsFromDisk(layoutPath.string().c_str());

@@ -26,7 +26,7 @@
 #include "voxels/app/network_sync.hpp"
 #include "voxels/app/save_manager.hpp"
 #include "voxels/core/job_system.hpp"
-#include "voxels/graphics/gl_renderer.hpp"
+#include "voxels/graphics/renderer.hpp"
 #include "voxels/input/input_manager.hpp"
 #include "voxels/platform/platform_services.hpp"
 #include "voxels/render/chunk_renderer.hpp"
@@ -68,7 +68,7 @@ namespace networking { class GameServer; }
 /// current Update pass finishes.
 struct AppContext {
     IPlatform* platform = nullptr;
-    graphics::GLRenderer* renderer = nullptr;
+    graphics::IGraphicsRenderer* renderer = nullptr;
     ImGuiUIManager* ui = nullptr;
     InputManager* input = nullptr;
     BlockRegistry* blockRegistry = nullptr;
@@ -349,6 +349,7 @@ public:
 
 private:
     GamePreferences m_pending{};
+    RendererBackend m_activeRenderer = RendererBackend::OpenGL;
 };
 
 /// Dismissible overlay listing the core keybinds. Shown once automatically on first launch
@@ -379,7 +380,7 @@ private:
 
 /// Injects the module-wide renderer that state `Render()` implementations draw through;
 /// the app sets it after GL init and resets it to nullptr before renderer teardown.
-void SetGlobalRenderer(voxels::graphics::GLRenderer* renderer) noexcept;
+void SetGlobalRenderer(voxels::graphics::IGraphicsRenderer* renderer) noexcept;
 
 /// Owns exactly one active `IAppState` (plus an overlay stack) and guarantees `OnExit`/
 /// `OnEnter` are called in that order on every transition. Keeps a chronological log of

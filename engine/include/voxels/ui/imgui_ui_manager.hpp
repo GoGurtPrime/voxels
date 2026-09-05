@@ -39,7 +39,7 @@ struct UIDebugMetrics {
 
 class ImGuiUIManager final : public IUIManager {
 public:
-    bool Initialize(IPlatform* platform, IRenderer* renderer) override;
+    bool Initialize(IPlatform* platform, graphics::IGraphicsRenderer* renderer) override;
     void Shutdown() override;
     void BeginFrame() override;
     void EndFrame() override;
@@ -76,6 +76,7 @@ private:
     bool m_discardNextMouseDelta = false;
     bool m_debugOverlayVisible = false;
     bool m_fontWarningReported = false;
+    RendererBackend m_rendererBackend = RendererBackend::OpenGL;
 };
 
 void ApplyVoxelsTheme();

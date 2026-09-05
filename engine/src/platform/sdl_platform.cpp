@@ -36,15 +36,19 @@ bool SDLPlatform::Initialize(const WindowConfig& config) {
         return false;
     }
 
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-    SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
+    m_graphicsApi = config.graphicsApi;
+    if (m_graphicsApi == WindowGraphicsApi::OpenGL) {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
+    }
 
-    Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+    Uint32 flags = SDL_WINDOW_RESIZABLE;
+    if (m_graphicsApi == WindowGraphicsApi::OpenGL) flags |= SDL_WINDOW_OPENGL;
     if (config.fullscreen) {
         flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
     }
@@ -56,30 +60,17 @@ bool SDLPlatform::Initialize(const WindowConfig& config) {
         return false;
     }
 
-    m_context = SDL_GL_CreateContext(m_window);
-    if (m_context == nullptr) {
-        SDL_DestroyWindow(m_window);
-        m_window = nullptr;
-        SDL_Quit();
-        return false;
-    }
-
-    if (SDL_GL_MakeCurrent(m_window, m_context) != 0) {
-        SDL_GL_DeleteContext(m_context);
-        m_context = nullptr;
-        SDL_DestroyWindow(m_window);
-        m_window = nullptr;
-        SDL_Quit();
-        return false;
-    }
-
-    if (!gladLoadGLLoader(static_cast<GLADloadproc>(SDL_GL_GetProcAddress))) {
-        SDL_GL_DeleteContext(m_context);
-        m_context = nullptr;
-        SDL_DestroyWindow(m_window);
-        m_window = nullptr;
-        SDL_Quit();
-        return false;
+    if (m_graphicsApi == WindowGraphicsApi::OpenGL) {
+        m_context = SDL_GL_CreateContext(m_window);
+        if (m_context == nullptr || SDL_GL_MakeCurrent(m_window, m_context) != 0 ||
+            !gladLoadGLLoader(static_cast<GLADloadproc>(SDL_GL_GetProcAddress))) {
+            if (m_context != nullptr) SDL_GL_DeleteContext(m_context);
+            m_context = nullptr;
+            SDL_DestroyWindow(m_window);
+            m_window = nullptr;
+            SDL_Quit();
+            return false;
+        }
     }
 
     SDL_ShowWindow(m_window);
@@ -237,7 +228,7 @@ void SDLPlatform::PollEvents(IPlatformEventListener* listener) {
 }
 
 void SDLPlatform::SwapBuffers() {
-    if (m_window != nullptr) {
+    if (m_window != nullptr && m_graphicsApi == WindowGraphicsApi::OpenGL) {
         SDL_GL_SwapWindow(m_window);
     }
 }
@@ -278,7 +269,7 @@ void SDLPlatform::SetCursorVisible(bool visible) {
 
 void SDLPlatform::SetVSync(bool enabled) {
     m_vsync = enabled;
-    if (m_window != nullptr) {
+    if (m_window != nullptr && m_graphicsApi == WindowGraphicsApi::OpenGL) {
         SDL_GL_SetSwapInterval(enabled ? 1 : 0);
     }
 }
@@ -286,8 +277,10 @@ void SDLPlatform::SetVSync(bool enabled) {
 std::pair<int, int> SDLPlatform::GetDrawableSize() const {
     int width = m_width;
     int height = m_height;
-    if (m_window != nullptr) {
+    if (m_window != nullptr && m_graphicsApi == WindowGraphicsApi::OpenGL) {
         SDL_GL_GetDrawableSize(m_window, &width, &height);
+    } else if (m_window != nullptr) {
+        SDL_GetWindowSize(m_window, &width, &height);
     }
     return {width, height};
 }

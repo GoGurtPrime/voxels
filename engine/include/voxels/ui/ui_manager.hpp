@@ -36,7 +36,7 @@ public:
     ~IUIManager() override = default;
     /// Binds the manager to a platform and renderer (both borrowed); false on failure.
     /// Must be called before any frame methods.
-    virtual bool Initialize(IPlatform* platform, IRenderer* renderer) = 0;
+    virtual bool Initialize(IPlatform* platform, graphics::IGraphicsRenderer* renderer) = 0;
     /// Releases backend resources; safe to call more than once.
     virtual void Shutdown() = 0;
     virtual void BeginFrame() = 0;
@@ -53,7 +53,7 @@ class NullUIManager final : public IUIManager {
 public:
     NullUIManager() = default;
 
-    bool Initialize(IPlatform* platform, IRenderer* renderer) override;
+    bool Initialize(IPlatform* platform, graphics::IGraphicsRenderer* renderer) override;
     void Shutdown() override;
     void BeginFrame() override;
     void EndFrame() override;
@@ -65,7 +65,7 @@ public:
 
 private:
     IPlatform* m_platform = nullptr;
-    IRenderer* m_renderer = nullptr;
+    graphics::IGraphicsRenderer* m_renderer = nullptr;
     UIDisplayMetrics m_metrics;
     float m_scale = 1.0f;
     bool m_initialized = false;

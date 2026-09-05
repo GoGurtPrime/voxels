@@ -14,6 +14,8 @@
 
 namespace voxels {
 
+inline constexpr float kWorldDayDurationSeconds = 20.0f * 60.0f;
+
 struct WorldOptions {
     std::uint64_t seed = 0;
     std::uint32_t generatorVersion = 2;

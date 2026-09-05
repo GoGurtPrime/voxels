@@ -16,6 +16,13 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <backends/imgui_impl_sdl2.h>
 #include <imgui.h>
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <backends/imgui_impl_dx11.h>
+#include <d3d11.h>
+#endif
 
 #include "voxels/core/paths.hpp"
 
@@ -56,17 +63,31 @@ void ApplyVoxelsTheme() {
     style.Colors[ImGuiCol_Text] = {0.93f, 0.91f, 0.84f, 1.0f};
 }
 
-bool ImGuiUIManager::Initialize(IPlatform* platform, IRenderer*) {
+bool ImGuiUIManager::Initialize(IPlatform* platform, graphics::IGraphicsRenderer* renderer) {
     if (platform == nullptr || platform->GetContext().name != "SDL2") return false;
+    if (renderer == nullptr) return false;
     m_platform = platform;
+    m_rendererBackend = renderer->GetBackend();
     const auto [width, height] = platform->GetDrawableSize();
     m_metrics.windowWidth = width;
     m_metrics.windowHeight = height;
     m_scale = ComputeUIScale(m_metrics);
     ImGui::CreateContext();
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    SDL_Window* window = SDL_GL_GetCurrentWindow();
-    if (window == nullptr || !ImGui_ImplSDL2_InitForOpenGL(window, SDL_GL_GetCurrentContext()) || !ImGui_ImplOpenGL3_Init("#version 330")) {
+    auto* window = static_cast<SDL_Window*>(platform->GetNativeWindowHandle());
+    bool backendInitialized = false;
+    if (window != nullptr && m_rendererBackend == RendererBackend::OpenGL) {
+        backendInitialized = ImGui_ImplSDL2_InitForOpenGL(window, SDL_GL_GetCurrentContext()) &&
+                             ImGui_ImplOpenGL3_Init("#version 330");
+    }
+#if defined(_WIN32)
+    if (window != nullptr && m_rendererBackend == RendererBackend::Direct3D11) {
+        backendInitialized = ImGui_ImplSDL2_InitForD3D(window) &&
+            ImGui_ImplDX11_Init(static_cast<ID3D11Device*>(renderer->GetNativeDevice()),
+                                static_cast<ID3D11DeviceContext*>(renderer->GetNativeContext()));
+    }
+#endif
+    if (!backendInitialized) {
         Shutdown();
         return false;
     }
@@ -78,7 +99,10 @@ bool ImGuiUIManager::Initialize(IPlatform* platform, IRenderer*) {
 
 void ImGuiUIManager::Shutdown() {
     if (ImGui::GetCurrentContext() != nullptr) {
-        ImGui_ImplOpenGL3_Shutdown();
+    if (m_rendererBackend == RendererBackend::OpenGL) ImGui_ImplOpenGL3_Shutdown();
+#if defined(_WIN32)
+    if (m_rendererBackend == RendererBackend::Direct3D11) ImGui_ImplDX11_Shutdown();
+#endif
         ImGui_ImplSDL2_Shutdown();
         ImGui::DestroyContext();
     }
@@ -89,7 +113,10 @@ void ImGuiUIManager::Shutdown() {
 
 void ImGuiUIManager::BeginFrame() {
     if (!m_initialized || m_frameActive) return;
-    ImGui_ImplOpenGL3_NewFrame();
+    if (m_rendererBackend == RendererBackend::OpenGL) ImGui_ImplOpenGL3_NewFrame();
+#if defined(_WIN32)
+    if (m_rendererBackend == RendererBackend::Direct3D11) ImGui_ImplDX11_NewFrame();
+#endif
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
     m_frameActive = true;
@@ -101,7 +128,10 @@ void ImGuiUIManager::EndFrame() {
     RenderErrorModal();
     RenderToasts();
     ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    if (m_rendererBackend == RendererBackend::OpenGL) ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+#if defined(_WIN32)
+    if (m_rendererBackend == RendererBackend::Direct3D11) ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+#endif
     m_frameActive = false;
 }
 

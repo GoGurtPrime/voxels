@@ -169,6 +169,7 @@ std::vector<std::uint8_t> SerializeConnectAccept(const ConnectAccept& accept) {
                                                              (accept.world.permadeath ? 8u : 0u));
         bytes.push_back(flags);
         WriteVec3(bytes, accept.world.spawnPosition);
+        WriteFloat(bytes, accept.world.dayTimeSeconds);
     }
     return bytes;
 }
@@ -188,7 +189,10 @@ bool DeserializeConnectAccept(std::span<const std::uint8_t> bytes, ConnectAccept
     if (!ReadUnsigned(bytes, offset, accept.world.seed) ||
         !ReadUnsigned(bytes, offset, accept.world.generatorVersion) ||
         !ReadUnsigned(bytes, offset, flags) || (flags & ~0x0Fu) != 0 ||
-        !ReadVec3(bytes, offset, accept.world.spawnPosition) || offset != bytes.size()) {
+        !ReadVec3(bytes, offset, accept.world.spawnPosition) ||
+        !ReadFloat(bytes, offset, accept.world.dayTimeSeconds) ||
+        !std::isfinite(accept.world.dayTimeSeconds) || accept.world.dayTimeSeconds < 0.0f ||
+        accept.world.dayTimeSeconds >= kWorldDayDurationSeconds || offset != bytes.size()) {
         return false;
     }
     accept.world.sandboxMode = (flags & 1u) != 0;
@@ -196,6 +200,20 @@ bool DeserializeConnectAccept(std::span<const std::uint8_t> bytes, ConnectAccept
     accept.world.alwaysSunny = (flags & 4u) != 0;
     accept.world.permadeath = (flags & 8u) != 0;
     return true;
+}
+
+std::vector<std::uint8_t> SerializeWorldTime(float dayTimeSeconds) {
+    if (!std::isfinite(dayTimeSeconds) || dayTimeSeconds < 0.0f ||
+        dayTimeSeconds >= kWorldDayDurationSeconds) return {};
+    std::vector<std::uint8_t> bytes;
+    WriteFloat(bytes, dayTimeSeconds);
+    return bytes;
+}
+
+bool DeserializeWorldTime(std::span<const std::uint8_t> bytes, float& dayTimeSeconds) {
+    std::size_t offset = 0;
+    return ReadFloat(bytes, offset, dayTimeSeconds) && std::isfinite(dayTimeSeconds) &&
+           dayTimeSeconds >= 0.0f && dayTimeSeconds < kWorldDayDurationSeconds && offset == bytes.size();
 }
 
 std::vector<std::uint8_t> SerializeChunkFragment(const ChunkFragment& fragment) {

@@ -18,12 +18,13 @@
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 
+#include "voxels/graphics/renderer.hpp"
 #include "voxels/render/camera.hpp"
 #include "voxels/render/texture_atlas.hpp"
 
 namespace voxels::graphics {
 
-class GLRenderer {
+class GLRenderer final : public IGraphicsRenderer {
 public:
     GLRenderer() = default;
     ~GLRenderer();
@@ -32,26 +33,31 @@ public:
     /// logs driver info, builds a default procedural atlas if none was injected via
     /// SetTextureAtlas, and applies baseline depth/cull/blend state. Idempotent.
     [[nodiscard]] bool Initialize();
+    [[nodiscard]] bool Initialize(IPlatform& platform, TextureAtlas& atlas, bool vSync) override;
     /// Releases only the internally owned default atlas; a borrowed atlas is untouched.
-    void Shutdown();
+    void Shutdown() override;
     [[nodiscard]] bool IsInitialized() const noexcept { return m_initialized; }
 
     /// Binds the default framebuffer, clears colour+depth, and re-applies render state. Positive
     /// dimensions resize the viewport; zero keeps the current one. GL main-thread-only (ADR-008).
-    bool BeginFrame(const std::array<float, 4>& clearColor = {0.58f, 0.72f, 0.88f, 1.0f}, int viewportWidth = 0, int viewportHeight = 0);
+    bool BeginFrame(const std::array<float, 4>& clearColor = {0.58f, 0.72f, 0.88f, 1.0f}) override;
+    bool BeginFrame(const std::array<float, 4>& clearColor, int viewportWidth, int viewportHeight);
     /// Flushes GL; the buffer swap itself belongs to the platform layer.
-    bool EndFrame();
+    bool EndFrame() override;
+    [[nodiscard]] bool Present() override;
 
     /// Viewport in pixels; ignored unless both dimensions are positive.
-    void SetViewport(int width, int height);
-    void SetCamera(const Camera& camera) { m_camera = camera; }
-    [[nodiscard]] const Camera& GetCamera() const noexcept { return m_camera; }
+    void SetViewport(int width, int height) override;
+    void SetCamera(const Camera& camera) override { m_camera = camera; }
+    [[nodiscard]] const Camera& GetCamera() const noexcept override { return m_camera; }
+    [[nodiscard]] RendererBackend GetBackend() const noexcept override { return RendererBackend::OpenGL; }
+    [[nodiscard]] std::string_view GetName() const noexcept override { return "OpenGL 3.3 Core"; }
     /// Borrowed, not owned; call before Initialize() to suppress the default procedural atlas.
     void SetTextureAtlas(TextureAtlas* atlas) { m_atlas = atlas; }
     [[nodiscard]] TextureAtlas* GetTextureAtlas() const noexcept { return m_atlas; }
     /// Reads back the current framebuffer (flipped to top-down) and writes a PNG; false when
     /// uninitialized or the file write fails.
-    [[nodiscard]] bool CaptureScreenshot(const std::filesystem::path& path) const;
+    [[nodiscard]] bool CaptureScreenshot(const std::filesystem::path& path) const override;
 
 private:
     void CreateDefaultAtlas();
@@ -63,6 +69,7 @@ private:
     TextureAtlas* m_atlas = nullptr;
     std::unique_ptr<TextureAtlas> m_ownedAtlas;
     Camera m_camera{};
+    IPlatform* m_platform = nullptr;
 };
 
 } // namespace voxels::graphics
