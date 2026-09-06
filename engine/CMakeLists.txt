@@ -78,6 +78,11 @@ add_library(voxels_engine
     src/ui/web_ui_compositor.cpp
 )
 
+if(VOXELS_ENABLE_WEB_UI)
+    target_sources(voxels_engine PRIVATE src/ui/web_ui_manager.cpp)
+    target_link_libraries(voxels_engine PUBLIC voxels_cef)
+endif()
+
 if(WIN32)
     target_sources(voxels_engine PRIVATE src/graphics/dx11_renderer.cpp)
     target_link_libraries(voxels_engine PUBLIC d3d11 dxgi d3dcompiler)

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "entry_html": "browser/index.html",
-  "source_revision": "0f25489ba59b665c8ed5aa70d99c0f98b3118dd7",
+  "source_revision": "adbd3b1efa03e1bc477ab97241d62819ac12238a",
   "source_sha256": "42ed6ef3c5e2209852c6efacaf7bd978af8e7123313c06ac46259b40026c6e9e",
   "assets": {
     "browser/assets/index-Bwf2cp2_.js": {

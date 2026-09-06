@@ -48,10 +48,12 @@ void CenterNextWindow() {
     ImGui::SetNextWindowPos({display.x * 0.5f, display.y * 0.5f}, ImGuiCond_Always, {0.5f, 0.5f});
 }
 
-void BeginMenuFrame(AppContext* context) {
+bool BeginMenuFrame(AppContext* context) {
+    if (context == nullptr || context->ui == nullptr || !context->ui->UsesNativeRoutePresentation()) return false;
     if (context != nullptr && context->renderer != nullptr) {
         static_cast<void>(context->renderer->BeginFrame({0.12f, 0.16f, 0.19f, 1.0f}));
     }
+    return true;
 }
 
 void SetResponsivePanelSize(float preferredWidth, float preferredHeight) {
@@ -103,7 +105,7 @@ void MainMenuState::OnEnter() {
 
 void MainMenuState::Render() {
     if (m_context == nullptr || m_context->ui == nullptr) return;
-    BeginMenuFrame(m_context);
+    if (!BeginMenuFrame(m_context)) return;
     CenterNextWindow();
     ImGui::SetNextWindowSize({390.0f, 0.0f}, ImGuiCond_Always);
     ImGui::Begin("Voxel World", nullptr, kMenuWindowFlags);
@@ -135,7 +137,7 @@ void WorldSelectState::Update(double) {}
 
 void WorldSelectState::Render() {
     if (m_context == nullptr || m_context->saveManager == nullptr) return;
-    BeginMenuFrame(m_context);
+    if (!BeginMenuFrame(m_context)) return;
     CenterNextWindow();
     ImGui::SetNextWindowSize({560.0f, 460.0f}, ImGuiCond_Always);
     ImGui::Begin("Select World", nullptr, kMenuWindowFlags);
@@ -273,7 +275,7 @@ void JoinGameState::Update(double) {}
 
 void JoinGameState::Render() {
     if (m_context == nullptr) return;
-    BeginMenuFrame(m_context);
+    if (!BeginMenuFrame(m_context)) return;
     CenterNextWindow();
     ImGui::SetNextWindowSize({480.0f, 0.0f}, ImGuiCond_Always);
     ImGui::Begin("Join Game", nullptr, kMenuWindowFlags);
