@@ -38,6 +38,25 @@ The following are **defects**, not acceptable intermediate states. If you create
 
 ---
 
+## 🏗️ 2.5 Build System Invariants (highest priority)
+
+The build system is **fixed infrastructure**. You may extend it (add sources, targets, options); you may **not** relocate, fork, or replace it. Violating any rule below is a defect, independent of whether your feature works.
+
+1. **One build directory, always: `build/`.** This is the single canonical CMake binary directory for every work item, forever.
+   - **NEVER create a per-work-item, per-feature, or "clean" build directory** (`build_workitemNN/`, `build_steam/`, `build2/`, `out/`, etc.). If one exists from a past mistake, delete it; do not add to the mess.
+   - Configure: `cmake -S . -B build -DVOXELS_BUILD_TESTS=ON`. Build: `cmake --build build --config Debug`. Test: `ctest --test-dir build -C Debug --output-on-failure`.
+   - Need a different option (e.g. `-DVOXELS_ENABLE_STEAM=ON`)? **Reconfigure the same `build/` dir** by passing the flag to `cmake -S . -B build ...`. Do not spawn a parallel tree "to keep the default clean" — CMake caches are reusable and reconfiguration is cheap.
+   - The only sanctioned exception is a throwaway sanity check you delete before you finish. It is never committed, never referenced from `tasks.json`/`launch.json`, and never left behind.
+
+2. **The default configuration must always stay green.** `cmake -S . -B build` with **no extra flags** must configure, build, and pass `ctest` at all times — before you start and after you finish.
+   - A feature that is incomplete, experimental, or depends on an SDK/asset the operator has not staged goes **behind an `option(... OFF)` that defaults OFF** until it fully works. It may never make the default build fail to configure or compile.
+   - `message(FATAL_ERROR ...)` on a missing optional dependency is only allowed **inside a branch guarded by that feature's OFF-by-default option**. A required, always-on dependency (SDL2 per ADR-002) fetches/builds itself; it never hard-fails the default configure.
+   - If landing your work would red the default build, you are not done — either finish it or gate it behind an OFF option. Never commit a red default baseline.
+
+3. **Do not edit the build by shell.** Change `CMakeLists.txt`/`*.cmake` files with edits, not by piping into them. Keep `tasks.json`/`launch.json` pointed at `build/`.
+
+---
+
 ## 📜 3. Code Quality & Standards
 
 * **Standard:** Modern C++20 — `std::concepts`, `std::filesystem`, `std::span`, `std::optional`, `std::variant`, `std::jthread`, structured bindings, RAII throughout.
@@ -86,6 +105,19 @@ Every new `.hpp`/`.cpp` starts with:
 ---
 
 ## 🎯 4. Definition of Done
+
+### 4.0 Checkpoints vs. Completion — read this first
+
+Two different bars exist. Do not confuse them; conflating them is what previously caused agents to abandon work uncommitted.
+
+- **A green checkpoint** = the default `build/` compiles and `ctest` is 100% green. This is the bar for **committing and pushing** (§8). You will hit many green checkpoints inside one work item, and you **must** commit each coherent one. Green does **not** mean the work item is finished.
+- **Work item completion** = the full checklist in §4.1 is true. This is the bar for **claiming the item done** in your report.
+
+**The commit bar is lower than the completion bar, on purpose.** You commit continuously as you reach green checkpoints; you claim completion only when §4.1 is fully satisfied. There is no state in which "the item isn't fully done yet" justifies leaving verified, building progress uncommitted. Ending a session with a green tree full of uncommitted work is itself a defect (§7, §8).
+
+If you cannot reach full completion, you still: (1) commit and push every green checkpoint, (2) keep the default build green, and (3) report **BLOCKED** with the specific reason and the exact operator action needed (§7). "Blocked, progress committed, here is precisely what unblocks it" is a success. "Here is a list of things I didn't do, with the tree left dirty and uncommitted" is a failure.
+
+### 4.1 Completion checklist
 
 A work item is complete only when **every** box is true. Reproduce this checklist in your completion report with evidence.
 
@@ -149,7 +181,19 @@ You will frequently need art, audio, fonts, or proprietary SDKs. The protocol is
 4. **Verify before you assume.** Read the current file contents and CMake configuration before editing. Do not trust prior documentation over the code.
 5. **Investigate before rewriting.** Use `git log --oneline -- <path>`, `git log -p -- <path>`, `git blame <path>`, and `git log --all --grep=<keyword>` to recover prior reasoning. Agent sessions share no memory; the history is the institutional record.
 6. **Prefer the boring solution.** One backend that works beats four that don't. Ship the simple version, profile, then optimize.
-7. **Report honestly.** If something is unfinished, broken, or unverifiable in your environment, say so plainly in the completion report. An accurate "this part is not done" is far more valuable than an optimistic summary — the last thirteen work items were all reported as successes.
+7. **Commit every green checkpoint as you go.** Do not save all committing for the end. Each time the default `build/` is green and you have a coherent unit of progress, commit and push it (§8). This is how the institutional record survives a session that runs out of time or hits a wall. A session that produced real, building progress must never end with that progress uncommitted.
+8. **Decompose until each slice is committable.** If a work item cannot reach a green checkpoint in one focused pass (large SDK integration, cross-cutting migration), split it into slices that each compile and test green behind an OFF-by-default option if needed. Land the seam first (interface + OFF flag + tests), then fill it in. Never let "it's all one big change" justify a red tree.
+9. **When genuinely blocked, follow the BLOCKED protocol — do not return prose excuses.** You are blocked only when progress requires something you cannot obtain (an operator-supplied SDK/archive, a credential, a decision only the operator can make) — not when the work is merely hard. When blocked:
+   1. Commit and push all green progress; gate anything incomplete behind an OFF-by-default option so the default build stays green.
+   2. Report status **BLOCKED** with: the precise blocker, what you tried and observed, and the single concrete action the operator must take to unblock you (exact file/SDK/version/command).
+   3. Stop. Do not fabricate completion, do not weaken scope silently, and do not leave a dirty tree.
+   "Blocked with committed progress and a precise ask" is an acceptable outcome. An uncommitted tree plus a paragraph of reasons why it isn't done is a **failed** outcome.
+10. **Report honestly.** If something is unfinished, broken, or unverifiable in your environment, say so plainly in the completion report. An accurate "this part is not done" is far more valuable than an optimistic summary — the last thirteen work items were all reported as successes.
+
+### Known Gaps — strict definition (anti-abuse)
+
+The "Known Gaps / Follow-Ups" section of your report is **not** a place to park work you simply did not finish. A legitimate known gap is work that a **future work item explicitly owns** or that is **outside the current item's declared scope**. If a capability is in your item's scope and you did not deliver it, it is **not** a "gap" — the item is either not complete (keep working) or **BLOCKED** (§7.9). Listing in-scope, unblocked work as a "known gap" to justify stopping is prohibited and is treated as a false completion claim.
+
 
 ### Completion Report Format
 
@@ -158,6 +202,9 @@ End every work item with:
 ```
 ## Work Item <N> — <Title>
 
+### Status
+COMPLETE | BLOCKED — <if BLOCKED, the one concrete operator action that unblocks it>
+
 ### What Changed
 <bullets: files/subsystems, and what each now does>
 
@@ -165,15 +212,16 @@ End every work item with:
 <concrete, observable behavior in the running app>
 
 ### Verification
-- Build: <result>
+- Build: <result — must be the default `build/` config, green>
 - Tests: <count passed / failed, command used>
 - Smoke run: <what you launched, what you observed — or explicitly why you could not>
+- Commits: <the checkpoint commits you pushed for this item>
 
 ### Deviations From ARCHITECTURE.md
 <any ADR deviation and why, or "none">
 
 ### Known Gaps / Follow-Ups
-<anything left, and which future work item owns it>
+<ONLY work owned by a future work item or outside this item's declared scope, each with the item that owns it. In-scope unfinished work does NOT go here — see §7 Known Gaps strict definition.>
 
 ### Assets & Actions Needed From You
 <explicit human tasks: files to supply with exact formats, SDKs/tools to install, or "none">
@@ -184,7 +232,7 @@ End every work item with:
 ## 🌳 8. Git Workflow
 
 1. **Trunk-based.** Work directly on `master`. Do not create, switch, or merge branches unless the operator explicitly asks.
-2. **Commit only on green.** The verification loop (§5) must fully pass before committing. Never commit a known-broken build.
+2. **Commit on every green checkpoint — not only at completion.** "Green" means the default `build/` compiles and `ctest` is 100% green (§4.0), which happens many times within one work item. Commit and push each coherent green checkpoint as you reach it. Never commit a red/broken build; equally, never *withhold* a green commit because the work item as a whole is not finished yet. Leaving verified, building progress uncommitted at end of session is a defect.
 3. **Split commits logically.** Not one giant commit per work item. Natural boundaries:
    * one commit per new module/subsystem,
    * a separate commit for its tests,

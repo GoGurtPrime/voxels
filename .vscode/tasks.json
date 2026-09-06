@@ -9,8 +9,8 @@
         "-S",
         ".",
         "-B",
-        "./build_workitem19",
-        "-DCMAKE_BUILD_TYPE=Debug"
+        "./build",
+        "-DVOXELS_BUILD_TESTS=ON"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -23,7 +23,7 @@
       "command": "cmake",
       "args": [
         "--build",
-        "./build_workitem19",
+        "./build",
         "--config",
         "Debug"
       ],
