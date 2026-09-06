@@ -127,7 +127,10 @@ void InGameState::OnEnter() {
         RenderStateLog().Info("Remote session started: playing on the host's world.");
     }
 
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Gameplay);
+    if (m_context != nullptr && m_context->ui != nullptr) {
+        m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Gameplay);
+        m_context->ui->Publish({.route = PlayerUIRoute::Hud, .revision = 1, .title = "HUD"});
+    }
     else if (m_platform != nullptr) m_platform->SetRelativeMouseMode(true);
 
     if (m_registry != nullptr && m_atlas != nullptr) {

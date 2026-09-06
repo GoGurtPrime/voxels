@@ -349,17 +349,21 @@ flowchart TD
 flowchart TD
     SDL["SDL2 events: key, mouse, wheel, controller"] --> PLATE["IPlatform.PollEvents"]
     PLATE --> LISTEN["Dispatch to IPlatformEventListener list"]
-    LISTEN --> UIL["ImGuiUIManager<br/>consumes events when a menu is focused"]
+    LISTEN --> UIL["IPlayerUI backend<br/>ImGui adapter now; web backend later"]
     LISTEN --> IM["InputManager"]
     IM --> MAP["Action map from Preferences<br/>MoveForward, Jump, Break, Place, Hotbar1-9, Pause"]
-    MAP --> CTX{"Active input context"}
-    CTX -- Menu --> UIACT["UI navigation, cursor visible, mouse released"]
+    MAP --> CTX{"PlayerUIInputPolicy"}
+    CTX -- Overlay or TextEntry --> UIACT["UI navigation, cursor visible, gameplay events blocked"]
     CTX -- Gameplay --> GACT["PlayerIntent, cursor hidden, relative mouse mode"]
     GACT --> SIMSTEP["Fixed simulation step"]
     UIACT --> SCREEN["Active state screen"]
 ```
 
-Mouse capture is owned by the state machine: `InGame` enters relative-mouse mode on entry and releases it on exit or focus loss. Alt-Tab must never leave the cursor trapped.
+`IPlayerUI` accepts immutable route snapshots and emits bounded, versioned envelopes containing only
+`{version, kind, requestId, payload}`. The native adapter consumes one mouse transition delta when
+returning to `Gameplay`; `Overlay` and `TextEntry` block every gameplay input event. Mouse capture
+is owned by this policy: `Gameplay` enables relative mode and hides the cursor, while the other
+policies release it. Alt-Tab must never leave the cursor trapped.
 
 ---
 

@@ -30,6 +30,7 @@
 #include <nlohmann/json.hpp>
 
 #include "voxels/app/cli_parser.hpp"
+#include "voxels/app/player_ui_dispatcher.hpp"
 #include "voxels/app/state_machine.hpp"
 #include "voxels/assets/texture_loader.hpp"
 #include "voxels/audio/audio_engine.hpp"
@@ -75,7 +76,7 @@ voxels::Logger& BootLog() {
 class WindowEventListener final : public voxels::IPlatformEventListener {
 public:
     WindowEventListener(bool& runningFlag, voxels::graphics::IGraphicsRenderer& renderer, voxels::InputManager& inputManager,
-                        voxels::ImGuiUIManager& uiManager)
+                        voxels::IPlayerUI& uiManager)
         : m_running(runningFlag), m_renderer(renderer), m_inputManager(inputManager), m_uiManager(uiManager) {}
 
     void OnPlatformEvent(const voxels::PlatformEvent& event) override {
@@ -89,22 +90,22 @@ public:
                 m_uiManager.ToggleDebugOverlay();
                 return;
             }
-            if (m_uiManager.WantsKeyboardCapture()) return;
+            if (m_uiManager.CapturesKeyboard()) return;
             m_inputManager.InjectKeyEvent(static_cast<int>(event.keyCode), true);
         } else if (event.type == voxels::PlatformEventType::KeyUp) {
-            if (m_uiManager.WantsKeyboardCapture()) return;
+            if (m_uiManager.CapturesKeyboard()) return;
             m_inputManager.InjectKeyEvent(static_cast<int>(event.keyCode), false);
         } else if (event.type == voxels::PlatformEventType::MouseMotion) {
-            if (m_uiManager.ConsumeFirstMouseDelta() || m_uiManager.WantsMouseCapture()) return;
+            if (m_uiManager.ConsumeTransitionMouseDelta() || m_uiManager.CapturesMouse()) return;
             m_inputManager.InjectMouseDelta(static_cast<float>(event.relativeX), static_cast<float>(event.relativeY));
         } else if (event.type == voxels::PlatformEventType::MouseButtonDown) {
-            if (m_uiManager.WantsMouseCapture()) return;
+            if (m_uiManager.CapturesMouse()) return;
             m_inputManager.InjectMouseButtonEvent(static_cast<int>(event.button), true);
         } else if (event.type == voxels::PlatformEventType::MouseButtonUp) {
-            if (m_uiManager.WantsMouseCapture()) return;
+            if (m_uiManager.CapturesMouse()) return;
             m_inputManager.InjectMouseButtonEvent(static_cast<int>(event.button), false);
         } else if (event.type == voxels::PlatformEventType::MouseWheel) {
-            if (m_uiManager.WantsMouseCapture()) return;
+            if (m_uiManager.CapturesMouse()) return;
             m_inputManager.InjectMouseWheel(event.wheelY);
         }
     }
@@ -113,7 +114,7 @@ private:
     bool& m_running;
     voxels::graphics::IGraphicsRenderer& m_renderer;
     voxels::InputManager& m_inputManager;
-    voxels::ImGuiUIManager& m_uiManager;
+    voxels::IPlayerUI& m_uiManager;
 };
 
 constexpr double kFixedStepSeconds = 1.0 / 60.0;
@@ -169,6 +170,24 @@ voxels::AudioCategory AudioCategoryFromString(const std::string& category) {
     if (category == "ambience") return voxels::AudioCategory::Ambience;
     if (category == "ui") return voxels::AudioCategory::Ui;
     return voxels::AudioCategory::Sfx;
+}
+
+voxels::PlayerUIRoute PlayerUIRouteForState(const voxels::IAppState* state) {
+    if (state == nullptr) return voxels::PlayerUIRoute::FatalError;
+    switch (state->GetId()) {
+        case voxels::AppStateId::MainMenu: return voxels::PlayerUIRoute::MainMenu;
+        case voxels::AppStateId::WorldSelect: return voxels::PlayerUIRoute::SaveSelection;
+        case voxels::AppStateId::WorldCreation: return voxels::PlayerUIRoute::WorldCreation;
+        case voxels::AppStateId::LoadingScreen: case voxels::AppStateId::JoinLoading: return voxels::PlayerUIRoute::Loading;
+        case voxels::AppStateId::JoinGame: return voxels::PlayerUIRoute::Join;
+        case voxels::AppStateId::InGame: return voxels::PlayerUIRoute::Hud;
+        case voxels::AppStateId::PauseMenu: return voxels::PlayerUIRoute::Pause;
+        case voxels::AppStateId::Settings: return voxels::PlayerUIRoute::Settings;
+        case voxels::AppStateId::ControlsCard: return voxels::PlayerUIRoute::ControlsCard;
+        case voxels::AppStateId::Error: return voxels::PlayerUIRoute::Error;
+        case voxels::AppStateId::Boot: return voxels::PlayerUIRoute::FatalError;
+    }
+    return voxels::PlayerUIRoute::FatalError;
 }
 
 std::unordered_map<std::string, voxels::SoundHandle> LoadSoundBank(voxels::AudioEngine& audio,
@@ -550,6 +569,7 @@ int main(int argc, char** argv) {
     }
 
     voxels::FrameAccumulator frameAccumulator;
+    const voxels::PlayerUIActionDispatcher playerUIActionDispatcher;
     auto lastTime = std::chrono::steady_clock::now();
     int frameCount = 0;
     const int maxFrames = options.maxFrames > 0 ? options.maxFrames : std::numeric_limits<int>::max();
@@ -557,6 +577,9 @@ int main(int argc, char** argv) {
     while (running && frameCount < maxFrames) {
         if (platform != nullptr) {
             platform->PollEvents(nullptr);
+        }
+        if (const auto action = uiManager.ConsumeAction(); action.has_value()) {
+            (void)playerUIActionDispatcher.Dispatch(PlayerUIRouteForState(stateMachine.GetVisibleState()), *action, appContext);
         }
 
         const auto now = std::chrono::steady_clock::now();

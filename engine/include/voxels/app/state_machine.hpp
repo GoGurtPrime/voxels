@@ -57,7 +57,7 @@ class WorldCreationController;
 class PauseMenuController;
 class LoadingScreenModel;
 class IPlatform;
-class ImGuiUIManager;
+class IPlayerUI;
 class SaveManager;
 class InGameState;
 namespace networking { class GameClient; }
@@ -69,7 +69,7 @@ namespace networking { class GameServer; }
 struct AppContext {
     IPlatform* platform = nullptr;
     graphics::IGraphicsRenderer* renderer = nullptr;
-    ImGuiUIManager* ui = nullptr;
+    IPlayerUI* ui = nullptr;
     InputManager* input = nullptr;
     BlockRegistry* blockRegistry = nullptr;
     TextureAtlas* textureAtlas = nullptr;
@@ -422,6 +422,8 @@ public:
     void Shutdown();
 
     [[nodiscard]] IAppState* GetCurrentState() const noexcept { return m_current.get(); }
+    /// Returns the visible state, preferring the topmost overlay over the base state.
+    [[nodiscard]] IAppState* GetVisibleState() const noexcept { return m_overlays.empty() ? m_current.get() : m_overlays.back().get(); }
     [[nodiscard]] const std::vector<TransitionRecord>& GetTransitionLog() const noexcept { return m_log; }
 
 private:

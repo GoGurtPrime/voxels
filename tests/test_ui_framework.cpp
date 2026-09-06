@@ -8,6 +8,9 @@
 #include <imgui.h>
 
 #include "voxels/ui/imgui_ui_manager.hpp"
+#include "voxels/app/player_ui_dispatcher.hpp"
+#include "voxels/app/state_machine.hpp"
+#include "voxels/ui/player_ui.hpp"
 
 TEST_CASE("UIScale.ComputesExpectedFactorsAcrossResolutions", "[ui]") {
     const auto scaleFor = [](int width, int height) {
@@ -19,15 +22,56 @@ TEST_CASE("UIScale.ComputesExpectedFactorsAcrossResolutions", "[ui]") {
     REQUIRE(scaleFor(3840, 2160) == Catch::Approx(4.5f));
 }
 
-TEST_CASE("InputRouting.ContextSwitchCapturesAndDiscardsFirstDelta", "[ui]") {
-    voxels::ImGuiUIManager manager;
-    manager.SetInputContext(voxels::InputContext::Menu);
-    REQUIRE(manager.WantsMouseCapture());
-    REQUIRE(manager.WantsKeyboardCapture());
+TEST_CASE("PlayerUI.InputPoliciesCaptureAndDiscardOneTransitionDelta", "[player-ui]") {
+    voxels::NullPlayerUI manager;
+    manager.SetInputPolicy(voxels::PlayerUIInputPolicy::Overlay);
+    REQUIRE(manager.CapturesMouse());
+    REQUIRE(manager.CapturesKeyboard());
+    manager.SetInputPolicy(voxels::PlayerUIInputPolicy::TextEntry);
+    REQUIRE(manager.CapturesMouse());
+    REQUIRE(manager.CapturesKeyboard());
 
-    manager.SetInputContext(voxels::InputContext::Gameplay);
-    REQUIRE(manager.ConsumeFirstMouseDelta());
-    REQUIRE_FALSE(manager.ConsumeFirstMouseDelta());
+    manager.SetInputPolicy(voxels::PlayerUIInputPolicy::Gameplay);
+    REQUIRE(manager.ConsumeTransitionMouseDelta());
+    REQUIRE_FALSE(manager.ConsumeTransitionMouseDelta());
+    REQUIRE_FALSE(manager.CapturesMouse());
+    REQUIRE_FALSE(manager.CapturesKeyboard());
+}
+
+TEST_CASE("PlayerUI.ProtocolAcceptsOnlyBoundedVersionedEnvelope", "[player-ui]") {
+    const voxels::PlayerUIProtocolMessage message{.kind = "action", .requestId = 42, .payload = "resume"};
+    const auto encoded = voxels::EncodePlayerUIProtocolMessage(message);
+    REQUIRE(encoded.has_value());
+    const auto decoded = voxels::DecodePlayerUIProtocolMessage(*encoded);
+    REQUIRE(decoded.has_value());
+    REQUIRE(decoded->requestId == 42);
+    REQUIRE(decoded->payload == "resume");
+
+    REQUIRE_FALSE(voxels::DecodePlayerUIProtocolMessage(R"({"version":2,"kind":"action","requestId":42,"payload":"resume"})").has_value());
+    REQUIRE_FALSE(voxels::DecodePlayerUIProtocolMessage(R"({"version":1,"kind":"action","requestId":0,"payload":"resume"})").has_value());
+    REQUIRE_FALSE(voxels::EncodePlayerUIProtocolMessage({.kind = "action", .requestId = 1, .payload = std::string(64U * 1024U + 1U, 'x')}).has_value());
+}
+
+TEST_CASE("PlayerUI.DispatcherOnlyChangesStateForValidRouteAndRequest", "[player-ui]") {
+    voxels::AppContext context{};
+    bool transitionRequested = false;
+    bool popRequested = false;
+    context.requestTransition = [&transitionRequested](std::unique_ptr<voxels::IAppState>) { transitionRequested = true; };
+    context.requestPopOverlay = [&popRequested]() { popRequested = true; };
+    const voxels::PlayerUIActionDispatcher dispatcher;
+
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Pause, {.requestId = 1, .kind = voxels::PlayerUIActionKind::Resume}, context));
+    REQUIRE(popRequested);
+    popRequested = false;
+    REQUIRE_FALSE(dispatcher.Dispatch(voxels::PlayerUIRoute::MainMenu, {.requestId = 1, .kind = voxels::PlayerUIActionKind::Resume}, context));
+    REQUIRE_FALSE(popRequested);
+    REQUIRE_FALSE(dispatcher.Dispatch(voxels::PlayerUIRoute::Error, {.requestId = 0, .kind = voxels::PlayerUIActionKind::AcknowledgeError}, context));
+    REQUIRE_FALSE(transitionRequested);
+
+    voxels::NullPlayerUI ui;
+    ui.Publish({.route = voxels::PlayerUIRoute::Hud, .revision = 7, .title = "HUD"});
+    REQUIRE(ui.LastModel().has_value());
+    REQUIRE(ui.LastModel()->revision == 7);
 }
 
 TEST_CASE("Theme.AppliesConsistentTokenSetAndIsIdempotent", "[ui]") {

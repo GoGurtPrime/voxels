@@ -135,10 +135,10 @@ void ImGuiUIManager::EndFrame() {
     m_frameActive = false;
 }
 
-void ImGuiUIManager::SetInputContext(InputContext context) {
-    if (m_context == context) return;
-    m_context = context;
-    const bool gameplay = context == InputContext::Gameplay;
+void ImGuiUIManager::SetInputPolicy(PlayerUIInputPolicy policy) {
+    if (m_policy == policy) return;
+    m_policy = policy;
+    const bool gameplay = policy == PlayerUIInputPolicy::Gameplay;
     m_discardNextMouseDelta = gameplay;
     if (m_platform != nullptr) {
         m_platform->SetRelativeMouseMode(gameplay);
@@ -146,9 +146,16 @@ void ImGuiUIManager::SetInputContext(InputContext context) {
     }
 }
 
-bool ImGuiUIManager::WantsMouseCapture() const noexcept { return m_context != InputContext::Gameplay || (m_initialized && ImGui::GetIO().WantCaptureMouse); }
-bool ImGuiUIManager::WantsKeyboardCapture() const noexcept { return m_context != InputContext::Gameplay; }
-bool ImGuiUIManager::ConsumeFirstMouseDelta() noexcept { const bool discard = m_discardNextMouseDelta; m_discardNextMouseDelta = false; return discard; }
+bool ImGuiUIManager::CapturesMouse() const noexcept { return m_policy != PlayerUIInputPolicy::Gameplay || (m_initialized && ImGui::GetIO().WantCaptureMouse); }
+bool ImGuiUIManager::CapturesKeyboard() const noexcept { return m_policy != PlayerUIInputPolicy::Gameplay; }
+bool ImGuiUIManager::ConsumeTransitionMouseDelta() noexcept { const bool discard = m_discardNextMouseDelta; m_discardNextMouseDelta = false; return discard; }
+void ImGuiUIManager::Publish(PlayerUIViewModel model) { m_lastModel = std::move(model); }
+std::optional<PlayerUIAction> ImGuiUIManager::ConsumeAction() {
+    if (m_actions.empty()) return std::nullopt;
+    PlayerUIAction action = std::move(m_actions.front());
+    m_actions.erase(m_actions.begin());
+    return action;
+}
 void ImGuiUIManager::SetDebugMetrics(UIDebugMetrics metrics) {
     m_debugMetrics = std::move(metrics);
     m_frameHistory.push_back(m_debugMetrics.frameMilliseconds);

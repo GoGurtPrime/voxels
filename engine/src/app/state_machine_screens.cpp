@@ -92,7 +92,8 @@ void ConfigureInGameState(InGameState& state, AppContext* context, const GameSav
 } // namespace
 
 void MainMenuState::OnEnter() {
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::MainMenu, .revision = 1, .title = "VOXELS ENGINE", .message = "A block-based world is waiting.", .items = {"Play", "Join Game", "Settings", "Quit"}});
     if (m_context != nullptr && m_context->input != nullptr) m_context->input->ClearGameplayInput();
     if (m_context != nullptr && m_context->firstRun && m_context->preferences != nullptr &&
         !m_context->preferences->controlsCardSeen && m_context->requestPushOverlay) {
@@ -125,8 +126,9 @@ void MainMenuState::Render() {
 }
 
 void WorldSelectState::OnEnter() {
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
     if (m_context != nullptr && m_context->saveManager != nullptr) m_saves = m_context->saveManager->ListSaves();
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::SaveSelection, .revision = 1, .title = "SELECT WORLD", .items = {"New World", "Play Selected", "Delete Selected", "Back"}});
 }
 
 void WorldSelectState::Update(double) {}
@@ -188,7 +190,8 @@ void WorldSelectState::Render() {
 WorldCreationController* WorldCreationState::GetController() noexcept { return m_controller.get(); }
 
 void WorldCreationState::OnEnter() {
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::TextEntry);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::TextEntry);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::WorldCreation, .revision = 1, .title = "CREATE WORLD", .items = {"World Name", "Seed", "Create", "Back"}});
     m_controller = std::make_unique<WorldCreationController>();
     m_controller->SetWorldName("New World");
 }
@@ -262,7 +265,8 @@ void WorldCreationState::Render() {
 }
 
 void JoinGameState::OnEnter() {
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::TextEntry);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::TextEntry);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::Join, .revision = 1, .title = "JOIN GAME", .items = {"Host Address", "UDP Port", "Connect", "Back"}});
 }
 
 void JoinGameState::Update(double) {}
@@ -298,7 +302,8 @@ void JoinGameState::Render() {
 }
 
 void JoinLoadingState::OnEnter() {
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::Loading, .revision = 1, .title = "JOINING...", .message = m_endpointLabel, .progress = 0.0f, .blocking = true});
     m_world = std::make_unique<World>();
     m_elapsedSeconds = 0.0;
     m_lastProgressSeconds = 0.0;
@@ -403,7 +408,8 @@ void JoinLoadingState::Render() {
 }
 
 void LoadingScreenState::OnEnter() {
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::Loading, .revision = 1, .title = "LOADING...", .progress = 0.0f, .blocking = true});
     m_generationComplete = false;
     RunGeneration();
 }
@@ -504,11 +510,12 @@ void LoadingScreenState::Render() {
 }
 
 void PauseMenuState::OnEnter() {
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::Pause, .revision = 1, .title = "PAUSED", .items = {"Resume", "Settings", "Save and Quit"}});
     if (m_context != nullptr && m_context->input != nullptr) m_context->input->ClearGameplayInput();
 }
 void PauseMenuState::OnExit() {
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Gameplay);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Gameplay);
     if (m_context != nullptr && m_context->input != nullptr) m_context->input->ClearGameplayInput();
 }
 void PauseMenuState::Update(double) {}
@@ -568,7 +575,8 @@ void PauseMenuState::Render() {
 }
 
 void SettingsState::OnEnter() {
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::Settings, .revision = 1, .title = "SETTINGS", .items = {"Apply", "Back"}});
     if (m_context != nullptr && m_context->preferences != nullptr) m_pending = *m_context->preferences;
     if (m_context != nullptr && m_context->renderer != nullptr) {
         m_activeRenderer = m_context->renderer->GetBackend();
@@ -650,7 +658,8 @@ void SettingsState::Render() {
 }
 
 void ControlsCardState::OnEnter() {
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::ControlsCard, .revision = 1, .title = "CONTROLS", .items = {"Got it"}});
 }
 void ControlsCardState::Update(double) {}
 void ControlsCardState::Render() {
@@ -695,7 +704,8 @@ void ControlsCardState::Render() {
 }
 
 void ErrorState::OnEnter() {
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputContext(InputContext::Menu);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::Error, .revision = 1, .title = m_title, .message = m_detail, .items = {"Acknowledge"}, .blocking = true});
 }
 void ErrorState::Update(double) {}
 void ErrorState::Render() {

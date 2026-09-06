@@ -11,11 +11,9 @@
 #include <string>
 #include <vector>
 
-#include "voxels/ui/ui_manager.hpp"
+#include "voxels/ui/player_ui.hpp"
 
 namespace voxels {
-
-enum class InputContext { Menu, Gameplay, TextEntry };
 
 struct UIDebugMetrics {
     float frameMilliseconds = 0.0f;
@@ -37,7 +35,7 @@ struct UIDebugMetrics {
     std::string glVersion;
 };
 
-class ImGuiUIManager final : public IUIManager {
+class ImGuiUIManager final : public IPlayerUI {
 public:
     bool Initialize(IPlatform* platform, graphics::IGraphicsRenderer* renderer) override;
     void Shutdown() override;
@@ -45,15 +43,18 @@ public:
     void EndFrame() override;
     [[nodiscard]] float GetUIScale() const noexcept override { return m_scale; }
     [[nodiscard]] bool IsFrameActive() const noexcept override { return m_frameActive; }
-    [[nodiscard]] bool WantsMouseCapture() const noexcept;
-    [[nodiscard]] bool WantsKeyboardCapture() const noexcept;
-    void SetInputContext(InputContext context);
-    [[nodiscard]] bool ConsumeFirstMouseDelta() noexcept;
+    [[nodiscard]] bool CapturesMouse() const noexcept override;
+    [[nodiscard]] bool CapturesKeyboard() const noexcept override;
+    void SetInputPolicy(PlayerUIInputPolicy policy) override;
+    [[nodiscard]] PlayerUIInputPolicy GetInputPolicy() const noexcept override { return m_policy; }
+    [[nodiscard]] bool ConsumeTransitionMouseDelta() noexcept override;
+    void Publish(PlayerUIViewModel model) override;
+    [[nodiscard]] std::optional<PlayerUIAction> ConsumeAction() override;
     void SetDebugMetrics(UIDebugMetrics metrics);
     [[nodiscard]] const UIDebugMetrics& GetDebugMetrics() const noexcept { return m_debugMetrics; }
-    void ToggleDebugOverlay() noexcept { m_debugOverlayVisible = !m_debugOverlayVisible; }
+    void ToggleDebugOverlay() noexcept override { m_debugOverlayVisible = !m_debugOverlayVisible; }
     void ShowError(std::string title, std::string detail);
-    void ShowToast(std::string message, float durationSeconds = 3.0f);
+    void ShowToast(std::string message, float durationSeconds = 3.0f) override;
     void OnPlatformEvent(const PlatformEvent& event) override;
 
 private:
@@ -70,7 +71,9 @@ private:
     std::string m_errorTitle;
     std::string m_errorDetail;
     float m_scale = 1.0f;
-    InputContext m_context = InputContext::Gameplay;
+    PlayerUIInputPolicy m_policy = PlayerUIInputPolicy::Gameplay;
+    std::optional<PlayerUIViewModel> m_lastModel;
+    std::vector<PlayerUIAction> m_actions;
     bool m_initialized = false;
     bool m_frameActive = false;
     bool m_discardNextMouseDelta = false;

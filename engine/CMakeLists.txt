@@ -67,10 +67,12 @@ add_library(voxels_engine
     src/gameplay/block_interaction.cpp
     src/app/cli_parser.cpp
     src/app/state_machine.cpp
+    src/app/player_ui_dispatcher.cpp
     src/app/save_manager.cpp
     src/app/menus.cpp
     src/app/state_machine_screens.cpp
     src/ui/ui_manager.cpp
+    src/ui/player_ui.cpp
     src/ui/imgui_ui_manager.cpp
     src/ui/web_ui_manifest.cpp
 )
