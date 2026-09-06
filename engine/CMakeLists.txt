@@ -72,6 +72,7 @@ add_library(voxels_engine
     src/app/state_machine_screens.cpp
     src/ui/ui_manager.cpp
     src/ui/imgui_ui_manager.cpp
+    src/ui/web_ui_manifest.cpp
 )
 
 if(WIN32)

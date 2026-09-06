@@ -9,6 +9,10 @@ target_link_libraries(voxels_app PRIVATE voxels_engine)
 target_compile_features(voxels_app PRIVATE cxx_std_20)
 target_compile_options(voxels_app PRIVATE ${VOXELS_WARNING_FLAGS})
 
+if(VOXELS_ENABLE_WEB_UI)
+    add_dependencies(voxels_app voxels_web_ui_assets)
+endif()
+
 add_custom_command(TARGET voxels_app POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/app/assets"
@@ -34,6 +38,14 @@ if(VOXELS_STEAM_ACTIVE)
     )
 endif()
 
+if(VOXELS_ENABLE_WEB_UI)
+    add_custom_command(TARGET voxels_app POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${VOXELS_CEF_ROOT}/Release" "$<TARGET_FILE_DIR:voxels_app>"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${VOXELS_CEF_ROOT}/Resources" "$<TARGET_FILE_DIR:voxels_app>"
+        COMMENT "Staging verified CEF runtime next to the executable"
+    )
+endif()
+
 # --- Install / package layout (work_items/18) -------------------------------------------------
 # Distributable layout:
 #   VoxelsGame/
@@ -54,4 +66,10 @@ endif()
 
 if(VOXELS_STEAM_ACTIVE)
     install(FILES "${VOXELS_STEAM_RUNTIME}" DESTINATION .)
+endif()
+
+if(VOXELS_ENABLE_WEB_UI)
+    install(DIRECTORY "${VOXELS_CEF_ROOT}/Release/" DESTINATION .)
+    install(DIRECTORY "${VOXELS_CEF_ROOT}/Resources/" DESTINATION .)
+    install(FILES "${VOXELS_CEF_ROOT}/LICENSE.txt" DESTINATION . OPTIONAL)
 endif()

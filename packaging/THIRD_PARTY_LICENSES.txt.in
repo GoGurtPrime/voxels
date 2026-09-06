@@ -106,4 +106,12 @@ https://www.brailleinstitute.org/freefont/
 Copyright (c) Braille Institute of America, Inc. Licensed under the SIL Open Font License,
 Version 1.1. The full license text is bundled at app/assets/fonts/OFL.txt in the source
 repository and applies unmodified to the copy shipped in this package's assets/fonts/ folder.
+
+================================================================================
+Chromium Embedded Framework / Chromium — bundled only with VOXELS_ENABLE_WEB_UI=ON
+https://bitbucket.org/chromiumembedded/cef/
+--------------------------------------------------------------------------------
+The verified upstream CEF archive's LICENSE.txt is installed beside voxels_app and is the
+authoritative redistribution notice for the selected CEF/Chromium build. The operator records
+the archive version, URL, and SHA-256 in ASSET_REQUESTS.md WEBUI-001 completion evidence.
 @VOXELS_STEAM_LICENSE_NOTE@

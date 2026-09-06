@@ -15,6 +15,7 @@ option(VOXELS_ENABLE_DX12 "Enable the DirectX 12 renderer backend" OFF)
 option(VOXELS_ENABLE_METAL "Enable the Metal renderer backend" OFF)
 option(VOXELS_ENABLE_DREAMCAST "Enable the Dreamcast renderer backend" OFF)
 option(VOXELS_ENABLE_STEAM "Enable optional Steamworks platform services (achievements, overlay, cloud saves)" OFF)
+option(VOXELS_ENABLE_WEB_UI "Enable the experimental React/Tailwind UI build and CEF runtime contract" ON)
 option(VOXELS_WARNINGS_AS_ERRORS "Treat warnings as errors for first-party targets" ON)
 option(VOXELS_BUILD_DOCS "Enable the Doxygen API documentation 'docs' target (requires a Doxygen install)" ON)
 
@@ -37,6 +38,49 @@ endif()
 
 include(FetchContent)
 find_package(Python REQUIRED COMPONENTS Interpreter)
+
+if(VOXELS_ENABLE_WEB_UI AND VOXELS_BUILD_APP)
+    find_program(VOXELS_NODE_EXECUTABLE NAMES node node.exe)
+    find_program(VOXELS_NPM_EXECUTABLE NAMES npm npm.cmd)
+    if(NOT VOXELS_NODE_EXECUTABLE OR NOT VOXELS_NPM_EXECUTABLE)
+        message(FATAL_ERROR "VOXELS_ENABLE_WEB_UI requires Node.js LTS and npm. Install Node.js 20.18-22.x, or explicitly configure -DVOXELS_ENABLE_WEB_UI=OFF.")
+    endif()
+    set(VOXELS_WEB_UI_CEF_ARCHIVE "" CACHE FILEPATH "Verified official CEF binary archive for the host platform")
+    set(VOXELS_WEB_UI_CEF_SHA256 "" CACHE STRING "Expected SHA-256 of VOXELS_WEB_UI_CEF_ARCHIVE")
+    set(VOXELS_CEF_RUNTIME_ROOT "${CMAKE_BINARY_DIR}/third_party/cef" CACHE PATH "Extracted verified CEF runtime root")
+    include("${CMAKE_SOURCE_DIR}/cmake/AcquireCefRuntime.cmake")
+    file(READ "${VOXELS_CEF_RUNTIME_ROOT}/runtime-root.txt" VOXELS_CEF_ROOT)
+    string(STRIP "${VOXELS_CEF_ROOT}" VOXELS_CEF_ROOT)
+    if(WIN32)
+        set(VOXELS_CEF_RUNTIME_FILES "${VOXELS_CEF_ROOT}/Release/libcef.dll" "${VOXELS_CEF_ROOT}/Release/chrome_elf.dll" "${VOXELS_CEF_ROOT}/Resources/icudtl.dat" "${VOXELS_CEF_ROOT}/Resources/resources.pak" "${VOXELS_CEF_ROOT}/Resources/v8_context_snapshot.bin")
+    elseif(APPLE)
+        set(VOXELS_CEF_RUNTIME_FILES "${VOXELS_CEF_ROOT}/Release/Chromium Embedded Framework.framework")
+    else()
+        set(VOXELS_CEF_RUNTIME_FILES "${VOXELS_CEF_ROOT}/Release/libcef.so" "${VOXELS_CEF_ROOT}/Resources/icudtl.dat" "${VOXELS_CEF_ROOT}/Resources/resources.pak" "${VOXELS_CEF_ROOT}/Resources/v8_context_snapshot.bin")
+    endif()
+    foreach(runtime_file IN LISTS VOXELS_CEF_RUNTIME_FILES)
+        if(NOT EXISTS "${runtime_file}")
+            message(FATAL_ERROR "Verified CEF archive is missing required runtime resource: ${runtime_file}")
+        endif()
+    endforeach()
+    set(VOXELS_WEB_UI_MANIFEST "${CMAKE_SOURCE_DIR}/app/assets/ui/ui-manifest.json")
+    add_custom_target(voxels_web_ui_assets
+        COMMAND "${VOXELS_NPM_EXECUTABLE}" ci
+        COMMAND "${VOXELS_NPM_EXECUTABLE}" run build
+        COMMAND "${CMAKE_COMMAND}" -DMANIFEST_PATH="${VOXELS_WEB_UI_MANIFEST}" -P "${CMAKE_SOURCE_DIR}/cmake/VerifyWebUiManifest.cmake"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/ui"
+        COMMENT "Building and hash-verifying the local React/Tailwind UI assets"
+        VERBATIM
+    )
+    if(VOXELS_BUILD_TESTS)
+        add_custom_target(voxels_web_ui_runtime_proof
+            COMMAND "$<TARGET_FILE:voxels_tests>" "[WebUiRuntimeProof]"
+            DEPENDS voxels_web_ui_assets voxels_tests
+            COMMENT "Running the transparent web UI OpenGL pixel proof"
+            VERBATIM
+        )
+    endif()
+endif()
 
 find_package(glm QUIET)
 if(NOT TARGET glm::glm)

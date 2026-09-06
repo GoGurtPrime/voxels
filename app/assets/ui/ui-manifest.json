@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "entry_html": "browser/index.html",
+  "source_revision": "0f25489ba59b665c8ed5aa70d99c0f98b3118dd7",
+  "source_sha256": "42ed6ef3c5e2209852c6efacaf7bd978af8e7123313c06ac46259b40026c6e9e",
+  "assets": {
+    "browser/assets/index-Bwf2cp2_.js": {
+      "sha256": "586ae65ffef06bda73b40a75b51750c8a8ea2985c3b5e1beaf342ea96fd5ad6c",
+      "bytes": 142871
+    },
+    "browser/assets/index-CtbMqvyj.css": {
+      "sha256": "d149040b6f326860800beab2f11dd47702df98717cfad97b0e7d276a4c94c0bf",
+      "bytes": 5933
+    },
+    "browser/index.html": {
+      "sha256": "8541fbeaf7ea8b1956ebd27bb1643e74d449f9b33859de1ffb996c9848c2bc76",
+      "bytes": 451
+    }
+  }
+}

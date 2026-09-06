@@ -513,11 +513,15 @@ flowchart TD
 
     subgraph BUILD["cmake --build"]
         APPTGT["voxels_app"]
+        WEBASSET["voxels_web_ui_assets<br/>npm ci → Vite hashed bundle → ui-manifest.json"]
+        CEFPIN["Verified CEF archive<br/>SHA-256 checked before extraction"]
     end
     subgraph PACKAGE["cmake --install / cpack"]
         LAYOUT["voxels_app(.exe) + SDL2/Steam runtime + assets/<br/>+ README.txt + LICENSE.txt + THIRD_PARTY_LICENSES.txt"]
     end
     APPTGT --> LAYOUT
+    WEBASSET --> APPTGT
+    CEFPIN --> LAYOUT
     TPL["packaging/README.txt.in<br/>packaging/THIRD_PARTY_LICENSES.txt.in"] --> LAYOUT
 
     FR{"settings.json exists?"} -- no: first run --> DEFAULTS["Write default GamePreferences<br/>create user-data directory tree"]

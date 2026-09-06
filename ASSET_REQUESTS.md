@@ -27,6 +27,11 @@
 * **Resolution:** Work item 01 makes CMake fetch and build SDL2 automatically when `find_package(SDL2)` fails, so no operator action is required. If you prefer a system SDL2, install it (`vcpkg install sdl2`, `apt install libsdl2-dev`, `brew install sdl2`) and configure with the vcpkg toolchain file; CMake will use it in preference to the fetched copy.
 * **Operator action:** none required.
 
+### WEBUI-001 — Pinned Chromium Embedded Framework distribution *(status: BLOCKING for VOXELS_ENABLE_WEB_UI=ON)*
+* **Need:** one official CEF binary archive for the target triplet (Windows x64: `.tar.bz2`; Linux x64: `.tar.bz2`; macOS universal: `.tar.bz2`), plus its release version and published SHA-256. Supply it outside the repository and configure `-DVOXELS_WEB_UI_CEF_ARCHIVE=<path>` and `-DVOXELS_WEB_UI_CEF_SHA256=<64 hex characters>`.
+* **Current state:** CMake rejects a missing archive, malformed hash, hash mismatch, or missing CEF runtime resource before compiling `voxels_app`. On success it stages the archive's `Release/` and `Resources/` folders and its `LICENSE.txt` beside the executable and into packages. CEF initialization/composition is owned by WI-03.
+* **Operator action:** download the selected archive only from the official CEF Automated Builds service, record the exact version, Chromium version, URL, and SHA-256 in the work-item completion evidence, then configure with the two variables above. Review the bundled CEF/Chromium license notices before public distribution.
+
 ### TOOL-001 — Graphics driver capable of OpenGL 3.3 Core *(status: OPTIONAL, verify only)*
 * **Need:** the machine running `voxels_app` must expose an OpenGL 3.3 Core profile context (any GPU from ~2010 onward, with vendor drivers installed — not the Microsoft Basic Display Adapter).
 * **Operator action:** if the app reports "failed to create GL 3.3 Core context", install/update your GPU vendor drivers.

@@ -28,6 +28,8 @@ add_executable(voxels_tests
     test_ui_framework.cpp
     test_persistence.cpp
     test_packaging.cpp
+    test_web_ui_manifest.cpp
+    test_web_ui_runtime_proof.cpp
 )
 
 target_link_libraries(voxels_tests
