@@ -75,6 +75,7 @@ add_library(voxels_engine
     src/ui/player_ui.cpp
     src/ui/imgui_ui_manager.cpp
     src/ui/web_ui_manifest.cpp
+    src/ui/web_ui_compositor.cpp
 )
 
 if(WIN32)

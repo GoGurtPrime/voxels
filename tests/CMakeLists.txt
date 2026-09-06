@@ -30,6 +30,7 @@ add_executable(voxels_tests
     test_packaging.cpp
     test_web_ui_manifest.cpp
     test_web_ui_runtime_proof.cpp
+    test_web_ui_compositor.cpp
 )
 
 target_link_libraries(voxels_tests
