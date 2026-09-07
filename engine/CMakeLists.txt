@@ -1,10 +1,29 @@
 cmake_minimum_required(VERSION 3.21)
 
-# Regenerated on every build (custom target has no tracked outputs, so it always reruns) so the
-# embedded git commit/timestamp never go stale between builds without a reconfigure.
+# Generated via an OUTPUT-based custom command so incremental builds only rerun this step when
+# inputs change (template/script/git ref), avoiding full-engine rebuild churn.
 set(VOXELS_GENERATED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/generated_include")
 set(VOXELS_VERSION_HEADER "${VOXELS_GENERATED_INCLUDE_DIR}/voxels/core/version.hpp")
-add_custom_target(voxels_generate_version_header ALL
+
+set(VOXELS_VERSION_HEADER_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/voxels/core/version.hpp.in"
+    "${CMAKE_SOURCE_DIR}/cmake/GenerateVersionHeader.cmake"
+)
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git/HEAD")
+    list(APPEND VOXELS_VERSION_HEADER_DEPENDS "${CMAKE_SOURCE_DIR}/.git/HEAD")
+    file(READ "${CMAKE_SOURCE_DIR}/.git/HEAD" VOXELS_GIT_HEAD_CONTENT)
+    string(STRIP "${VOXELS_GIT_HEAD_CONTENT}" VOXELS_GIT_HEAD_CONTENT)
+    if(VOXELS_GIT_HEAD_CONTENT MATCHES "^ref: (.+)$")
+        set(VOXELS_GIT_REF_FILE "${CMAKE_SOURCE_DIR}/.git/${CMAKE_MATCH_1}")
+        if(EXISTS "${VOXELS_GIT_REF_FILE}")
+            list(APPEND VOXELS_VERSION_HEADER_DEPENDS "${VOXELS_GIT_REF_FILE}")
+        endif()
+    endif()
+endif()
+
+add_custom_command(
+    OUTPUT "${VOXELS_VERSION_HEADER}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${VOXELS_GENERATED_INCLUDE_DIR}/voxels/core"
     COMMAND "${CMAKE_COMMAND}"
         "-DVOXELS_VERSION=${PROJECT_VERSION}"
         "-DVOXELS_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}"
@@ -14,10 +33,12 @@ add_custom_target(voxels_generate_version_header ALL
         "-DTEMPLATE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/include/voxels/core/version.hpp.in"
         "-DOUTPUT_FILE=${VOXELS_VERSION_HEADER}"
         -P "${CMAKE_SOURCE_DIR}/cmake/GenerateVersionHeader.cmake"
-    BYPRODUCTS "${VOXELS_VERSION_HEADER}"
-    COMMENT "Regenerating voxels/core/version.hpp (git SHA + build timestamp)"
+    DEPENDS ${VOXELS_VERSION_HEADER_DEPENDS}
+    COMMENT "Generating voxels/core/version.hpp"
     VERBATIM
 )
+
+add_custom_target(voxels_generate_version_header DEPENDS "${VOXELS_VERSION_HEADER}")
 
 add_library(voxels_engine
     src/engine.cpp

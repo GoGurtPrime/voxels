@@ -1,6 +1,6 @@
-# Regenerates the engine version header on every build (not just reconfigure) so the embedded
-# git commit and build timestamp are always fresh. Invoked via `cmake -P` from a custom target
-# that has no tracked outputs, which CMake/Ninja/MSBuild always re-run.
+# Regenerates the engine version header when invoked by the OUTPUT-based custom command in
+# engine/CMakeLists.txt. The build system now tracks dependencies, so this script runs only when
+# the template/script/git ref inputs change.
 #
 # Expected -D arguments: VOXELS_VERSION, VOXELS_VERSION_MAJOR, VOXELS_VERSION_MINOR,
 # VOXELS_VERSION_PATCH, SOURCE_DIR, TEMPLATE_FILE, OUTPUT_FILE.
