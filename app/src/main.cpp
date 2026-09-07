@@ -500,9 +500,6 @@ int main(int argc, char** argv) {
     const std::filesystem::path audioRoot = voxels::Paths::AssetsDir() / "audio";
     std::unordered_map<std::string, voxels::SoundHandle> soundBank =
         LoadSoundBank(*audio, voxels::Paths::AssetsDir() / "data" / "sounds.json", audioRoot);
-    if (const auto menuMusic = soundBank.find("music/menu_theme"); menuMusic != soundBank.end()) {
-        audio->PlayMusic({menuMusic->second.id}, true);
-    }
     RemoveUnversionedSaves();
     voxels::SaveManager saveManager(voxels::Paths::SavesDir() / kSaveFormatDirectory);
     bool running = true;
@@ -629,12 +626,15 @@ int main(int argc, char** argv) {
             stateMachine.Update(kFixedStepSeconds);
         }
 
+        voxels::UpdateMainMenuBackdrop(deltaSeconds);
+
         platformServices->Update();
 
 #ifdef VOXELS_HAS_CEF
         webUi.BeginFrame();
 #endif
     static_cast<void>(renderer->BeginFrame({0.12f, 0.16f, 0.19f, 1.0f}));
+        voxels::RenderMainMenuBackdrop();
         uiManager.BeginFrame();
         stateMachine.Render();
         voxels::UIDebugMetrics debugMetrics{};
@@ -702,6 +702,7 @@ int main(int argc, char** argv) {
 #endif
     audio->Shutdown();
     platformServices->Shutdown();
+    voxels::StopMainMenuBackdrop();
     voxels::SetGlobalRenderer(nullptr);
     renderer->Shutdown();
     engine.shutdown();

@@ -107,6 +107,22 @@ Payload string contains a serialized `PlayerUIViewModel` object:
 
 The inner `payload` field is route-specific JSON text.
 
+### Startup splash route (`route = 11`)
+
+`payload` JSON object:
+
+```json
+{
+  "fade": 1.0
+}
+```
+
+Notes:
+
+- Published by the native main-menu startup flow before menu interactions are enabled.
+- `fade` is clamped to `0..1` and drives logo/preface opacity in the browser route.
+- While splash is active, UI remains blocking and no menu actions should be shown.
+
 ## Route payload schemas
 
 ### Settings route (`route = 7`)

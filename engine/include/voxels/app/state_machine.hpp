@@ -136,8 +136,22 @@ public:
     void Render() override;
 
 private:
-    float m_elapsedSeconds = 0.0f;
-    Camera m_camera{};
+    enum class IntroPhase : std::uint8_t {
+        SplashHold,
+        SplashFade,
+        PreviewLoading,
+        Ready
+    };
+
+    void PublishSplash(float fade) const;
+    void PublishPreviewLoading(float progress) const;
+    void PublishReadyMenu() const;
+
+    IntroPhase m_phase = IntroPhase::SplashHold;
+    float m_phaseElapsedSeconds = 0.0f;
+    bool m_startedMenuMusic = false;
+    bool m_publishedReadyMenu = false;
+    bool m_controlsCardQueued = false;
 };
 
 /// Save-slot browser: lists saves from the `SaveManager`, loads the selection, and deletes
@@ -386,6 +400,25 @@ private:
 /// Injects the module-wide renderer that state `Render()` implementations draw through;
 /// the app sets it after GL init and resets it to nullptr before renderer teardown.
 void SetGlobalRenderer(voxels::graphics::IGraphicsRenderer* renderer) noexcept;
+
+/// Starts generating and rendering the non-interactive main-menu background world.
+void StartMainMenuBackdrop(BlockRegistry& registry, TextureAtlas& atlas,
+                           voxels::graphics::IGraphicsRenderer& renderer,
+                           std::uint64_t seed, int renderDistanceChunks);
+/// Stops and tears down the main-menu background world renderer.
+void StopMainMenuBackdrop() noexcept;
+/// Advances generation/camera animation timers for the main-menu background renderer.
+void UpdateMainMenuBackdrop(double deltaSeconds);
+/// Draws the main-menu background world for the current frame.
+void RenderMainMenuBackdrop();
+/// Returns true once enough world data is generated to run menu camera shots.
+[[nodiscard]] bool IsMainMenuBackdropReady() noexcept;
+/// Returns 0..1 generation progress for the main-menu background world.
+[[nodiscard]] float GetMainMenuBackdropProgress() noexcept;
+/// Returns whether the main-menu backdrop runtime currently owns a world scene.
+[[nodiscard]] bool IsMainMenuBackdropActive() noexcept;
+/// Returns true only once per process: first menu entry shows startup splash.
+[[nodiscard]] bool ConsumeStartupSplashEligibility() noexcept;
 
 /// Owns exactly one active `IAppState` (plus an overlay stack) and guarantees `OnExit`/
 /// `OnEnter` are called in that order on every transition. Keeps a chronological log of

@@ -5,9 +5,13 @@
 
 #include "voxels/app/state_machine.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <chrono>
 #include <future>
+#include <random>
+#include <utility>
 
 #include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -25,6 +29,248 @@ namespace voxels {
 
 namespace {
 voxels::graphics::IGraphicsRenderer* g_renderer = nullptr;
+bool g_startupSplashShown = false;
+
+constexpr float kStartupSplashHoldSeconds = 2.2f;
+constexpr float kStartupSplashFadeSeconds = 0.7f;
+constexpr int kMenuPreviewTerrainSections = 8;
+
+struct CameraShot {
+    glm::vec3 p0{};
+    glm::vec3 p1{};
+    glm::vec3 p2{};
+    glm::vec3 p3{};
+    float durationSeconds = 6.0f;
+};
+
+class MainMenuBackdropRuntime {
+public:
+    void Start(BlockRegistry* registry, TextureAtlas* atlas, graphics::IGraphicsRenderer* renderer,
+               std::uint64_t seed, int renderDistanceChunks) {
+        Stop();
+        if (registry == nullptr || atlas == nullptr || renderer == nullptr) return;
+
+        m_registry = registry;
+        m_atlas = atlas;
+        m_renderer = renderer;
+        m_options = WorldOptions{};
+        m_options.seed = static_cast<WorldSeed>(seed);
+        m_options.renderDistanceChunks = std::clamp(renderDistanceChunks, 4, 10);
+        m_options.simulationDistanceChunks = std::min(m_options.renderDistanceChunks, 6);
+        m_options.alwaysSunny = true;
+
+        m_sampler = WorldGenerator(m_options);
+        m_world = std::make_unique<World>();
+        if (!m_world->Initialize(m_options)) {
+            Stop();
+            return;
+        }
+
+        m_jobs = std::make_unique<JobSystem>();
+        m_chunkRenderer = std::make_unique<graphics::ChunkRenderer>(*m_registry, *m_atlas, *m_jobs, m_renderer);
+        m_chunkRenderer->SetUploadBudget(3, 1.4);
+        m_chunkRenderer->SetBackgroundMeshQueueLimit(2);
+
+        const int radius = std::clamp(m_options.renderDistanceChunks - 1, 3, 8);
+        for (int ring = 0; ring <= radius; ++ring) {
+            for (int z = -ring; z <= ring; ++z) {
+                for (int x = -ring; x <= ring; ++x) {
+                    if (std::max(std::abs(x), std::abs(z)) != ring) continue;
+                    for (int y = 0; y < kMenuPreviewTerrainSections; ++y) {
+                        const ChunkCoordinate coord{x, y, z};
+                        m_pending.push_back({coord, m_jobs->EnqueueWithResult([options = m_options, coord] {
+                                                return WorldGenerator(options).GenerateChunk(coord);
+                                            })});
+                    }
+                }
+            }
+        }
+
+        m_totalChunkJobs = m_pending.size();
+        m_completedChunkJobs = 0;
+        m_ready = false;
+        m_shotElapsedSeconds = 0.0f;
+        m_rng.seed(seed ^ 0x9e3779b97f4a7c15ULL);
+        m_camera = Camera{};
+        m_camera.position = glm::vec3{0.0f, 34.0f, 0.0f};
+        m_camera.fovY = glm::radians(62.0f);
+        m_camera.aspect = 16.0f / 9.0f;
+        m_camera.nearPlane = 0.1f;
+        m_camera.farPlane = 320.0f;
+    }
+
+    void Stop() noexcept {
+        if (m_chunkRenderer != nullptr) m_chunkRenderer->Shutdown();
+        if (m_jobs != nullptr) m_jobs->Shutdown();
+        m_chunkRenderer.reset();
+        m_jobs.reset();
+        m_world.reset();
+        m_pending.clear();
+        m_ready = false;
+        m_totalChunkJobs = 0;
+        m_completedChunkJobs = 0;
+        m_registry = nullptr;
+        m_atlas = nullptr;
+        m_renderer = nullptr;
+    }
+
+    void Update(double deltaSeconds) {
+        if (m_world == nullptr || m_chunkRenderer == nullptr) return;
+
+        constexpr std::size_t kMaxIntegrationPerTick = 3;
+        std::size_t integrated = 0;
+        auto pending = m_pending.begin();
+        while (pending != m_pending.end() && integrated < kMaxIntegrationPerTick) {
+            if (pending->result.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+                ++pending;
+                continue;
+            }
+            Chunk chunk = pending->result.get();
+            chunk.ClearDirty();
+            m_world->GetOrCreateChunk(pending->coordinate) = std::move(chunk);
+            m_chunkRenderer->OnChunkArrived(pending->coordinate, *m_world);
+            if (pending->coordinate.y == kMenuPreviewTerrainSections - 1) {
+                const ChunkCoordinate cap{pending->coordinate.x, kMenuPreviewTerrainSections, pending->coordinate.z};
+                m_world->GetOrCreateChunk(cap);
+                m_chunkRenderer->OnChunkArrived(cap, *m_world);
+            }
+            ++m_completedChunkJobs;
+            ++integrated;
+            pending = m_pending.erase(pending);
+        }
+
+        if (!m_ready && m_pending.empty()) {
+            m_ready = true;
+            SelectNextShot();
+        }
+
+        UpdateCamera(static_cast<float>(std::max(0.0, deltaSeconds)));
+        m_chunkRenderer->EnqueueDirtyMeshJobs(*m_world, m_camera.position);
+        m_chunkRenderer->UploadCompletedMeshes();
+    }
+
+    void Render() {
+        if (m_renderer == nullptr || m_chunkRenderer == nullptr || m_world == nullptr) return;
+        m_renderer->SetCamera(m_camera);
+        const graphics::CelestialLighting lighting =
+            graphics::EvaluateCelestialLighting(graphics::kDayDurationSeconds * 0.30f, true);
+        m_chunkRenderer->SetCelestialLighting(lighting);
+        m_chunkRenderer->Render(m_camera);
+    }
+
+    [[nodiscard]] bool IsReady() const noexcept { return m_ready; }
+    [[nodiscard]] bool IsActive() const noexcept { return m_world != nullptr; }
+    [[nodiscard]] float Progress() const noexcept {
+        if (m_totalChunkJobs == 0) return 0.0f;
+        return std::clamp(static_cast<float>(m_completedChunkJobs) / static_cast<float>(m_totalChunkJobs), 0.0f, 1.0f);
+    }
+
+private:
+    struct PendingChunk {
+        ChunkCoordinate coordinate{};
+        std::future<Chunk> result;
+    };
+
+    [[nodiscard]] glm::vec3 BezierPoint(float t) const {
+        const float u = 1.0f - t;
+        return (u * u * u) * m_activeShot.p0 + (3.0f * u * u * t) * m_activeShot.p1 +
+               (3.0f * u * t * t) * m_activeShot.p2 + (t * t * t) * m_activeShot.p3;
+    }
+
+    [[nodiscard]] glm::vec3 BezierTangent(float t) const {
+        const float u = 1.0f - t;
+        return 3.0f * u * u * (m_activeShot.p1 - m_activeShot.p0) +
+               6.0f * u * t * (m_activeShot.p2 - m_activeShot.p1) +
+               3.0f * t * t * (m_activeShot.p3 - m_activeShot.p2);
+    }
+
+    [[nodiscard]] int SurfaceYAt(float worldX, float worldZ) const {
+        return m_sampler.SampleColumn(static_cast<int>(std::lround(worldX)), static_cast<int>(std::lround(worldZ))).surfaceY;
+    }
+
+    [[nodiscard]] float RandomRange(float min, float max) {
+        std::uniform_real_distribution<float> distribution(min, max);
+        return distribution(m_rng);
+    }
+
+    [[nodiscard]] glm::vec2 RandomPointAround(float radiusMin, float radiusMax) {
+        constexpr float kTwoPi = 6.28318530718f;
+        const float theta = RandomRange(0.0f, kTwoPi);
+        const float radius = RandomRange(radiusMin, radiusMax);
+        return {std::cos(theta) * radius, std::sin(theta) * radius};
+    }
+
+    void SelectNextShot() {
+        const glm::vec2 start = RandomPointAround(38.0f, 74.0f);
+        const glm::vec2 end = RandomPointAround(16.0f, 56.0f);
+        const float startY = static_cast<float>(SurfaceYAt(start.x, start.y)) + RandomRange(12.0f, 15.0f);
+        const float endY = static_cast<float>(SurfaceYAt(end.x, end.y)) + RandomRange(9.0f, 12.0f);
+
+        m_activeShot.p0 = {start.x, startY, start.y};
+        m_activeShot.p3 = {end.x, endY, end.y};
+
+        const glm::vec3 span = m_activeShot.p3 - m_activeShot.p0;
+        const glm::vec3 side = glm::normalize(glm::vec3{-span.z, 0.0f, span.x});
+        m_activeShot.p1 = m_activeShot.p0 + span * 0.33f + side * RandomRange(-18.0f, 18.0f);
+        m_activeShot.p2 = m_activeShot.p0 + span * 0.66f - side * RandomRange(-12.0f, 12.0f);
+        m_activeShot.p1.y = std::max(m_activeShot.p1.y, static_cast<float>(SurfaceYAt(m_activeShot.p1.x, m_activeShot.p1.z)) + 11.0f);
+        m_activeShot.p2.y = std::max(m_activeShot.p2.y, static_cast<float>(SurfaceYAt(m_activeShot.p2.x, m_activeShot.p2.z)) + 10.0f);
+
+        m_activeShot.durationSeconds = RandomRange(5.0f, 10.0f);
+        m_shotElapsedSeconds = 0.0f;
+    }
+
+    void UpdateCamera(float deltaSeconds) {
+        if (!m_ready) {
+            m_orbitTime += deltaSeconds;
+            const float radius = 48.0f;
+            const float angle = m_orbitTime * 0.13f;
+            m_camera.position = {std::sin(angle) * radius, 34.0f, std::cos(angle) * radius};
+            const glm::vec3 lookAt{0.0f, 20.0f, 0.0f};
+            const glm::vec3 dir = glm::normalize(lookAt - m_camera.position);
+            m_camera.yaw = std::atan2(-dir.x, -dir.z);
+            m_camera.pitch = std::asin(std::clamp(dir.y, -1.0f, 1.0f));
+            return;
+        }
+
+        m_shotElapsedSeconds += deltaSeconds;
+        if (m_shotElapsedSeconds >= m_activeShot.durationSeconds) {
+            SelectNextShot();
+        }
+        const float t = std::clamp(m_shotElapsedSeconds / std::max(0.001f, m_activeShot.durationSeconds), 0.0f, 1.0f);
+        glm::vec3 position = BezierPoint(t);
+        const float desiredClearance = 15.0f + (10.0f - 15.0f) * t;
+        const float minimumY = static_cast<float>(SurfaceYAt(position.x, position.z)) + desiredClearance;
+        if (position.y < minimumY) position.y = minimumY;
+        m_camera.position = position;
+
+        glm::vec3 tangent = BezierTangent(t);
+        if (glm::dot(tangent, tangent) < 0.0001f) tangent = glm::vec3{0.0f, -0.1f, -1.0f};
+        const glm::vec3 dir = glm::normalize(tangent);
+        m_camera.yaw = std::atan2(-dir.x, -dir.z);
+        m_camera.pitch = std::asin(std::clamp(dir.y, -1.0f, 1.0f));
+    }
+
+    BlockRegistry* m_registry = nullptr;
+    TextureAtlas* m_atlas = nullptr;
+    graphics::IGraphicsRenderer* m_renderer = nullptr;
+    WorldOptions m_options{};
+    WorldGenerator m_sampler{};
+    std::unique_ptr<World> m_world;
+    std::unique_ptr<JobSystem> m_jobs;
+    std::unique_ptr<graphics::ChunkRenderer> m_chunkRenderer;
+    std::vector<PendingChunk> m_pending;
+    std::size_t m_totalChunkJobs = 0;
+    std::size_t m_completedChunkJobs = 0;
+    bool m_ready = false;
+    std::mt19937_64 m_rng{};
+    Camera m_camera{};
+    CameraShot m_activeShot{};
+    float m_shotElapsedSeconds = 0.0f;
+    float m_orbitTime = 0.0f;
+};
+
+MainMenuBackdropRuntime g_mainMenuBackdrop;
 
 Logger& RenderStateLog() {
     static Logger logger;
@@ -66,17 +312,117 @@ void SetGlobalRenderer(voxels::graphics::IGraphicsRenderer* renderer) noexcept {
     g_renderer = renderer;
 }
 
+void StartMainMenuBackdrop(BlockRegistry& registry, TextureAtlas& atlas,
+                           voxels::graphics::IGraphicsRenderer& renderer,
+                           std::uint64_t seed, int renderDistanceChunks) {
+    g_mainMenuBackdrop.Start(&registry, &atlas, &renderer, seed, renderDistanceChunks);
+}
+
+void StopMainMenuBackdrop() noexcept { g_mainMenuBackdrop.Stop(); }
+
+void UpdateMainMenuBackdrop(double deltaSeconds) { g_mainMenuBackdrop.Update(deltaSeconds); }
+
+void RenderMainMenuBackdrop() { g_mainMenuBackdrop.Render(); }
+
+bool IsMainMenuBackdropReady() noexcept { return g_mainMenuBackdrop.IsReady(); }
+
+float GetMainMenuBackdropProgress() noexcept { return g_mainMenuBackdrop.Progress(); }
+
+bool IsMainMenuBackdropActive() noexcept { return g_mainMenuBackdrop.IsActive(); }
+
+bool ConsumeStartupSplashEligibility() noexcept {
+    if (g_startupSplashShown) return false;
+    g_startupSplashShown = true;
+    return true;
+}
+
+void MainMenuState::PublishSplash(float fade) const {
+    if (m_context == nullptr || m_context->ui == nullptr) return;
+    m_context->ui->Publish({.route = PlayerUIRoute::Splash,
+                            .revision = static_cast<std::uint64_t>(m_phaseElapsedSeconds * 1000.0f) + 1U,
+                            .title = "VOXELS ENGINE",
+                            .message = "Powered by SDL2, OpenGL, CEF, and Dear ImGui",
+                            .payload = std::string{"{\"fade\":"} + std::to_string(std::clamp(fade, 0.0f, 1.0f)) + "}",
+                            .progress = std::clamp(fade, 0.0f, 1.0f),
+                            .blocking = true});
+}
+
+void MainMenuState::PublishPreviewLoading(float progress) const {
+    if (m_context == nullptr || m_context->ui == nullptr) return;
+    m_context->ui->Publish({.route = PlayerUIRoute::Loading,
+                            .revision = static_cast<std::uint64_t>(progress * 1000.0f) + 2000U,
+                            .title = "PREPARING MAIN MENU",
+                            .message = "Generating a scenic world flythrough...",
+                            .progress = std::clamp(progress, 0.0f, 1.0f),
+                            .blocking = true});
+}
+
+void MainMenuState::PublishReadyMenu() const {
+    if (m_context == nullptr || m_context->ui == nullptr) return;
+    m_context->ui->Publish({.route = PlayerUIRoute::MainMenu,
+                            .revision = 1,
+                            .title = "VOXELS ENGINE",
+                            .message = "A block-based world is waiting.",
+                            .items = {"Play", "Join Game", "Settings", "Quit"}});
+}
+
 void MainMenuState::Update(double deltaSeconds) {
-    m_elapsedSeconds += static_cast<float>(deltaSeconds);
-    const float radius = 7.0f;
-    const float speed = 0.35f;
-    const float angle = m_elapsedSeconds * speed;
-    m_camera.position = glm::vec3(std::sin(angle) * radius, 3.5f, std::cos(angle) * radius);
-    m_camera.aspect = 1280.0f / 720.0f;
-    m_camera.fovY = glm::radians(60.0f);
+    m_phaseElapsedSeconds += static_cast<float>(deltaSeconds);
+
+    if (m_phase == IntroPhase::SplashHold) {
+        PublishSplash(1.0f);
+        if (m_phaseElapsedSeconds >= kStartupSplashHoldSeconds) {
+            m_phase = IntroPhase::SplashFade;
+            m_phaseElapsedSeconds = 0.0f;
+        }
+        return;
+    }
+
+    if (m_phase == IntroPhase::SplashFade) {
+        const float fade = 1.0f - std::clamp(m_phaseElapsedSeconds / kStartupSplashFadeSeconds, 0.0f, 1.0f);
+        PublishSplash(fade);
+        if (m_phaseElapsedSeconds >= kStartupSplashFadeSeconds) {
+            m_phase = IntroPhase::PreviewLoading;
+            m_phaseElapsedSeconds = 0.0f;
+        }
+        return;
+    }
+
+    if (m_phase == IntroPhase::PreviewLoading) {
+        if (!IsMainMenuBackdropActive()) {
+            m_phase = IntroPhase::Ready;
+            m_phaseElapsedSeconds = 0.0f;
+            return;
+        }
+        if (!m_startedMenuMusic && m_context != nullptr && m_context->audio != nullptr) {
+            if (const auto it = m_context->soundBank.find("music/menu_theme"); it != m_context->soundBank.end()) {
+                m_context->audio->PlayMusic({it->second.id}, true);
+            }
+            m_startedMenuMusic = true;
+        }
+        const float progress = GetMainMenuBackdropProgress();
+        PublishPreviewLoading(progress);
+        if (IsMainMenuBackdropReady()) {
+            m_phase = IntroPhase::Ready;
+            m_phaseElapsedSeconds = 0.0f;
+        }
+        return;
+    }
+
+    if (!m_publishedReadyMenu) {
+        PublishReadyMenu();
+        m_publishedReadyMenu = true;
+    }
+    if (!m_controlsCardQueued && m_context != nullptr && m_context->firstRun &&
+        m_context->preferences != nullptr && !m_context->preferences->controlsCardSeen &&
+        m_context->requestPushOverlay) {
+        m_controlsCardQueued = true;
+        m_context->requestPushOverlay(std::make_unique<ControlsCardState>(m_context));
+    }
 }
 
 void InGameState::OnEnter() {
+    StopMainMenuBackdrop();
     if (m_jobSystem == nullptr) m_jobSystem = std::make_unique<JobSystem>();
     if (m_remoteSession) {
         if (m_preparedWorld != nullptr) m_session.AdoptWorld(std::move(m_preparedWorld));

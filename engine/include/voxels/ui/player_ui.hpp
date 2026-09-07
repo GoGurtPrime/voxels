@@ -19,7 +19,7 @@
 
 namespace voxels {
 
-enum class PlayerUIRoute : std::uint8_t { MainMenu, SaveSelection, WorldCreation, Loading, Join, Error, Pause, Settings, ControlsCard, Hud, FatalError };
+enum class PlayerUIRoute : std::uint8_t { MainMenu, SaveSelection, WorldCreation, Loading, Join, Error, Pause, Settings, ControlsCard, Hud, FatalError, Splash };
 enum class PlayerUIInputPolicy : std::uint8_t { Gameplay, Overlay, TextEntry };
 
 /// Immutable value snapshot submitted to the active UI route on the main thread.

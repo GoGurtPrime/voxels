@@ -43,54 +43,27 @@ body {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Backdrop: atmospheric stand-in for the eventual in-game scenic render.  */
-/* Structured as its own layer so swapping in a screenshot later only     */
-/* means changing this one element's background-image.                   */
+/* Startup splash overlay                                                  */
 /* ---------------------------------------------------------------------- */
 
-.scene-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  background:
-    radial-gradient(ellipse 120% 80% at 50% 12%, rgba(242, 169, 59, 0.10), transparent 60%),
-    radial-gradient(ellipse 140% 100% at 50% 100%, rgba(0, 0, 0, 0.75), transparent 55%),
-    linear-gradient(180deg, #171a22 0%, #11141b 45%, #0a0b0f 100%);
+.splash-panel {
+  margin: auto;
+  width: min(680px, calc(100vw - 64px));
+  padding: 26px 34px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(18, 21, 30, 0.62), rgba(9, 11, 16, 0.66));
+  border: 1px solid rgba(242, 169, 59, 0.28);
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.46);
+  text-align: center;
 }
 
-.scene-vignette {
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  box-shadow: inset 0 0 18vw 2vw rgba(0, 0, 0, 0.65);
-}
-
-.ember-field {
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.ember {
-  position: absolute;
-  bottom: -4%;
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: radial-gradient(circle, #ffd889 0%, #f2a93b 55%, transparent 75%);
-  opacity: 0;
-  animation-name: ember-rise;
-  animation-timing-function: ease-in;
-  animation-iteration-count: infinite;
-}
-
-@keyframes ember-rise {
-  0% { transform: translateY(0) translateX(0) scale(0.6); opacity: 0; }
-  8% { opacity: 0.85; }
-  100% { transform: translateY(-105vh) translateX(var(--drift, 24px)) scale(1); opacity: 0; }
+.splash-title {
+  margin: 0 0 12px;
+  font-family: "Cinzel", ui-serif, serif;
+  font-weight: 800;
+  font-size: clamp(30px, 7vw, 64px);
+  letter-spacing: 0.02em;
+  color: #f8e8c8;
 }
 
 @media (prefers-reduced-motion: reduce) {

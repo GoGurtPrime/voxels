@@ -51,6 +51,7 @@ void CenterNextWindow() {
 }
 
 bool BeginMenuFrame(AppContext* context, PlayerUIRoute route) {
+    RenderMainMenuBackdrop();
     if (context == nullptr || context->ui == nullptr || !context->ui->UsesNativeRoutePresentation(route)) return false;
     return true;
 }
@@ -112,17 +113,50 @@ std::string BuildSettingsPayload(const GamePreferences& preferences, RendererBac
 
 void MainMenuState::OnEnter() {
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::MainMenu, .revision = 1, .title = "VOXELS ENGINE", .message = "A block-based world is waiting.", .items = {"Play", "Join Game", "Settings", "Quit"}});
     if (m_context != nullptr && m_context->input != nullptr) m_context->input->ClearGameplayInput();
-    if (m_context != nullptr && m_context->firstRun && m_context->preferences != nullptr &&
-        !m_context->preferences->controlsCardSeen && m_context->requestPushOverlay) {
-        m_context->requestPushOverlay(std::make_unique<ControlsCardState>(m_context));
+
+    const std::uint64_t seed = static_cast<std::uint64_t>(std::random_device{}()) ^
+                               static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+    const int renderDistance = (m_context != nullptr && m_context->preferences != nullptr)
+                                   ? std::clamp(m_context->preferences->renderDistance, 4, 10)
+                                   : 6;
+    if (m_context != nullptr && m_context->blockRegistry != nullptr && m_context->textureAtlas != nullptr &&
+        m_context->renderer != nullptr) {
+        StartMainMenuBackdrop(*m_context->blockRegistry, *m_context->textureAtlas,
+                              *m_context->renderer, seed, renderDistance);
     }
+
+    m_startedMenuMusic = false;
+    m_publishedReadyMenu = false;
+    m_controlsCardQueued = false;
+    m_phaseElapsedSeconds = 0.0f;
+    m_phase = ConsumeStartupSplashEligibility() ? IntroPhase::SplashHold : IntroPhase::PreviewLoading;
 }
 
 void MainMenuState::Render() {
-    if (m_context == nullptr || m_context->ui == nullptr) return;
     if (!BeginMenuFrame(m_context, PlayerUIRoute::MainMenu)) return;
+
+    if (m_phase != IntroPhase::Ready) {
+        CenterNextWindow();
+        ImGui::SetNextWindowSize({520.0f, 0.0f}, ImGuiCond_Always);
+        ImGui::Begin("Startup", nullptr, kMenuWindowFlags);
+        if (m_phase == IntroPhase::SplashHold || m_phase == IntroPhase::SplashFade) {
+            ui::MenuTitle("VOXELS ENGINE");
+            ImGui::TextUnformatted("Developer and engine initialization");
+            ImGui::Spacing();
+            ImGui::TextWrapped("Powered by SDL2, OpenGL, CEF, and Dear ImGui.");
+            ImGui::TextDisabled("Copyright and license details are available from the packaged license files.");
+        } else {
+            ui::MenuTitle("PREPARING MAIN MENU");
+            ImGui::TextUnformatted("Generating scenic flythrough world...");
+            const float progress = GetMainMenuBackdropProgress();
+            const std::string percent = std::to_string(static_cast<int>(progress * 100.0f)) + "%";
+            ui::ProgressBar(progress, percent.c_str());
+        }
+        ImGui::End();
+        return;
+    }
+
     CenterNextWindow();
     ImGui::SetNextWindowSize({390.0f, 0.0f}, ImGuiCond_Always);
     ImGui::Begin("Voxel World", nullptr, kMenuWindowFlags);
@@ -325,6 +359,7 @@ void JoinGameState::Render() {
 }
 
 void JoinLoadingState::OnEnter() {
+    StopMainMenuBackdrop();
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::Loading, .revision = 1, .title = "JOINING...", .message = m_endpointLabel, .progress = 0.0f, .blocking = true});
     m_world = std::make_unique<World>();
@@ -431,6 +466,7 @@ void JoinLoadingState::Render() {
 }
 
 void LoadingScreenState::OnEnter() {
+    StopMainMenuBackdrop();
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::Loading, .revision = 1, .title = "LOADING...", .progress = 0.0f, .blocking = true});
     m_generationComplete = false;

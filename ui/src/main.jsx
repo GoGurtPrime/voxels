@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { Route, parseJson, sendUiAction, useVoxelsActionGate, useVoxelsBridgeModel } from "./lib/voxelsBridge";
@@ -11,34 +11,18 @@ function ActionButton({ children, kind, fields, className = "", style, ...props 
   );
 }
 
-/** Atmospheric layer standing in for the eventual scenic in-game background. */
-function SceneBackdrop() {
-  const embers = useMemo(() => Array.from({ length: 18 }, (_, index) => ({
-    id: index,
-    left: Math.round(Math.random() * 100),
-    delay: Math.round(Math.random() * 9000),
-    duration: Math.round(9000 + Math.random() * 7000),
-    drift: Math.round((Math.random() - 0.5) * 80)
-  })), []);
+function SplashIntro({ model }) {
+  const payload = parseJson(model?.payload, null);
+  const fade = typeof payload?.fade === "number" ? Math.max(0, Math.min(1, payload.fade)) :
+    (typeof model?.progress === "number" ? Math.max(0, Math.min(1, model.progress)) : 1);
   return (
-    <>
-      <div className="scene-backdrop" aria-hidden="true" />
-      <div className="ember-field" aria-hidden="true">
-        {embers.map((ember) => (
-          <span
-            key={ember.id}
-            className="ember"
-            style={{
-              left: `${ember.left}%`,
-              animationDelay: `${ember.delay}ms`,
-              animationDuration: `${ember.duration}ms`,
-              "--drift": `${ember.drift}px`
-            }}
-          />
-        ))}
-      </div>
-      <div className="scene-vignette" aria-hidden="true" />
-    </>
+    <main className="player-ui" aria-busy>
+      <section className="splash-panel" style={{ opacity: fade }} aria-label="Startup preface">
+        <p className="kicker">Game Developer</p>
+        <h1 className="splash-title">Voxels Engine</h1>
+        <p className="supporting">{model?.message || "Initializing runtime components"}</p>
+      </section>
+    </main>
   );
 }
 
@@ -362,16 +346,15 @@ function Settings({ model }) {
 
 function App() {
   const [model] = useVoxelsBridgeModel({ route: Route.MainMenu, revision: 0, progress: 0, items: [] });
-  const showBackdrop = model.route !== Route.Hud && model.route !== Route.Pause;
 
   // Example usage for future gameplay overlays:
   // const { runGuardedAction } = useVoxelsActionGate();
   // runGuardedAction("pause-resume", "resume", {});
   return (
     <>
-      {showBackdrop ? <SceneBackdrop /> : null}
       {(() => {
         switch (model.route) {
+          case Route.Splash: return <SplashIntro model={model} />;
           case Route.MainMenu: return <MainMenu />;
           case Route.SaveSelection: return <WorldSelect model={model} />;
           case Route.WorldCreation: return <WorldCreation />;
