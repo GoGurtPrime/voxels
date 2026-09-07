@@ -1,27 +1,31 @@
 {
   "schema_version": 1,
   "entry_html": "browser/index.html",
-  "source_revision": "71ac3af1f63f5cd0ccc9382a3b5dddb94543108c",
-  "source_sha256": "fa7b4bbf9610f80616e7a85026b0baf482ee1a92d21afdcb768809ea80f17d28",
+  "source_revision": "8a4a98ed9bb7fc66bb686e9c386dfea95be653be",
+  "source_sha256": "699403e637e9f7462979d046f7a27a833a607832d19c044a7c6c3f5f990cd7f9",
   "assets": {
     "browser/assets/cinzel-latin-variable-DMUuCU8H.woff2": {
       "sha256": "09941fb1c169c38fd414536b37690057fc01b3117a5c63dd6571186540c8f370",
       "bytes": 25904
     },
-    "browser/assets/index-BHJQxFZt.css": {
-      "sha256": "a3b2c1de439c97ac9209845e67aaeb4628b256cc54bee31f5463c157bc79ab23",
-      "bytes": 13389
+    "browser/assets/index-C-JR1Ofh.css": {
+      "sha256": "b7a436c322b45c77ebe37e8ccf6212b75bc04d0a452f2da3fc4aa52e273fbd65",
+      "bytes": 13529
     },
-    "browser/assets/index-X4QlUB58.js": {
-      "sha256": "4fa5da7f3b72ad31580d1411f779da588ecae1e629c6b1ee0d3ccc07c2c8c328",
-      "bytes": 157140
+    "browser/assets/index-x0Eb6k54.js": {
+      "sha256": "346c3042aabdc59fbee5fad51fd08cae14fdec095b2186b9ed2e6cd2b63dccc1",
+      "bytes": 157221
     },
     "browser/assets/inter-latin-variable-Dx4kXJAl.woff2": {
       "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62",
       "bytes": 48256
     },
+    "browser/assets/studio-logo.png": {
+      "sha256": "a61d626b9fe0ab8e6c145301a00bac1e1dd5bc97f2fe7d9ecff8ce52da344eec",
+      "bytes": 96272
+    },
     "browser/index.html": {
-      "sha256": "66ae4495fa8cfe20237eefafdcbbac0ddfd49ab767e07f16f266c8eacd523013",
+      "sha256": "0093e87a8c5ac6b72c9d33fb6905dfa4c6276a89dee3c691000e268dea00b653",
       "bytes": 451
     }
   }

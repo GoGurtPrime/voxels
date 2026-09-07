@@ -22,6 +22,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <random>
 #include <thread>
 #include <unordered_map>
@@ -207,6 +208,190 @@ std::unordered_map<std::string, voxels::SoundHandle> LoadSoundBank(voxels::Audio
     }
     return bank;
 }
+
+struct MusicTrack {
+    voxels::MusicHandle handle{};
+    double durationSeconds = 0.0;
+    std::filesystem::path path;
+};
+
+class MusicDirector {
+public:
+    MusicDirector(voxels::AudioEngine& audio,
+                  std::unordered_map<std::string, voxels::SoundHandle>& soundBank,
+                  std::filesystem::path audioRoot)
+        : m_audio(audio), m_soundBank(soundBank), m_audioRoot(std::move(audioRoot)) {
+        m_rng.seed(std::random_device{}());
+    }
+
+    void InitializeFromPreferences(const voxels::GamePreferences& preferences) {
+        m_masterVolume = preferences.masterVolume;
+        m_musicVolume = preferences.musicVolume;
+        m_sfxVolume = preferences.sfxVolume;
+
+        const auto menu = m_soundBank.find("music/menu_theme");
+        if (menu != m_soundBank.end()) {
+            m_menuTrack = {menu->second.id};
+            m_audio.PlayMusic(m_menuTrack, true);
+            m_menuPlaying = true;
+        }
+
+        LoadGameplayPlaylist();
+        ApplyGains();
+    }
+
+    void SyncPreferences(const voxels::GamePreferences& preferences) {
+        m_masterVolume = preferences.masterVolume;
+        m_musicVolume = preferences.musicVolume;
+        m_sfxVolume = preferences.sfxVolume;
+    }
+
+    void Update(double deltaSeconds, const voxels::IAppState* baseState) {
+        const bool gameplayActive = baseState != nullptr && baseState->GetId() == voxels::AppStateId::InGame;
+        const float targetGameplayMix = gameplayActive ? 1.0f : 0.0f;
+        const float alpha = 1.0f - std::exp(-static_cast<float>(deltaSeconds) / kContextFadeSeconds);
+        m_gameplayMix += (targetGameplayMix - m_gameplayMix) * std::clamp(alpha, 0.0f, 1.0f);
+        m_gameplayMix = std::clamp(m_gameplayMix, 0.0f, 1.0f);
+        m_menuMix = 1.0f - m_gameplayMix;
+
+        UpdateGameplayPlaylist(deltaSeconds, gameplayActive);
+        ApplyGains();
+    }
+
+private:
+    static constexpr float kContextFadeSeconds = 1.6f;
+    static constexpr float kTrackFadeInSeconds = 1.2f;
+    static constexpr float kTrackFadeOutSeconds = 1.4f;
+    static constexpr float kTrackGapSeconds = 0.7f;
+
+    void LoadGameplayPlaylist() {
+        m_playlist.clear();
+        const std::filesystem::path playlistDir = m_audioRoot / "playlist_ingame";
+        std::error_code error;
+        std::filesystem::create_directories(playlistDir, error);
+        if (error) return;
+
+        std::vector<std::filesystem::path> files;
+        for (const auto& entry : std::filesystem::directory_iterator(playlistDir, error)) {
+            if (error || !entry.is_regular_file()) continue;
+            const std::string ext = entry.path().extension().string();
+            if (ext == ".wav" || ext == ".WAV") files.push_back(entry.path());
+        }
+        std::sort(files.begin(), files.end());
+
+        for (const auto& file : files) {
+            const voxels::MusicHandle handle = m_audio.LoadMusic(file, voxels::AudioCategory::Ambience);
+            if (!handle.IsValid()) continue;
+            double durationSeconds = 0.0;
+            if (const voxels::PcmBuffer* clip = m_audio.GetMixer().GetClip({handle.id}); clip != nullptr &&
+                clip->channels > 0 && clip->sampleRate > 0) {
+                const std::size_t frames = clip->samples.size() / clip->channels;
+                durationSeconds = static_cast<double>(frames) / static_cast<double>(clip->sampleRate);
+            }
+            m_playlist.push_back({handle, durationSeconds, file.filename()});
+        }
+    }
+
+    std::optional<std::size_t> PickNextTrackIndex() {
+        if (m_playlist.empty()) return std::nullopt;
+        if (m_playlist.size() == 1) return std::size_t{0};
+
+        std::uniform_int_distribution<std::size_t> distribution(0, m_playlist.size() - 1U);
+        for (int attempt = 0; attempt < 12; ++attempt) {
+            const std::size_t index = distribution(m_rng);
+            if (static_cast<int>(index) != m_lastTrackIndex) return index;
+        }
+        return static_cast<std::size_t>((m_lastTrackIndex + 1) % static_cast<int>(m_playlist.size()));
+    }
+
+    void StartNextGameplayTrack() {
+        const auto next = PickNextTrackIndex();
+        if (!next.has_value()) {
+            m_currentTrackIndex = -1;
+            m_trackPlaying = false;
+            m_trackEnvelope = 0.0f;
+            return;
+        }
+
+        m_currentTrackIndex = static_cast<int>(*next);
+        m_lastTrackIndex = m_currentTrackIndex;
+        m_trackElapsedSeconds = 0.0;
+        m_trackPlaying = true;
+        m_audio.PlayMusic(m_playlist[*next].handle, false);
+    }
+
+    void UpdateGameplayPlaylist(double deltaSeconds, bool gameplayActive) {
+        if (!gameplayActive) {
+            m_trackEnvelope = std::max(0.0f, m_trackEnvelope - static_cast<float>(deltaSeconds / kTrackFadeOutSeconds));
+            m_trackGapRemaining = 0.0;
+            return;
+        }
+
+        if (!m_trackPlaying) {
+            if (m_trackGapRemaining > 0.0) {
+                m_trackGapRemaining = std::max(0.0, m_trackGapRemaining - deltaSeconds);
+                m_trackEnvelope = 0.0f;
+                return;
+            }
+            StartNextGameplayTrack();
+        }
+
+        if (!m_trackPlaying || m_currentTrackIndex < 0 ||
+            m_currentTrackIndex >= static_cast<int>(m_playlist.size())) {
+            m_trackEnvelope = 0.0f;
+            return;
+        }
+
+        const MusicTrack& track = m_playlist[static_cast<std::size_t>(m_currentTrackIndex)];
+        m_trackElapsedSeconds += deltaSeconds;
+
+        const float fadeIn = track.durationSeconds > 0.0
+            ? std::clamp(static_cast<float>(m_trackElapsedSeconds / kTrackFadeInSeconds), 0.0f, 1.0f)
+            : 1.0f;
+        float fadeOut = 1.0f;
+        if (track.durationSeconds > 0.0) {
+            const double remaining = track.durationSeconds - m_trackElapsedSeconds;
+            if (remaining <= 0.0) {
+                m_trackPlaying = false;
+                m_trackGapRemaining = kTrackGapSeconds;
+                m_trackEnvelope = 0.0f;
+                return;
+            }
+            if (remaining < kTrackFadeOutSeconds) {
+                fadeOut = std::clamp(static_cast<float>(remaining / kTrackFadeOutSeconds), 0.0f, 1.0f);
+            }
+        }
+        m_trackEnvelope = std::clamp(std::min(fadeIn, fadeOut), 0.0f, 1.0f);
+    }
+
+    void ApplyGains() {
+        const float menuMusicGain = m_musicVolume * m_menuMix;
+        const float gameplayMusicGain = m_musicVolume * m_gameplayMix * m_trackEnvelope;
+        const float ambienceGain = std::clamp(gameplayMusicGain, 0.0f, 1.0f);
+        m_audio.ApplyVolumes(m_masterVolume, std::clamp(menuMusicGain, 0.0f, 1.0f), m_sfxVolume, ambienceGain);
+    }
+
+    voxels::AudioEngine& m_audio;
+    std::unordered_map<std::string, voxels::SoundHandle>& m_soundBank;
+    std::filesystem::path m_audioRoot;
+
+    voxels::MusicHandle m_menuTrack{};
+    bool m_menuPlaying = false;
+    std::vector<MusicTrack> m_playlist;
+    std::mt19937_64 m_rng{};
+    int m_lastTrackIndex = -1;
+    int m_currentTrackIndex = -1;
+    bool m_trackPlaying = false;
+    double m_trackElapsedSeconds = 0.0;
+    double m_trackGapRemaining = 0.0;
+    float m_trackEnvelope = 0.0f;
+
+    float m_masterVolume = 1.0f;
+    float m_musicVolume = 1.0f;
+    float m_sfxVolume = 1.0f;
+    float m_menuMix = 1.0f;
+    float m_gameplayMix = 0.0f;
+};
 
 std::array<std::uint8_t, 3> PreviewColor(voxels::Biome biome) {
     switch (biome) {
@@ -613,6 +798,8 @@ int main(int argc, char** argv) {
 
     voxels::FrameAccumulator frameAccumulator;
     const voxels::PlayerUIActionDispatcher playerUIActionDispatcher;
+    MusicDirector musicDirector(*audio, appContext.soundBank, audioRoot);
+    musicDirector.InitializeFromPreferences(preferences);
     auto lastTime = std::chrono::steady_clock::now();
     int frameCount = 0;
     const int maxFrames = options.maxFrames > 0 ? options.maxFrames : std::numeric_limits<int>::max();
@@ -630,6 +817,8 @@ int main(int argc, char** argv) {
         const auto now = std::chrono::steady_clock::now();
         const double deltaSeconds = std::chrono::duration<double>(now - lastTime).count();
         lastTime = now;
+        musicDirector.SyncPreferences(preferences);
+        musicDirector.Update(deltaSeconds, stateMachine.GetCurrentState());
         frameAccumulator.Accumulate(deltaSeconds);
 
         const int simTicks = frameAccumulator.Resolve(kFixedStepSeconds, kMaxSimulationStepsPerFrame);

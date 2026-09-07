@@ -151,7 +151,6 @@ private:
 
     IntroPhase m_phase = IntroPhase::PreviewLoadingOpaque;
     float m_phaseElapsedSeconds = 0.0f;
-    bool m_startedMenuMusic = false;
     bool m_publishedReadyMenu = false;
     bool m_controlsCardQueued = false;
     bool m_runLogoSequence = true;

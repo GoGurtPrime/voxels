@@ -31,7 +31,7 @@ namespace {
 voxels::graphics::IGraphicsRenderer* g_renderer = nullptr;
 bool g_startupSplashShown = false;
 
-constexpr float kPreviewRevealSeconds = 1.2f;
+constexpr float kPreviewRevealSeconds = 2.2f;
 constexpr float kLogoFadeInSeconds = 0.8f;
 constexpr float kLogoHoldSeconds = 10.0f;
 constexpr float kLogoFadeOutSeconds = 0.9f;
@@ -192,6 +192,24 @@ private:
         return m_sampler.SampleColumn(static_cast<int>(std::lround(worldX)), static_cast<int>(std::lround(worldZ))).surfaceY;
     }
 
+    [[nodiscard]] float SurfaceYSmoothAt(float worldX, float worldZ) const {
+        const int x0 = static_cast<int>(std::floor(worldX));
+        const int z0 = static_cast<int>(std::floor(worldZ));
+        const int x1 = x0 + 1;
+        const int z1 = z0 + 1;
+        const float tx = worldX - static_cast<float>(x0);
+        const float tz = worldZ - static_cast<float>(z0);
+
+        const float h00 = static_cast<float>(m_sampler.SampleColumn(x0, z0).surfaceY);
+        const float h10 = static_cast<float>(m_sampler.SampleColumn(x1, z0).surfaceY);
+        const float h01 = static_cast<float>(m_sampler.SampleColumn(x0, z1).surfaceY);
+        const float h11 = static_cast<float>(m_sampler.SampleColumn(x1, z1).surfaceY);
+
+        const float hx0 = h00 + (h10 - h00) * std::clamp(tx, 0.0f, 1.0f);
+        const float hx1 = h01 + (h11 - h01) * std::clamp(tx, 0.0f, 1.0f);
+        return hx0 + (hx1 - hx0) * std::clamp(tz, 0.0f, 1.0f);
+    }
+
     [[nodiscard]] float RandomRange(float min, float max) {
         std::uniform_real_distribution<float> distribution(min, max);
         return distribution(m_rng);
@@ -211,8 +229,8 @@ private:
         if (m_activeShot.style == CameraShot::Style::Curve) {
             const glm::vec2 start = RandomPointAround(30.0f, 58.0f);
             const glm::vec2 end = RandomPointAround(14.0f, 46.0f);
-            const float startY = static_cast<float>(SurfaceYAt(start.x, start.y)) + RandomRange(10.0f, 13.0f);
-            const float endY = static_cast<float>(SurfaceYAt(end.x, end.y)) + RandomRange(8.0f, 11.0f);
+            const float startY = SurfaceYSmoothAt(start.x, start.y) + RandomRange(10.0f, 13.0f);
+            const float endY = SurfaceYSmoothAt(end.x, end.y) + RandomRange(8.0f, 11.0f);
 
             m_activeShot.p0 = {start.x, startY, start.y};
             m_activeShot.p3 = {end.x, endY, end.y};
@@ -223,8 +241,8 @@ private:
             side = glm::normalize(side);
             m_activeShot.p1 = m_activeShot.p0 + span * 0.33f + side * RandomRange(-14.0f, 14.0f);
             m_activeShot.p2 = m_activeShot.p0 + span * 0.66f - side * RandomRange(-10.0f, 10.0f);
-            m_activeShot.p1.y = std::max(m_activeShot.p1.y, static_cast<float>(SurfaceYAt(m_activeShot.p1.x, m_activeShot.p1.z)) + 9.0f);
-            m_activeShot.p2.y = std::max(m_activeShot.p2.y, static_cast<float>(SurfaceYAt(m_activeShot.p2.x, m_activeShot.p2.z)) + 8.0f);
+            m_activeShot.p1.y = std::max(m_activeShot.p1.y, SurfaceYSmoothAt(m_activeShot.p1.x, m_activeShot.p1.z) + 9.0f);
+            m_activeShot.p2.y = std::max(m_activeShot.p2.y, SurfaceYSmoothAt(m_activeShot.p2.x, m_activeShot.p2.z) + 8.0f);
             m_activeShot.durationSeconds = RandomRange(8.0f, 14.0f);
         } else if (m_activeShot.style == CameraShot::Style::PanX) {
             const float z = RandomRange(-46.0f, 46.0f);
@@ -233,8 +251,8 @@ private:
             const bool reverse = RandomRange(0.0f, 1.0f) > 0.5f;
             const glm::vec3 start = {reverse ? x1 : x0, 0.0f, z};
             const glm::vec3 end = {reverse ? x0 : x1, 0.0f, z};
-            const float startY = static_cast<float>(SurfaceYAt(start.x, start.z)) + RandomRange(8.0f, 11.0f);
-            const float endY = static_cast<float>(SurfaceYAt(end.x, end.z)) + RandomRange(8.0f, 11.0f);
+            const float startY = SurfaceYSmoothAt(start.x, start.z) + RandomRange(8.0f, 11.0f);
+            const float endY = SurfaceYSmoothAt(end.x, end.z) + RandomRange(8.0f, 11.0f);
             m_activeShot.p0 = {start.x, startY, start.z};
             m_activeShot.p3 = {end.x, endY, end.z};
             m_activeShot.p1 = m_activeShot.p0 + (m_activeShot.p3 - m_activeShot.p0) * 0.33f;
@@ -247,8 +265,8 @@ private:
             const bool reverse = RandomRange(0.0f, 1.0f) > 0.5f;
             const glm::vec3 start = {x, 0.0f, reverse ? z1 : z0};
             const glm::vec3 end = {x, 0.0f, reverse ? z0 : z1};
-            const float startY = static_cast<float>(SurfaceYAt(start.x, start.z)) + RandomRange(8.0f, 11.0f);
-            const float endY = static_cast<float>(SurfaceYAt(end.x, end.z)) + RandomRange(8.0f, 11.0f);
+            const float startY = SurfaceYSmoothAt(start.x, start.z) + RandomRange(8.0f, 11.0f);
+            const float endY = SurfaceYSmoothAt(end.x, end.z) + RandomRange(8.0f, 11.0f);
             m_activeShot.p0 = {start.x, startY, start.z};
             m_activeShot.p3 = {end.x, endY, end.z};
             m_activeShot.p1 = m_activeShot.p0 + (m_activeShot.p3 - m_activeShot.p0) * 0.33f;
@@ -264,7 +282,15 @@ private:
             m_orbitTime += deltaSeconds;
             const float radius = 42.0f;
             const float angle = m_orbitTime * 0.09f;
-            m_camera.position = {std::sin(angle) * radius, 27.0f, std::cos(angle) * radius};
+            const glm::vec3 orbitTarget{std::sin(angle) * radius, 27.0f, std::cos(angle) * radius};
+            if (!m_hasSmoothedPosition) {
+                m_smoothedPosition = orbitTarget;
+                m_hasSmoothedPosition = true;
+            } else {
+                const float alpha = 1.0f - std::exp(-deltaSeconds * 3.0f);
+                m_smoothedPosition += (orbitTarget - m_smoothedPosition) * alpha;
+            }
+            m_camera.position = m_smoothedPosition;
             const glm::vec3 lookAt{0.0f, 18.0f, 0.0f};
             const glm::vec3 dir = glm::normalize(lookAt - m_camera.position);
             m_camera.yaw = std::atan2(-dir.x, -dir.z);
@@ -279,9 +305,16 @@ private:
         const float t = std::clamp(m_shotElapsedSeconds / std::max(0.001f, m_activeShot.durationSeconds), 0.0f, 1.0f);
         glm::vec3 position = BezierPoint(t);
         const float desiredClearance = 11.0f + (8.0f - 11.0f) * t;
-        const float minimumY = static_cast<float>(SurfaceYAt(position.x, position.z)) + desiredClearance;
+        const float minimumY = SurfaceYSmoothAt(position.x, position.z) + desiredClearance;
         if (position.y < minimumY) position.y = minimumY;
-        m_camera.position = position;
+        if (!m_hasSmoothedPosition) {
+            m_smoothedPosition = position;
+            m_hasSmoothedPosition = true;
+        } else {
+            const float alpha = 1.0f - std::exp(-deltaSeconds * 2.2f);
+            m_smoothedPosition += (position - m_smoothedPosition) * alpha;
+        }
+        m_camera.position = m_smoothedPosition;
 
         glm::vec3 tangent = BezierTangent(t);
         if (glm::dot(tangent, tangent) < 0.0001f) tangent = glm::vec3{0.0f, -0.1f, -1.0f};
@@ -307,6 +340,8 @@ private:
     CameraShot m_activeShot{};
     float m_shotElapsedSeconds = 0.0f;
     float m_orbitTime = 0.0f;
+    glm::vec3 m_smoothedPosition{0.0f};
+    bool m_hasSmoothedPosition = false;
 };
 
 MainMenuBackdropRuntime g_mainMenuBackdrop;
@@ -380,7 +415,7 @@ void MainMenuState::PublishSplash(float fade) const {
     m_context->ui->Publish({.route = PlayerUIRoute::Splash,
                             .revision = static_cast<std::uint64_t>(m_phaseElapsedSeconds * 1000.0f) + 1U,
                             .title = "VOXELS ENGINE",
-                            .message = "Powered by SDL2, OpenGL, CEF, and Dear ImGui",
+                            .message = "(c) 2026 Fractal Dynamics, All rights reserved.",
                             .payload = std::string{"{\"fade\":"} + std::to_string(std::clamp(fade, 0.0f, 1.0f)) + "}",
                             .progress = std::clamp(fade, 0.0f, 1.0f),
                             .blocking = true});
@@ -412,13 +447,6 @@ void MainMenuState::PublishReadyMenu() const {
 
 void MainMenuState::Update(double deltaSeconds) {
     m_phaseElapsedSeconds += static_cast<float>(deltaSeconds);
-
-    if (!m_startedMenuMusic && m_context != nullptr && m_context->audio != nullptr) {
-        if (const auto it = m_context->soundBank.find("music/menu_theme"); it != m_context->soundBank.end()) {
-            m_context->audio->PlayMusic({it->second.id}, true);
-        }
-        m_startedMenuMusic = true;
-    }
 
     if (m_phase == IntroPhase::PreviewLoadingOpaque) {
         const float progress = GetMainMenuBackdropProgress();

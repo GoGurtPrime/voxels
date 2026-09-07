@@ -120,18 +120,18 @@ void MainMenuState::OnEnter() {
     const int renderDistance = (m_context != nullptr && m_context->preferences != nullptr)
                                    ? std::clamp(m_context->preferences->renderDistance, 4, 10)
                                    : 6;
-    if (m_context != nullptr && m_context->blockRegistry != nullptr && m_context->textureAtlas != nullptr &&
-        m_context->renderer != nullptr) {
+    if (!IsMainMenuBackdropActive() && m_context != nullptr && m_context->blockRegistry != nullptr &&
+        m_context->textureAtlas != nullptr && m_context->renderer != nullptr) {
         StartMainMenuBackdrop(*m_context->blockRegistry, *m_context->textureAtlas,
                               *m_context->renderer, seed, renderDistance);
     }
 
-    m_startedMenuMusic = false;
     m_publishedReadyMenu = false;
     m_controlsCardQueued = false;
     m_phaseElapsedSeconds = 0.0f;
     m_runLogoSequence = ConsumeStartupSplashEligibility();
     m_phase = IntroPhase::PreviewLoadingOpaque;
+    PublishPreviewLoading(0.0f, 1.0f, true);
 }
 
 void MainMenuState::Render() {
@@ -144,10 +144,8 @@ void MainMenuState::Render() {
         if (m_phase == IntroPhase::LogoFadeIn || m_phase == IntroPhase::LogoHold ||
             m_phase == IntroPhase::LogoFadeOut) {
             ui::MenuTitle("VOXELS ENGINE");
-            ImGui::TextUnformatted("Developer and engine initialization");
             ImGui::Spacing();
-            ImGui::TextWrapped("Powered by SDL2, OpenGL, CEF, and Dear ImGui.");
-            ImGui::TextDisabled("Copyright and license details are available from the packaged license files.");
+            ImGui::TextWrapped("(c) 2026 Fractal Dynamics, All rights reserved.");
         } else {
             ui::MenuTitle("PREPARING MAIN MENU");
             ImGui::TextUnformatted(m_phase == IntroPhase::PreviewLoadingOpaque

@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { Route, parseJson, sendUiAction, useVoxelsActionGate, useVoxelsBridgeModel } from "./lib/voxelsBridge";
 
+const splashLogo = "/assets/studio-logo.png";
+
 function ActionButton({ children, kind, fields, className = "", style, ...props }) {
   return (
     <button className={`action-button ${className}`} type="button" style={style} onClick={() => sendUiAction(kind, fields)} {...props}>
@@ -15,12 +17,14 @@ function SplashIntro({ model }) {
   const payload = parseJson(model?.payload, null);
   const fade = typeof payload?.fade === "number" ? Math.max(0, Math.min(1, payload.fade)) :
     (typeof model?.progress === "number" ? Math.max(0, Math.min(1, model.progress)) : 1);
+  const [logoMissing, setLogoMissing] = useState(false);
   return (
     <main className="player-ui" aria-busy>
       <section className="splash-panel" style={{ opacity: fade }} aria-label="Startup preface">
-        <p className="kicker">Game Developer</p>
-        <h1 className="splash-title">Voxels Engine</h1>
-        <p className="supporting">{model?.message || "Initializing runtime components"}</p>
+        {!logoMissing ? (
+          <img className="splash-logo" src={splashLogo} alt="Fractal Dynamics" onError={() => setLogoMissing(true)} />
+        ) : null}
+        <p className="supporting">{model?.message || "(c) 2026 Fractal Dynamics, All rights reserved."}</p>
       </section>
     </main>
   );
@@ -31,9 +35,12 @@ function MenuAtmosphere({ opacity = 1 }) {
 }
 
 /** Shared frame for every route except the main menu's own hero layout. */
-function RouteShell({ title, kicker = "Voxels Engine", subtitle, children, footer, blocking = false, wide = false }) {
+function RouteShell({ title, kicker = "Voxels Engine", subtitle, children, footer, blocking = false, wide = false, autoFocusHeading = true }) {
   const heading = useRef(null);
-  useEffect(() => heading.current?.focus(), [title]);
+  useEffect(() => {
+    if (!autoFocusHeading) return;
+    heading.current?.focus();
+  }, [title, autoFocusHeading]);
   return (
     <main className="player-ui" aria-busy={blocking} style={{ alignItems: "center", justifyContent: "center", padding: 24 }}>
       <section className="carved-panel route-shell anim-rise" style={wide ? { width: "min(760px, calc(100vw - 48px))" } : undefined} aria-labelledby="route-title">
@@ -243,7 +250,7 @@ function Loading({ model }) {
     <>
       <div className="loading-opaque-layer" style={{ opacity: backdropOpacity }} aria-hidden="true" />
       {showStatus ? (
-        <RouteShell title={model.title || "Loading"} subtitle={model.message || "Preparing your world..."} blocking>
+        <RouteShell title={model.title || "Loading"} subtitle={model.message || "Preparing your world..."} blocking autoFocusHeading={false}>
           <progress value={model.progress} max="1">{percent}%</progress>
           <p className="supporting" style={{ marginTop: 10, textAlign: "right" }}>{percent}%</p>
         </RouteShell>

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
@@ -9,6 +9,8 @@ const uiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outputRoot = path.resolve(uiRoot, "../app/assets/ui/browser");
 const manifestPath = path.resolve(uiRoot, "../app/assets/ui/ui-manifest.json");
 const sourceRoot = path.resolve(uiRoot, "src");
+const splashLogoSource = path.resolve(uiRoot, "src/assets/studio-logo.png");
+const splashLogoOutput = path.resolve(outputRoot, "assets/studio-logo.png");
 
 function sha256(data) {
   return createHash("sha256").update(data).digest("hex");
@@ -33,6 +35,8 @@ function sourceRevision() {
 
 await rm(outputRoot, { recursive: true, force: true });
 await build({ configFile: path.join(uiRoot, "vite.config.js") });
+await mkdir(path.dirname(splashLogoOutput), { recursive: true });
+await copyFile(splashLogoSource, splashLogoOutput);
 
 const sourceFiles = (await filesUnder(sourceRoot)).concat([
   path.join(uiRoot, "index.html"),

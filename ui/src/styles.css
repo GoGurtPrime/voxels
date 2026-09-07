@@ -66,6 +66,15 @@ body {
   color: #f8e8c8;
 }
 
+.splash-logo {
+  display: block;
+  margin: 2px auto 14px;
+  width: min(500px, 78vw);
+  height: auto;
+  max-height: 200px;
+  object-fit: contain;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ember { animation: none; opacity: 0; }
   .anim-rise, .anim-glow { animation: none !important; }
