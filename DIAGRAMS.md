@@ -103,6 +103,9 @@ sequenceDiagram
     participant SM as AppStateMachine
 
     OS->>Main: argc / argv
+    opt VOXELS_HAS_CEF
+        Main->>Main: WebUIManager.ExecuteSubprocess(argc, argv)<br/>CEF renderer/GPU/utility subprocesses return here and exit;<br/>only the browser process falls through
+    end
     Main->>Main: CliParser.Parse
     Main->>Paths: Resolve user data dir + assets dir
     Main->>Prefs: Load settings.json, apply CLI overrides
@@ -115,6 +118,9 @@ sequenceDiagram
     Main->>Assets: Mount assets/ then packs/*.vpk
     Main->>Rend: Build texture atlas from block definitions
     Main->>UI: Initialize with platform + renderer
+    opt VOXELS_ENABLE_WEB_UI
+        Main->>Main: Construct WebUIManager as a second, independent<br/>IPlayerUI diagnostic overlay (never assigned to appContext.ui —<br/>ImGui keeps native route presentation so menus never regress)
+    end
     Main->>Aud: Open audio device, start mixer
     Main->>Main: Start JobSystem worker pool
     Main->>SM: Start BootState → transition MainMenuState
@@ -124,6 +130,9 @@ sequenceDiagram
     Main->>SM: Shutdown active state (autosave if in-game)
     Main->>Aud: Stop and close device
     Main->>UI: Shutdown
+    opt VOXELS_ENABLE_WEB_UI
+        Main->>Main: WebUIManager.Shutdown()<br/>close browser, pump loop to completion, THEN CefShutdown()<br/>— before Rend teardown, or the process crashes on exit
+    end
     Main->>Rend: Release GPU resources, shutdown
     Main->>Plat: Destroy context + window
     Main->>OS: exit(0)
@@ -275,7 +284,8 @@ flowchart LR
     WATER --> DEBUG["Pass 4: debug lines<br/>targeted block outline, chunk bounds if enabled"]
     DEBUG --> HUD["Pass 5: HUD primitives<br/>crosshair, hotbar, held item"]
     HUD --> IMGUI["Pass 6: ImGui draw data<br/>menus, settings, F3 overlay"]
-    IMGUI --> PRES["Renderer.EndFrame → Present"]
+    IMGUI --> WEBUI["Pass 7 (VOXELS_ENABLE_WEB_UI only): CEF diagnostic overlay<br/>WebUiOpenGLCompositor draws the browser's premultiplied-BGRA<br/>paint as a transparent full-frame quad; independent of ImGui,<br/>never replaces menus/HUD"]
+    WEBUI --> PRES["Renderer.EndFrame → Present"]
 ```
 
 **Chunk mesh path (data only reaches the GPU here):**
