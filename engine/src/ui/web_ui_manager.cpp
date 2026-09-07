@@ -11,17 +11,29 @@
 
 #include <algorithm>
 #include <chrono>
+#include <charconv>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <memory>
 #include <thread>
+#include <unordered_map>
 #include <nlohmann/json.hpp>
 
 #include "include/cef_app.h"
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
 #include "include/cef_command_line.h"
+#include "include/cef_display_handler.h"
 #include "include/cef_life_span_handler.h"
+#include "include/cef_load_handler.h"
+#include "include/cef_process_message.h"
+#include "include/cef_render_process_handler.h"
 #include "include/cef_render_handler.h"
 #include "include/cef_request_handler.h"
+#include "include/cef_scheme.h"
+#include "include/cef_v8.h"
 
 #include "voxels/core/paths.hpp"
 #include "voxels/ui/web_ui_manifest.hpp"
@@ -29,13 +41,198 @@
 namespace voxels {
 namespace {
 
-/// Relaxes Chromium's opaque per-file-URL origin model so the bundled `file://` UI can load its
-/// own same-directory Vite ES-module/CSS chunks; without it every subresource load is treated as
-/// cross-origin and silently dropped (the overlay would build a browser but paint nothing).
-class FileAccessApp final : public CefApp {
+constexpr char kUiScheme[] = "voxels-ui";
+constexpr char kUiHost[] = "app";
+constexpr char kUiOriginPrefix[] = "voxels-ui://app/";
+
+struct VerifiedUiAssets {
+    std::unordered_map<std::string, std::filesystem::path> files;
+};
+
+[[nodiscard]] std::string AssetPathFromUrl(std::string_view url) {
+    if (!url.starts_with(kUiOriginPrefix)) return {};
+    std::string rawPath(url.substr(std::char_traits<char>::length(kUiOriginPrefix)));
+    const std::size_t query = rawPath.find_first_of("?#");
+    if (query != std::string::npos) rawPath.resize(query);
+    if (!rawPath.empty() && rawPath.front() == '/') rawPath.erase(rawPath.begin());
+    if (rawPath.empty()) rawPath = "index.html";
+    for (std::size_t index = 0; index < rawPath.size(); ++index) {
+        if (rawPath[index] == '%' && index + 2 < rawPath.size()) {
+            unsigned int value = 0;
+            const auto result = std::from_chars(rawPath.data() + index + 1, rawPath.data() + index + 3, value, 16);
+            if (result.ec == std::errc{} && result.ptr == rawPath.data() + index + 3) {
+                rawPath[index] = static_cast<char>(value);
+                rawPath.erase(index + 1, 2);
+            }
+        }
+    }
+    std::replace(rawPath.begin(), rawPath.end(), '\\', '/');
+    const std::filesystem::path normalized = std::filesystem::path(rawPath).lexically_normal();
+    if (normalized.is_absolute()) return {};
+    if (normalized.empty()) return "index.html";
+    if (normalized.begin() != normalized.end() && normalized.begin()->string() == "..") return {};
+    return normalized.generic_string();
+}
+
+[[nodiscard]] std::string MimeTypeForPath(const std::filesystem::path& filePath) {
+    const std::string extension = filePath.extension().string();
+    if (extension == ".html") return "text/html; charset=utf-8";
+    if (extension == ".css") return "text/css; charset=utf-8";
+    if (extension == ".js") return "text/javascript; charset=utf-8";
+    if (extension == ".json") return "application/json; charset=utf-8";
+    if (extension == ".svg") return "image/svg+xml";
+    if (extension == ".png") return "image/png";
+    if (extension == ".jpg" || extension == ".jpeg") return "image/jpeg";
+    if (extension == ".woff2") return "font/woff2";
+    if (extension == ".woff") return "font/woff";
+    if (extension == ".ttf") return "font/ttf";
+    return "application/octet-stream";
+}
+
+[[nodiscard]] std::string StripBrowserPrefix(const std::filesystem::path& relativePath) {
+    const std::string normalized = relativePath.generic_string();
+    constexpr std::string_view prefix = "browser/";
+    if (!normalized.starts_with(prefix)) return {};
+    return normalized.substr(prefix.size());
+}
+
+[[nodiscard]] std::shared_ptr<VerifiedUiAssets> BuildVerifiedUiAssets(const std::filesystem::path& manifestPath,
+                                                                      const WebUiManifest& manifest,
+                                                                      std::string& entryHtmlPath) {
+    auto assets = std::make_shared<VerifiedUiAssets>();
+    for (const WebUiAsset& asset : manifest.assets) {
+        const std::string relative = StripBrowserPrefix(asset.path);
+        if (relative.empty()) continue;
+        assets->files.emplace(relative, manifestPath.parent_path() / asset.path);
+    }
+    entryHtmlPath = StripBrowserPrefix(manifest.entryHtml);
+    if (entryHtmlPath.empty() || assets->files.find(entryHtmlPath) == assets->files.end()) return {};
+    return assets;
+}
+
+class UiResourceHandler final : public CefResourceHandler {
 public:
+    explicit UiResourceHandler(std::shared_ptr<const VerifiedUiAssets> assets)
+        : m_assets(std::move(assets)) {}
+
+    bool ProcessRequest(CefRefPtr<CefRequest> request, CefRefPtr<CefCallback> callback) override {
+        m_payload.clear();
+        m_offset = 0;
+        m_statusCode = 404;
+        m_statusText = "Not Found";
+        m_mimeType = "text/plain; charset=utf-8";
+
+        if (request == nullptr) return false;
+        const std::string relative = AssetPathFromUrl(request->GetURL().ToString());
+        const auto it = m_assets->files.find(relative);
+        if (it == m_assets->files.end()) {
+            const std::string body = "Missing UI asset: " + relative;
+            m_payload.assign(body.begin(), body.end());
+            callback->Continue();
+            return true;
+        }
+        std::ifstream stream(it->second, std::ios::binary);
+        if (!stream) {
+            const std::string body = "Failed to open UI asset: " + relative;
+            m_payload.assign(body.begin(), body.end());
+            callback->Continue();
+            return true;
+        }
+        m_payload.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+        m_statusCode = 200;
+        m_statusText = "OK";
+        m_mimeType = MimeTypeForPath(it->second);
+        callback->Continue();
+        return true;
+    }
+
+    void GetResponseHeaders(CefRefPtr<CefResponse> response,
+                            std::int64_t& responseLength,
+                            CefString&) override {
+        response->SetStatus(m_statusCode);
+        response->SetStatusText(m_statusText);
+        response->SetMimeType(m_mimeType);
+        responseLength = static_cast<std::int64_t>(m_payload.size());
+    }
+
+    bool ReadResponse(void* dataOut,
+                      int bytesToRead,
+                      int& bytesRead,
+                      CefRefPtr<CefCallback>) override {
+        bytesRead = 0;
+        if (m_offset >= m_payload.size() || bytesToRead <= 0) return false;
+        const std::size_t remaining = m_payload.size() - m_offset;
+        const std::size_t count = std::min<std::size_t>(remaining, static_cast<std::size_t>(bytesToRead));
+        std::memcpy(dataOut, m_payload.data() + m_offset, count);
+        m_offset += count;
+        bytesRead = static_cast<int>(count);
+        return true;
+    }
+
+    void Cancel() override {}
+
+private:
+    std::shared_ptr<const VerifiedUiAssets> m_assets;
+    std::vector<std::uint8_t> m_payload;
+    std::size_t m_offset = 0;
+    int m_statusCode = 404;
+    CefString m_statusText;
+    CefString m_mimeType;
+    IMPLEMENT_REFCOUNTING(UiResourceHandler);
+};
+
+class UiSchemeFactory final : public CefSchemeHandlerFactory {
+public:
+    explicit UiSchemeFactory(std::shared_ptr<const VerifiedUiAssets> assets)
+        : m_assets(std::move(assets)) {}
+
+    CefRefPtr<CefResourceHandler> Create(CefRefPtr<CefBrowser>,
+                                          CefRefPtr<CefFrame>,
+                                          const CefString&,
+                                          CefRefPtr<CefRequest>) override {
+        return new UiResourceHandler(m_assets);
+    }
+
+private:
+    std::shared_ptr<const VerifiedUiAssets> m_assets;
+    IMPLEMENT_REFCOUNTING(UiSchemeFactory);
+};
+
+class ActionV8Handler final : public CefV8Handler {
+public:
+    bool Execute(const CefString&, CefRefPtr<CefV8Value>, const CefV8ValueList& arguments,
+                 CefRefPtr<CefV8Value>&, CefString&) override {
+        if (arguments.size() != 1 || !arguments.front()->IsString()) return false;
+        CefRefPtr<CefV8Context> context = CefV8Context::GetCurrentContext();
+        if (!context) return false;
+        CefRefPtr<CefProcessMessage> message = CefProcessMessage::Create("voxels-action");
+        message->GetArgumentList()->SetString(0, arguments.front()->GetStringValue());
+        context->GetBrowser()->GetMainFrame()->SendProcessMessage(PID_BROWSER, message);
+        return true;
+    }
+
+private:
+    IMPLEMENT_REFCOUNTING(ActionV8Handler);
+};
+
+class FileAccessApp final : public CefApp, public CefRenderProcessHandler {
+public:
+    void OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) override {
+        registrar->AddCustomScheme(kUiScheme,
+                                   CEF_SCHEME_OPTION_STANDARD |
+                                   CEF_SCHEME_OPTION_SECURE |
+                                   CEF_SCHEME_OPTION_CORS_ENABLED |
+                                   CEF_SCHEME_OPTION_FETCH_ENABLED);
+    }
+
     void OnBeforeCommandLineProcessing(const CefString&, CefRefPtr<CefCommandLine> commandLine) override {
-        commandLine->AppendSwitch("allow-file-access-from-files");
+        commandLine->AppendSwitch("disable-gpu");
+        commandLine->AppendSwitch("disable-gpu-compositing");
+    }
+    CefRefPtr<CefRenderProcessHandler> GetRenderProcessHandler() override { return this; }
+    void OnContextCreated(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context) override {
+        if (!frame->IsMain()) return;
+        context->GetGlobal()->SetValue("voxelsAction", CefV8Value::CreateFunction("voxelsAction", new ActionV8Handler()), V8_PROPERTY_ATTRIBUTE_NONE);
     }
 
 private:
@@ -47,16 +244,67 @@ private:
 class WebUIManager::BrowserClient final : public CefClient,
                                            public CefRenderHandler,
                                            public CefLifeSpanHandler,
+                                           public CefDisplayHandler,
+                                           public CefLoadHandler,
                                            public CefRequestHandler {
 public:
     explicit BrowserClient(WebUIManager& owner) : m_owner(owner) {}
 
     CefRefPtr<CefRenderHandler> GetRenderHandler() override { return this; }
     CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
+    CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
+    CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
     CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
     void GetViewRect(CefRefPtr<CefBrowser>, CefRect& rect) override { rect = CefRect(0, 0, m_width, m_height); }
-    void OnAfterCreated(CefRefPtr<CefBrowser> browser) override { m_browser = browser; }
-    void OnBeforeClose(CefRefPtr<CefBrowser>) override { m_browser = nullptr; }
+    void OnAfterCreated(CefRefPtr<CefBrowser> browser) override { m_browser = browser; m_mainFrameReady = false; }
+    void OnBeforeClose(CefRefPtr<CefBrowser>) override { m_browser = nullptr; m_mainFrameReady = false; }
+    void OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int) override {
+        if (!frame || !frame->IsMain()) return;
+        m_mainFrameReady = true;
+        m_owner.RepublishLatestModel();
+    }
+    void OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, ErrorCode code,
+                     const CefString& errorText, const CefString& failedUrl) override {
+        if (frame && frame->IsMain()) {
+            std::cerr << "Web UI load error [" << static_cast<int>(code) << "] "
+                      << errorText.ToString() << " at " << failedUrl.ToString() << '\n';
+        }
+    }
+    bool OnConsoleMessage(CefRefPtr<CefBrowser>, cef_log_severity_t,
+                          const CefString& message, const CefString& source, int line) override {
+        std::cerr << "Web UI console: " << source.ToString() << ':' << line << ' '
+                  << message.ToString() << '\n';
+        return false;
+    }
+    bool OnProcessMessageReceived(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefProcessId,
+                                  CefRefPtr<CefProcessMessage> message) override {
+        if (message->GetName() != "voxels-action") return false;
+        const std::string encoded = message->GetArgumentList()->GetString(0);
+        try {
+            const nlohmann::json command = nlohmann::json::parse(encoded);
+            const std::string kind = command.value("kind", "");
+            const std::uint32_t requestId = command.value("requestId", 0U);
+            if (kind.empty() || requestId == 0) return true;
+            PlayerUIAction action{.requestId = requestId, .primary = command.value("primary", ""), .secondary = command.value("secondary", "")};
+            if (kind == "play") action.kind = PlayerUIActionKind::Play;
+            else if (kind == "create-world") action.kind = PlayerUIActionKind::CreateWorld;
+            else if (kind == "load-world") action.kind = PlayerUIActionKind::LoadWorld;
+            else if (kind == "confirm-delete") action.kind = PlayerUIActionKind::ConfirmDelete;
+            else if (kind == "join") action.kind = PlayerUIActionKind::Join;
+            else if (kind == "quit") action.kind = PlayerUIActionKind::Quit;
+            else if (kind == "settings") action.kind = PlayerUIActionKind::OpenSettings;
+            else if (kind == "back") action.kind = PlayerUIActionKind::Back;
+            else if (kind == "apply-settings") action.kind = PlayerUIActionKind::ApplySettings;
+            else if (kind == "dismiss-controls") action.kind = PlayerUIActionKind::DismissControls;
+            else if (kind == "acknowledge-error") action.kind = PlayerUIActionKind::AcknowledgeError;
+            else return true;
+            m_owner.SubmitAction(std::move(action));
+            std::cerr << "Web UI action received: " << kind << '\n';
+        } catch (const nlohmann::json::exception&) {
+            std::cerr << "Web UI rejected malformed action payload.\n";
+        }
+        return true;
+    }
     void OnPaint(CefRefPtr<CefBrowser>, PaintElementType type, const RectList& dirtyRects, const void* buffer, int width, int height) override {
         if (type != PET_VIEW || buffer == nullptr) return;
         std::vector<WebUiDirtyRect> dirty;
@@ -67,49 +315,122 @@ public:
     }
     bool OnBeforeBrowse(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest> request, bool, bool) override {
         const std::string url = request->GetURL();
-        constexpr std::string_view prefix = "voxels://action/";
-        if (url.starts_with(prefix)) {
-            const std::string kind = url.substr(prefix.size(), url.find('?') - prefix.size());
-            const auto parsed = ParseAction(kind, url);
-            if (parsed.has_value()) m_owner.SubmitAction(*parsed);
-            return true;
-        }
-        return !url.starts_with("file:///");
+        if (url == "about:blank") return false;
+        return !url.starts_with(kUiOriginPrefix);
     }
     void Resize(int width, int height) {
         m_width = std::max(width, 1);
         m_height = std::max(height, 1);
         if (m_browser) m_browser->GetHost()->WasResized();
     }
+    void ForwardEvent(const PlatformEvent& event) {
+        if (!m_browser || m_owner.m_policy == PlayerUIInputPolicy::Gameplay) return;
+        CefRefPtr<CefBrowserHost> host = m_browser->GetHost();
+        CefMouseEvent mouseEvent{};
+        mouseEvent.x = event.x;
+        mouseEvent.y = event.y;
+        switch (event.type) {
+            case PlatformEventType::MouseMotion: host->SendMouseMoveEvent(mouseEvent, false); break;
+            case PlatformEventType::MouseButtonDown:
+            case PlatformEventType::MouseButtonUp: {
+                const cef_mouse_button_type_t button = event.button == 2 ? MBT_MIDDLE : event.button == 3 ? MBT_RIGHT : MBT_LEFT;
+                host->SendMouseClickEvent(mouseEvent, button, event.type == PlatformEventType::MouseButtonUp, 1);
+                break;
+            }
+            case PlatformEventType::MouseWheel: host->SendMouseWheelEvent(mouseEvent, event.wheelX, event.wheelY); break;
+            case PlatformEventType::KeyDown:
+            case PlatformEventType::KeyUp: {
+                CefKeyEvent keyEvent{};
+                keyEvent.type = event.type == PlatformEventType::KeyDown ? KEYEVENT_RAWKEYDOWN : KEYEVENT_KEYUP;
+                keyEvent.windows_key_code = event.keyCode;
+                keyEvent.native_key_code = event.scancode;
+                host->SendKeyEvent(keyEvent);
+                break;
+            }
+            case PlatformEventType::TextInput:
+                for (const unsigned char character : event.text) {
+                    CefKeyEvent keyEvent{};
+                    keyEvent.type = KEYEVENT_CHAR;
+                    keyEvent.character = character;
+                    keyEvent.unmodified_character = character;
+                    host->SendKeyEvent(keyEvent);
+                }
+                break;
+            default: break;
+        }
+    }
     /// Requests an asynchronous close; the browser stays alive (`OnBeforeClose` not yet fired)
     /// until the pumped message loop finishes tearing it down.
     void CloseBrowser() { if (m_browser) m_browser->GetHost()->CloseBrowser(true); }
     [[nodiscard]] bool HasBrowser() const noexcept { return static_cast<bool>(m_browser); }
     void Publish(const PlayerUIViewModel& model) {
-        if (!m_browser) return;
+        if (!m_browser || !m_mainFrameReady) return;
         const nlohmann::json json{{"route", static_cast<int>(model.route)}, {"revision", model.revision}, {"title", model.title}, {"message", model.message}, {"items", model.items}, {"progress", model.progress}, {"blocking", model.blocking}};
-        const std::string script = "window.__voxelsReceiveModel&&window.__voxelsReceiveModel(" + json.dump() + ");";
+        const std::string payload = json.dump();
+        const std::string script = "window.__voxelsLastModel=" + payload + ";if(window.__voxelsReceiveModel){window.__voxelsReceiveModel(window.__voxelsLastModel);}";
         m_browser->GetMainFrame()->ExecuteJavaScript(script, m_browser->GetMainFrame()->GetURL(), 0);
     }
 
 private:
+    static std::string DecodeQueryValue(std::string_view encoded) {
+        std::string decoded;
+        decoded.reserve(encoded.size());
+        for (std::size_t index = 0; index < encoded.size(); ++index) {
+            if (encoded[index] == '+' ) { decoded.push_back(' '); continue; }
+            if (encoded[index] == '%' && index + 2 < encoded.size()) {
+                unsigned int value = 0;
+                const auto result = std::from_chars(encoded.data() + index + 1, encoded.data() + index + 3, value, 16);
+                if (result.ec == std::errc{} && result.ptr == encoded.data() + index + 3) {
+                    decoded.push_back(static_cast<char>(value));
+                    index += 2;
+                    continue;
+                }
+            }
+            decoded.push_back(encoded[index]);
+        }
+        return decoded;
+    }
+    static std::string QueryValue(std::string_view url, std::string_view name) {
+        const std::size_t query = url.find('?');
+        if (query == std::string_view::npos) return {};
+        std::size_t start = query + 1;
+        while (start < url.size()) {
+            const std::size_t end = url.find('&', start);
+            const std::string_view pair = url.substr(start, end == std::string_view::npos ? url.size() - start : end - start);
+            const std::size_t equals = pair.find('=');
+            if (pair.substr(0, equals) == name) return DecodeQueryValue(equals == std::string_view::npos ? std::string_view{} : pair.substr(equals + 1));
+            if (end == std::string_view::npos) break;
+            start = end + 1;
+        }
+        return {};
+    }
     static std::optional<PlayerUIAction> ParseAction(const std::string& kind, const std::string& url) {
-        PlayerUIAction action{.requestId = 1};
+        PlayerUIAction action{.requestId = 1, .primary = QueryValue(url, "primary"), .secondary = QueryValue(url, "secondary")};
         if (kind == "play") action.kind = PlayerUIActionKind::Play;
+        else if (kind == "create-world") action.kind = PlayerUIActionKind::CreateWorld;
+        else if (kind == "load-world") action.kind = PlayerUIActionKind::LoadWorld;
+        else if (kind == "delete-world") action.kind = PlayerUIActionKind::DeleteWorld;
+        else if (kind == "confirm-delete") action.kind = PlayerUIActionKind::ConfirmDelete;
+        else if (kind == "join") action.kind = PlayerUIActionKind::Join;
+        else if (kind == "resume") action.kind = PlayerUIActionKind::Resume;
         else if (kind == "quit") action.kind = PlayerUIActionKind::Quit;
         else if (kind == "settings") action.kind = PlayerUIActionKind::OpenSettings;
         else if (kind == "back") action.kind = PlayerUIActionKind::Back;
+        else if (kind == "apply-settings") action.kind = PlayerUIActionKind::ApplySettings;
+        else if (kind == "dismiss-controls") action.kind = PlayerUIActionKind::DismissControls;
+        else if (kind == "hotbar") action.kind = PlayerUIActionKind::HudHotbar;
+        else if (kind == "acknowledge-error") action.kind = PlayerUIActionKind::AcknowledgeError;
         else return std::nullopt;
-        const auto marker = url.find("requestId=");
-        if (marker != std::string::npos) {
-            try { action.requestId = static_cast<std::uint32_t>(std::stoul(url.substr(marker + 10))); } catch (...) { return std::nullopt; }
-        }
+        const std::string requestId = QueryValue(url, "requestId");
+        const auto result = std::from_chars(requestId.data(), requestId.data() + requestId.size(), action.requestId);
+        if (result.ec != std::errc{} || result.ptr != requestId.data() + requestId.size()) return std::nullopt;
         return action.requestId == 0 ? std::nullopt : std::optional<PlayerUIAction>{action};
     }
     WebUIManager& m_owner;
     CefRefPtr<CefBrowser> m_browser;
     int m_width = 1280;
     int m_height = 720;
+    bool m_mainFrameReady = false;
     IMPLEMENT_REFCOUNTING(BrowserClient);
 };
 
@@ -121,8 +442,12 @@ int WebUIManager::ExecuteSubprocess(int, char**) {
 }
 bool WebUIManager::Initialize(IPlatform* platform, graphics::IGraphicsRenderer*) {
     if (platform == nullptr || platform->GetContext().name != "SDL2") return false;
+    const std::filesystem::path manifestPath = Paths::AssetsDir() / "ui/ui-manifest.json";
     WebUiManifest manifest; std::string error;
-    if (!LoadAndVerifyWebUiManifest(Paths::AssetsDir() / "ui/ui-manifest.json", manifest, error)) return false;
+    if (!LoadAndVerifyWebUiManifest(manifestPath, manifest, error)) return false;
+    m_entryHtmlPath.clear();
+    std::shared_ptr<VerifiedUiAssets> assets = BuildVerifiedUiAssets(manifestPath, manifest, m_entryHtmlPath);
+    if (!assets) return false;
     CefSettings settings; settings.windowless_rendering_enabled = true; settings.external_message_pump = true;
     // No sandbox loader is staged (ADR-015: cef_sandbox.lib is /MT-only, incompatible with the
     // engine's /MD runtime); tell CEF explicitly rather than let it warn/misbehave at startup.
@@ -140,10 +465,14 @@ bool WebUIManager::Initialize(IPlatform* platform, graphics::IGraphicsRenderer*)
     CefString(&settings.log_file).FromString((Paths::LogsDir() / "cef.log").string());
     CefMainArgs args(GetModuleHandle(nullptr));
     if (!CefInitialize(args, settings, new FileAccessApp(), nullptr)) return false;
+    if (!CefRegisterSchemeHandlerFactory(kUiScheme, kUiHost, new UiSchemeFactory(std::move(assets)))) {
+        CefShutdown();
+        return false;
+    }
     m_platform = platform; const auto [width, height] = platform->GetDrawableSize();
     m_client = new BrowserClient(*this); m_client->Resize(width, height);
     CefWindowInfo info; info.SetAsWindowless(nullptr);
-    const std::string url = "file:///" + std::filesystem::absolute(Paths::AssetsDir() / "ui" / manifest.entryHtml).generic_string();
+    const std::string url = std::string(kUiOriginPrefix) + m_entryHtmlPath;
     if (!CefBrowserHost::CreateBrowser(info, m_client.get(), url, CefBrowserSettings{}, nullptr, nullptr)) { Shutdown(); return false; }
     m_initialized = true; return true;
 }
@@ -165,19 +494,32 @@ void WebUIManager::Shutdown() {
         }
     }
     m_client.reset();
+    CefClearSchemeHandlerFactories();
     CefShutdown();
     m_compositor.Shutdown();
+    m_lastModel.reset();
+    m_entryHtmlPath.clear();
     m_initialized = false;
     m_platform = nullptr;
 }
 void WebUIManager::BeginFrame() { if (!m_initialized) return; CefDoMessageLoopWork(); m_frameActive = true; }
 void WebUIManager::EndFrame() { if (m_frameActive) static_cast<void>(m_compositor.UploadAndComposite(m_frames)); m_frameActive = false; }
-void WebUIManager::OnPlatformEvent(const PlatformEvent& event) { if (event.type == PlatformEventType::WindowResized && m_client) m_client->Resize(event.width, event.height); }
+void WebUIManager::OnPlatformEvent(const PlatformEvent& event) {
+    if (!m_client) return;
+    if (event.type == PlatformEventType::WindowResized) m_client->Resize(event.width, event.height);
+    m_client->ForwardEvent(event);
+}
 void WebUIManager::SetInputPolicy(PlayerUIInputPolicy policy) { m_discardNextMouseDelta = policy == PlayerUIInputPolicy::Gameplay && m_policy != policy; m_policy = policy; if (m_platform) { const bool gameplay = policy == PlayerUIInputPolicy::Gameplay; m_platform->SetRelativeMouseMode(gameplay); m_platform->SetCursorVisible(!gameplay); } }
 bool WebUIManager::ConsumeTransitionMouseDelta() noexcept { const bool discard = m_discardNextMouseDelta; m_discardNextMouseDelta = false; return discard; }
-void WebUIManager::Publish(PlayerUIViewModel model) { if (m_client) m_client->Publish(model); }
+void WebUIManager::Publish(PlayerUIViewModel model) {
+    m_lastModel = std::move(model);
+    RepublishLatestModel();
+}
 std::optional<PlayerUIAction> WebUIManager::ConsumeAction() { if (m_actions.empty()) return std::nullopt; PlayerUIAction action = std::move(m_actions.front()); m_actions.erase(m_actions.begin()); return action; }
 void WebUIManager::ShowToast(std::string, float) {}
 void WebUIManager::SubmitAction(PlayerUIAction action) { if (m_actions.empty() || m_actions.back().requestId != action.requestId) m_actions.push_back(std::move(action)); }
+void WebUIManager::RepublishLatestModel() {
+    if (m_client && m_lastModel.has_value()) m_client->Publish(*m_lastModel);
+}
 
 } // namespace voxels

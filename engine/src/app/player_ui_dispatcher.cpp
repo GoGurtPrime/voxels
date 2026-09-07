@@ -5,9 +5,42 @@
 
 #include "voxels/app/player_ui_dispatcher.hpp"
 
+#include <algorithm>
+#include <charconv>
+#include <filesystem>
+#include <nlohmann/json.hpp>
+
+#include "voxels/app/menus.hpp"
+#include "voxels/app/save_manager.hpp"
 #include "voxels/app/state_machine.hpp"
+#include "voxels/core/paths.hpp"
+#include "voxels/core/preferences.hpp"
 
 namespace voxels {
+namespace {
+
+void RequestError(AppContext& context, std::string detail) {
+    if (context.requestTransition) context.requestTransition(std::make_unique<ErrorState>(&context, "Menu Action Failed", std::move(detail)));
+}
+
+std::optional<WorldOptions> WorldOptionsFromAction(const PlayerUIAction& action) {
+    try {
+        const nlohmann::json payload = nlohmann::json::parse(action.secondary);
+        WorldOptions options{};
+        options.seed = static_cast<WorldSeed>(SeedFromText(payload.value("seed", "")));
+        options.sandboxMode = payload.value("sandbox", false);
+        options.peaceful = payload.value("peaceful", false);
+        options.permadeath = payload.value("permadeath", false);
+        options.alwaysSunny = payload.value("sunny", false);
+        options.isPublic = payload.value("public", false);
+        options.renderDistanceChunks = std::clamp(payload.value("distance", 8), 2, 16);
+        return options;
+    } catch (const nlohmann::json::exception&) {
+        return std::nullopt;
+    }
+}
+
+} // namespace
 
 bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerUIAction& action,
                                         AppContext& context) const {
@@ -17,6 +50,83 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
             if (activeRoute != PlayerUIRoute::MainMenu || !context.requestTransition) return false;
             context.requestTransition(std::make_unique<WorldSelectState>(&context));
             return true;
+        case PlayerUIActionKind::CreateWorld: {
+            if (activeRoute == PlayerUIRoute::SaveSelection && context.requestTransition) {
+                context.requestTransition(std::make_unique<WorldCreationState>(&context));
+                return true;
+            }
+            if (activeRoute != PlayerUIRoute::WorldCreation || context.saveManager == nullptr || !context.requestTransition) return false;
+            const auto options = WorldOptionsFromAction(action);
+            if (!options || !IsFilesystemSafeWorldName(action.primary)) {
+                RequestError(context, "World names use letters, numbers, spaces, hyphens, and underscores only.");
+                return true;
+            }
+            if (std::filesystem::exists(context.saveManager->GetSaveDirectory(action.primary))) {
+                RequestError(context, "A world with that name already exists.");
+                return true;
+            }
+            WorldCreationController controller;
+            controller.SetWorldName(action.primary);
+            controller.SetSeed(static_cast<WorldSeed>(options->seed));
+            controller.SetSandboxMode(options->sandboxMode);
+            controller.SetPeaceful(options->peaceful);
+            controller.SetPermadeath(options->permadeath);
+            controller.SetAlwaysSunny(options->alwaysSunny);
+            controller.SetPublic(options->isPublic);
+            controller.SetRenderDistance(options->renderDistanceChunks);
+            GameSave save = controller.BuildGameSave("Player");
+            save.publicVisibility = options->isPublic;
+            if (!context.saveManager->Save(save)) {
+                RequestError(context, "Could not create the world directory.");
+                return true;
+            }
+            if (context.platformServices != nullptr) context.platformServices->UnlockAchievement(Achievement::FirstWorldCreated);
+            auto loading = std::make_unique<LoadingScreenState>(&context);
+            loading->SetSaveManager(*context.saveManager);
+            loading->SetSaveName(save.saveName);
+            loading->SetWorldOptions(*options);
+            context.requestTransition(std::move(loading));
+            return true;
+        }
+        case PlayerUIActionKind::LoadWorld: {
+            if (activeRoute != PlayerUIRoute::SaveSelection || context.saveManager == nullptr || !context.requestTransition) return false;
+            GameSave save{};
+            if (!context.saveManager->Load(action.primary, save)) {
+                RequestError(context, "The selected world metadata could not be read.");
+                return true;
+            }
+            auto loading = std::make_unique<LoadingScreenState>(&context);
+            loading->SetSaveManager(*context.saveManager);
+            loading->SetSaveName(action.primary);
+            context.requestTransition(std::move(loading));
+            return true;
+        }
+        case PlayerUIActionKind::ConfirmDelete: {
+            if (activeRoute != PlayerUIRoute::SaveSelection || context.saveManager == nullptr || !context.requestTransition) return false;
+            GameSave save{};
+            if (!context.saveManager->Load(action.primary, save) || save.worldName != action.secondary || !context.saveManager->DeleteSave(action.primary)) {
+                RequestError(context, "The world was not deleted. Confirm its exact name and try again.");
+                return true;
+            }
+            context.requestTransition(std::make_unique<WorldSelectState>(&context));
+            return true;
+        }
+        case PlayerUIActionKind::Join: {
+            if (activeRoute == PlayerUIRoute::MainMenu && context.requestTransition) {
+                context.requestTransition(std::make_unique<JoinGameState>(&context));
+                return true;
+            }
+            if (activeRoute != PlayerUIRoute::Join || !context.connectRemote || !context.requestTransition) return false;
+            unsigned int port = 0;
+            const auto parsed = std::from_chars(action.secondary.data(), action.secondary.data() + action.secondary.size(), port);
+            if (action.primary.empty() || parsed.ec != std::errc{} || parsed.ptr != action.secondary.data() + action.secondary.size() || port == 0 || port > 65535 ||
+                !context.connectRemote(action.primary, static_cast<std::uint16_t>(port))) {
+                RequestError(context, "Enter a reachable host address and a UDP port between 1 and 65535.");
+                return true;
+            }
+            context.requestTransition(std::make_unique<JoinLoadingState>(&context, action.primary + ":" + action.secondary));
+            return true;
+        }
         case PlayerUIActionKind::OpenSettings:
             if ((activeRoute != PlayerUIRoute::MainMenu && activeRoute != PlayerUIRoute::Pause) ||
                 !context.requestPushOverlay) return false;
@@ -28,14 +138,53 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
             return true;
         case PlayerUIActionKind::DismissControls:
             if (activeRoute != PlayerUIRoute::ControlsCard || !context.requestPopOverlay) return false;
+            if (context.preferences != nullptr && context.platform != nullptr) {
+                context.preferences->controlsCardSeen = true;
+                PreferencesManager(Paths::UserDataDir() / "settings.json", context.platform->GetContext().type).Save(*context.preferences);
+            }
             context.requestPopOverlay();
             return true;
+        case PlayerUIActionKind::ApplySettings:
+            if (activeRoute != PlayerUIRoute::Settings || context.preferences == nullptr) return false;
+            try {
+                const nlohmann::json payload = nlohmann::json::parse(action.secondary);
+                context.preferences->fieldOfView = std::clamp(payload.value("fov", context.preferences->fieldOfView), 60.0f, 110.0f);
+                context.preferences->renderDistance = std::clamp(payload.value("renderDistance", context.preferences->renderDistance), 2, 16);
+                context.preferences->simulationDistance = std::clamp(payload.value("simulationDistance", context.preferences->simulationDistance), 2, 12);
+                context.preferences->masterVolume = std::clamp(payload.value("master", context.preferences->masterVolume), 0.0f, 1.0f);
+                context.preferences->musicVolume = std::clamp(payload.value("music", context.preferences->musicVolume), 0.0f, 1.0f);
+                context.preferences->sfxVolume = std::clamp(payload.value("effects", context.preferences->sfxVolume), 0.0f, 1.0f);
+                context.preferences->mouseSensitivity = std::clamp(payload.value("sensitivity", context.preferences->mouseSensitivity), 0.1f, 4.0f);
+                context.preferences->invertY = payload.value("invertY", context.preferences->invertY);
+                context.preferences->particles = payload.value("particles", context.preferences->particles);
+            } catch (const nlohmann::json::exception&) {
+                RequestError(context, "Settings data was malformed.");
+                return true;
+            }
+            if (context.activeGame != nullptr) context.activeGame->ApplyPreferences(*context.preferences);
+            if (context.audio != nullptr) context.audio->ApplyVolumes(context.preferences->masterVolume, context.preferences->musicVolume, context.preferences->sfxVolume, 0.7f);
+            if (context.platform != nullptr) PreferencesManager(Paths::UserDataDir() / "settings.json", context.platform->GetContext().type).Save(*context.preferences);
+            return true;
         case PlayerUIActionKind::AcknowledgeError:
-        case PlayerUIActionKind::Back:
             if ((activeRoute != PlayerUIRoute::Error && activeRoute != PlayerUIRoute::FatalError) ||
                 !context.requestTransition) return false;
             context.requestTransition(std::make_unique<MainMenuState>(&context));
             return true;
+        case PlayerUIActionKind::Back:
+            if (!context.requestTransition && !context.requestPopOverlay) return false;
+            if (activeRoute == PlayerUIRoute::Settings || activeRoute == PlayerUIRoute::ControlsCard) {
+                if (context.requestPopOverlay) context.requestPopOverlay();
+                return true;
+            }
+            if (activeRoute == PlayerUIRoute::SaveSelection || activeRoute == PlayerUIRoute::Join) {
+                context.requestTransition(std::make_unique<MainMenuState>(&context));
+                return true;
+            }
+            if (activeRoute == PlayerUIRoute::WorldCreation) {
+                context.requestTransition(std::make_unique<WorldSelectState>(&context));
+                return true;
+            }
+            return false;
         case PlayerUIActionKind::Quit:
             if (activeRoute != PlayerUIRoute::MainMenu || !context.requestQuit) return false;
             context.requestQuit();
