@@ -130,7 +130,14 @@ function WorldSelect({ model }) {
   const worlds = Array.isArray(payload.worlds) ? payload.worlds : fallbackWorlds;
   const target = selected || worlds[0]?.slot || "";
   const selectedWorld = worlds.find((world) => world.slot === target);
+  const selectedStillExists = !selected || worlds.some((world) => world.slot === selected);
   useEffect(() => setPreviewFailed(false), [selectedWorld?.previewUrl]);
+  useEffect(() => {
+    if (!confirmingDelete || selectedStillExists) return;
+    setConfirmingDelete(false);
+    setConfirmation("");
+    setSelected("");
+  }, [confirmingDelete, selectedStillExists]);
   const refreshWorldListIndicator = () => {
     const list = worldListRef.current;
     setHasMoreWorlds(Boolean(list && list.scrollTop + list.clientHeight < list.scrollHeight - 1));
@@ -159,7 +166,7 @@ function WorldSelect({ model }) {
         }
       >
         <label className="field-row">
-          <span className="field-label">Type {selectedWorld.name} to confirm</span>
+          <span className="field-label">Type {selectedWorld.name} to confirm (case-sensitive)</span>
           <input type="text" value={confirmation} maxLength={48} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} autoFocus />
         </label>
       </RouteShell>
@@ -176,7 +183,7 @@ function WorldSelect({ model }) {
         <div className="action-row">
           <ActionButton kind="create-world">New World</ActionButton>
           <ActionButton kind="load-world" fields={{ primary: target }} disabled={!target}>Play Selected</ActionButton>
-          <ActionButton className="danger quiet-danger" onClick={() => setConfirmingDelete(true)} disabled={!target}>Delete</ActionButton>
+          <ActionButton className="danger quiet-danger" onClick={() => { setSelected(target); setConfirmingDelete(true); }} disabled={!target}>Delete</ActionButton>
           <ActionButton className="ghost" kind="back">Back</ActionButton>
         </div>
       }
