@@ -108,6 +108,15 @@ Version 1.1. The full license text is bundled at app/assets/fonts/OFL.txt in the
 repository and applies unmodified to the copy shipped in this package's assets/fonts/ folder.
 
 ================================================================================
+Bungee and Nunito Sans (fonts) — SIL Open Font License 1.1
+https://fonts.google.com/specimen/Bungee
+https://fonts.google.com/specimen/Nunito+Sans
+--------------------------------------------------------------------------------
+Copyright belongs to the respective font authors. Both families are licensed under the SIL Open
+Font License, Version 1.1. The full license texts are committed beside the source font files under
+ui/src/assets/fonts/ and the fonts are embedded in the manifest-verified player UI bundle.
+
+================================================================================
 Chromium Embedded Framework / Chromium — bundled only with VOXELS_ENABLE_WEB_UI=ON
 https://bitbucket.org/chromiumembedded/cef/
 --------------------------------------------------------------------------------

@@ -36,8 +36,8 @@ export default {
         }
       },
       fontFamily: {
-        display: ["Cinzel", "ui-serif", "Georgia", "serif"],
-        body: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"]
+        display: ["Bungee", "ui-sans-serif", "system-ui", "sans-serif"],
+        body: ["Nunito Sans", "ui-sans-serif", "system-ui", "sans-serif"]
       },
       boxShadow: {
         carved: "inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -2px 0 rgba(0,0,0,0.45), 0 18px 40px -12px rgba(0,0,0,0.75)",

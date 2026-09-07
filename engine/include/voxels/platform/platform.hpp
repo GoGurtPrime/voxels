@@ -128,6 +128,7 @@ struct PlatformEvent {
     std::uint32_t scancode = 0;
     std::uint32_t modifiers = 0;
     bool repeat = false;
+    bool pressed = false;
     float axisValue = 0.0f;
     std::string text;
 };
@@ -175,6 +176,11 @@ public:
     /// Enables relative (captured) mouse mode for FPS-style look; motion arrives as deltas.
     virtual void SetRelativeMouseMode(bool enabled) = 0;
     virtual void SetCursorVisible(bool visible) = 0;
+
+    /// Enables native text composition events for editable UI fields. Console platforms may use
+    /// this seam to show their system keyboard when one is integrated.
+    virtual void SetTextInputEnabled(bool enabled) { (void)enabled; }
+
     virtual void SetVSync(bool enabled) = 0;
 
     /// Returns the drawable framebuffer size in pixels, which may differ from the logical

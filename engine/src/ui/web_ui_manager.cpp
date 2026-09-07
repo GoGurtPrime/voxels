@@ -39,6 +39,7 @@
 #include "include/cef_v8.h"
 
 #include "voxels/core/paths.hpp"
+#include "voxels/core/save.hpp"
 #include "voxels/ui/web_ui_manifest.hpp"
 
 namespace voxels {
@@ -83,6 +84,18 @@ int CefWindowsKeyCode(const PlatformEvent& event) noexcept {
     }
 }
 
+int CefControllerKeyCode(int button) noexcept {
+    switch (button) {
+        case 0: return 0x0D;
+        case 1: return 0x1B;
+        case 11: return 0x26;
+        case 12: return 0x28;
+        case 13: return 0x25;
+        case 14: return 0x27;
+        default: return 0;
+    }
+}
+
 constexpr char kUiScheme[] = "voxels-ui";
 constexpr char kUiHost[] = "app";
 constexpr char kUiOriginPrefix[] = "voxels-ui://app/";
@@ -110,6 +123,10 @@ struct VerifiedUiAssets {
     if (wireKind == "confirm-delete" || wireKind == "confirm_delete") return PlayerUIActionKind::ConfirmDelete;
     if (wireKind == "join") return PlayerUIActionKind::Join;
     if (wireKind == "resume") return PlayerUIActionKind::Resume;
+    if (wireKind == "controls" || wireKind == "open-controls") return PlayerUIActionKind::OpenControls;
+    if (wireKind == "toggle-world-visibility") return PlayerUIActionKind::ToggleWorldVisibility;
+    if (wireKind == "return-to-main-menu") return PlayerUIActionKind::ReturnToMainMenu;
+    if (wireKind == "exit-to-desktop") return PlayerUIActionKind::ExitToDesktop;
     if (wireKind == "quit") return PlayerUIActionKind::Quit;
     if (wireKind == "settings" || wireKind == "open-settings" || wireKind == "open_settings") return PlayerUIActionKind::OpenSettings;
     if (wireKind == "back") return PlayerUIActionKind::Back;
@@ -222,6 +239,25 @@ struct VerifiedUiAssets {
     return "application/octet-stream";
 }
 
+[[nodiscard]] std::optional<std::filesystem::path> WorldPreviewPathFromResource(
+    const std::string& relativePath) {
+    constexpr std::string_view prefix = "world-preview/";
+    constexpr std::string_view suffix = ".png";
+    if (!relativePath.starts_with(prefix) || !relativePath.ends_with(suffix)) return std::nullopt;
+    const std::string saveName = relativePath.substr(
+        prefix.size(), relativePath.size() - prefix.size() - suffix.size());
+    if (saveName.empty()) return std::nullopt;
+
+    std::error_code error;
+    const std::filesystem::path saveRoot = std::filesystem::weakly_canonical(
+        Paths::SavesDir() / kCurrentSaveFormatDirectory, error);
+    if (error) return std::nullopt;
+    const std::filesystem::path candidate = std::filesystem::weakly_canonical(
+        saveRoot / saveName / "preview.png", error);
+    if (error || candidate.parent_path().parent_path() != saveRoot) return std::nullopt;
+    return candidate;
+}
+
 [[nodiscard]] std::string StripBrowserPrefix(const std::filesystem::path& relativePath) {
     const std::string normalized = relativePath.generic_string();
     constexpr std::string_view prefix = "browser/";
@@ -260,14 +296,19 @@ public:
         const std::string relative = AssetPathFromUrl(requestUrl);
         std::cerr << "Web UI request: " << requestUrl << " -> '" << relative << "'\n";
         const auto it = m_assets->files.find(relative);
-        if (it == m_assets->files.end()) {
+        std::filesystem::path resourcePath;
+        if (it != m_assets->files.end()) {
+            resourcePath = it->second;
+        } else if (const auto previewPath = WorldPreviewPathFromResource(relative); previewPath.has_value()) {
+            resourcePath = *previewPath;
+        } else {
             std::cerr << "Web UI asset lookup failed for URL: " << requestUrl << '\n';
             const std::string body = "Missing UI asset: " + relative;
             m_payload.assign(body.begin(), body.end());
             callback->Continue();
             return true;
         }
-        std::ifstream stream(it->second, std::ios::binary);
+        std::ifstream stream(resourcePath, std::ios::binary);
         if (!stream) {
             const std::string body = "Failed to open UI asset: " + relative;
             m_payload.assign(body.begin(), body.end());
@@ -277,7 +318,7 @@ public:
         m_payload.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
         m_statusCode = 200;
         m_statusText = "OK";
-        m_mimeType = MimeTypeForPath(it->second);
+        m_mimeType = MimeTypeForPath(resourcePath);
         std::cerr << "Web UI serving: " << relative << " as " << m_mimeType.ToString()
                   << " (" << m_payload.size() << " bytes)\n";
         callback->Continue();
@@ -528,11 +569,23 @@ public:
                 for (const char16_t character : characters) {
                     CefKeyEvent keyEvent{};
                     keyEvent.type = KEYEVENT_CHAR;
+                    keyEvent.windows_key_code = static_cast<int>(character);
+                    keyEvent.native_key_code = static_cast<int>(character);
                     keyEvent.character = character;
                     keyEvent.unmodified_character = character;
                     keyEvent.modifiers = CefModifiers(event);
                     host->SendKeyEvent(keyEvent);
                 }
+                break;
+            }
+            case PlatformEventType::ControllerButton: {
+                const int keyCode = CefControllerKeyCode(event.button);
+                if (keyCode == 0) break;
+                CefKeyEvent keyEvent{};
+                keyEvent.type = event.pressed ? KEYEVENT_RAWKEYDOWN : KEYEVENT_KEYUP;
+                keyEvent.windows_key_code = keyCode;
+                keyEvent.native_key_code = event.button;
+                host->SendKeyEvent(keyEvent);
                 break;
             }
             case PlatformEventType::WindowFocusGained: host->SetFocus(true); break;
@@ -610,6 +663,10 @@ private:
         else if (kind == "confirm-delete") action.kind = PlayerUIActionKind::ConfirmDelete;
         else if (kind == "join") action.kind = PlayerUIActionKind::Join;
         else if (kind == "resume") action.kind = PlayerUIActionKind::Resume;
+        else if (kind == "controls" || kind == "open-controls") action.kind = PlayerUIActionKind::OpenControls;
+        else if (kind == "toggle-world-visibility") action.kind = PlayerUIActionKind::ToggleWorldVisibility;
+        else if (kind == "return-to-main-menu") action.kind = PlayerUIActionKind::ReturnToMainMenu;
+        else if (kind == "exit-to-desktop") action.kind = PlayerUIActionKind::ExitToDesktop;
         else if (kind == "quit") action.kind = PlayerUIActionKind::Quit;
         else if (kind == "settings") action.kind = PlayerUIActionKind::OpenSettings;
         else if (kind == "back") action.kind = PlayerUIActionKind::Back;
@@ -717,7 +774,16 @@ void WebUIManager::OnPlatformEvent(const PlatformEvent& event) {
     }
     m_client->ForwardEvent(event);
 }
-void WebUIManager::SetInputPolicy(PlayerUIInputPolicy policy) { m_discardNextMouseDelta = policy == PlayerUIInputPolicy::Gameplay && m_policy != policy; m_policy = policy; if (m_platform) { const bool gameplay = policy == PlayerUIInputPolicy::Gameplay; m_platform->SetRelativeMouseMode(gameplay); m_platform->SetCursorVisible(!gameplay); } }
+void WebUIManager::SetInputPolicy(PlayerUIInputPolicy policy) {
+    m_discardNextMouseDelta = policy == PlayerUIInputPolicy::Gameplay && m_policy != policy;
+    m_policy = policy;
+    if (m_platform != nullptr) {
+        const bool gameplay = policy == PlayerUIInputPolicy::Gameplay;
+        m_platform->SetRelativeMouseMode(gameplay);
+        m_platform->SetCursorVisible(!gameplay);
+        m_platform->SetTextInputEnabled(policy == PlayerUIInputPolicy::TextEntry);
+    }
+}
 bool WebUIManager::ConsumeTransitionMouseDelta() noexcept { const bool discard = m_discardNextMouseDelta; m_discardNextMouseDelta = false; return discard; }
 void WebUIManager::Publish(PlayerUIViewModel model) {
     m_lastModel = std::move(model);

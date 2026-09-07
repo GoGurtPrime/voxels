@@ -143,6 +143,7 @@ bool SDLPlatform::Initialize(const WindowConfig& config) {
 }
 
 void SDLPlatform::Shutdown() {
+    SDL_StopTextInput();
     if (m_context != nullptr) {
         SDL_GL_DeleteContext(m_context);
         m_context = nullptr;
@@ -277,6 +278,7 @@ void SDLPlatform::PollEvents(IPlatformEventListener* listener) {
                 event.type = PlatformEventType::ControllerButton;
                 event.button = sdlEvent.cbutton.button;
                 event.controllerIndex = sdlEvent.cbutton.which;
+                event.pressed = sdlEvent.type == SDL_CONTROLLERBUTTONDOWN;
                 break;
             case SDL_CONTROLLERAXISMOTION:
                 event.type = PlatformEventType::ControllerAxis;
@@ -422,6 +424,14 @@ void SDLPlatform::SetCursorVisible(bool visible) {
     m_cursorVisible = visible;
     if (m_window != nullptr) {
         SDL_ShowCursor(visible ? SDL_ENABLE : SDL_DISABLE);
+    }
+}
+
+void SDLPlatform::SetTextInputEnabled(bool enabled) {
+    if (enabled) {
+        SDL_StartTextInput();
+    } else {
+        SDL_StopTextInput();
     }
 }
 

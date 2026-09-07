@@ -311,11 +311,27 @@ class InGameState final : public IAppState {public:
     [[nodiscard]] const World& GetWorld() const noexcept { return m_session.GetWorld(); }
     [[nodiscard]] const Player& GetPlayer() const noexcept { return m_session.GetPlayer(); }
     [[nodiscard]] graphics::ChunkRenderer* GetChunkRenderer() const noexcept { return m_chunkRenderer.get(); }
+    [[nodiscard]] bool IsRemoteSession() const noexcept { return m_remoteSession; }
+    [[nodiscard]] const GameSave& GetActiveSave() const noexcept { return m_activeSave; }
+    /// Persists and republishes local-world join visibility; remote sessions reject the change.
+    [[nodiscard]] bool SetPublicVisibility(bool isPublic);
+    /// Captures a raw world preview on the next rendered frame, then returns to the main menu.
+    void RequestSaveAndReturnToMenu() noexcept;
+    /// Captures a raw world preview on the next rendered frame, then requests process exit.
+    void RequestSaveAndExitToDesktop() noexcept;
 
 private:
+    enum class PreviewCaptureAction : std::uint8_t {
+        None,
+        CaptureOnly,
+        ReturnToMainMenu,
+        ExitToDesktop,
+    };
+
     void GenerateInitialWorld();
     void StartAutosave();
     void ApplyNetworkedBlockUpdates();
+    void CompletePendingPreviewCapture();
 
     BlockRegistry* m_registry = nullptr;
     TextureAtlas* m_atlas = nullptr;
@@ -337,6 +353,7 @@ private:
     bool m_worldGenerated = false;
     bool m_remoteSession = false;
     bool m_hasRemoteSpawn = false;
+    PreviewCaptureAction m_previewCaptureAction = PreviewCaptureAction::None;
     Vec3 m_remoteSpawn{};
     GameSave m_activeSave{};
     std::unique_ptr<World> m_preparedWorld;

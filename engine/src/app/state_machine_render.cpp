@@ -511,6 +511,7 @@ void MainMenuState::Update(double deltaSeconds) {
 
 void InGameState::OnEnter() {
     StopMainMenuBackdrop();
+    m_previewCaptureAction = PreviewCaptureAction::None;
     if (m_jobSystem == nullptr) m_jobSystem = std::make_unique<JobSystem>();
     if (m_remoteSession) {
         if (m_preparedWorld != nullptr) m_session.AdoptWorld(std::move(m_preparedWorld));
@@ -618,6 +619,15 @@ void InGameState::OnEnter() {
         m_chunkRenderer->EnqueueDirtyMeshJobs(world, m_session.GetCamera().position);
         m_chunkRenderer->UploadCompletedMeshes();
     }
+    if (!m_remoteSession && m_context != nullptr && m_context->saveManager != nullptr &&
+        !m_activeSave.saveName.empty()) {
+        std::error_code error;
+        const std::filesystem::path previewPath =
+            m_context->saveManager->GetWorldPreviewPath(m_activeSave.saveName);
+        if (!previewPath.empty() && !std::filesystem::exists(previewPath, error)) {
+            m_previewCaptureAction = PreviewCaptureAction::CaptureOnly;
+        }
+    }
     m_worldGenerated = true;
 }
 
@@ -658,6 +668,7 @@ void InGameState::OnExit() {
     m_session.Shutdown();
     m_remoteSession = false;
     m_hasRemoteSpawn = false;
+    m_previewCaptureAction = PreviewCaptureAction::None;
     m_worldGenerated = false;
 }
 
@@ -673,6 +684,65 @@ void InGameState::OnResume() {
     }
     if (m_cameraOverride != nullptr) {
         *m_cameraOverride = m_session.GetCamera();
+    }
+}
+
+bool InGameState::SetPublicVisibility(bool isPublic) {
+    if (m_remoteSession || m_context == nullptr || m_context->saveManager == nullptr ||
+        m_activeSave.saveName.empty()) {
+        return false;
+    }
+    const bool previousVisibility = m_activeSave.publicVisibility;
+    m_activeSave.publicVisibility = isPublic;
+    if (!m_context->saveManager->Save(m_activeSave)) {
+        m_activeSave.publicVisibility = previousVisibility;
+        return false;
+    }
+    m_options.isPublic = isPublic;
+    if (m_context->networkServer != nullptr) {
+        m_context->networkServer->SetWorldReady(m_options, m_session.GetPlayer().state.position);
+    }
+    return true;
+}
+
+void InGameState::RequestSaveAndReturnToMenu() noexcept {
+    if (!m_remoteSession) m_previewCaptureAction = PreviewCaptureAction::ReturnToMainMenu;
+}
+
+void InGameState::RequestSaveAndExitToDesktop() noexcept {
+    if (!m_remoteSession) m_previewCaptureAction = PreviewCaptureAction::ExitToDesktop;
+}
+
+void InGameState::CompletePendingPreviewCapture() {
+    if (m_previewCaptureAction == PreviewCaptureAction::None) return;
+    if (m_previewCaptureAction == PreviewCaptureAction::CaptureOnly && m_chunkRenderer != nullptr &&
+        m_chunkRenderer->GetMetrics().drawCalls == 0) {
+        return;
+    }
+
+    const PreviewCaptureAction completedAction = std::exchange(m_previewCaptureAction, PreviewCaptureAction::None);
+    bool captured = false;
+    std::filesystem::path previewPath;
+    if (!m_remoteSession && g_renderer != nullptr && m_context != nullptr &&
+        m_context->saveManager != nullptr && !m_activeSave.saveName.empty()) {
+        previewPath = m_context->saveManager->GetWorldPreviewPath(m_activeSave.saveName);
+        captured = m_context->saveManager->SaveWorldPreview(
+            m_activeSave.saveName,
+            [](const std::filesystem::path& stagingPath) {
+                return g_renderer != nullptr && g_renderer->CaptureScreenshot(stagingPath);
+            });
+    }
+    if (captured) {
+        RenderStateLog().Info("Saved world preview to " + previewPath.string());
+    } else {
+        RenderStateLog().Warn("World preview capture failed; continuing save and exit flow.");
+    }
+
+    if (m_context == nullptr) return;
+    if (completedAction == PreviewCaptureAction::ReturnToMainMenu && m_context->requestTransition) {
+        m_context->requestTransition(std::make_unique<MainMenuState>(m_context));
+    } else if (completedAction == PreviewCaptureAction::ExitToDesktop && m_context->requestQuit) {
+        m_context->requestQuit();
     }
 }
 
@@ -875,6 +945,7 @@ void InGameState::Render() {
         }
         m_remotePlayerRenderer->Render(camera, visuals, 1.0f / 60.0f);
     }
+    CompletePendingPreviewCapture();
     if (m_hudRenderer) {
         m_hudRenderer->Render(camera, m_session.GetTarget(), m_session.GetBreakProgress(), m_session.GetPlayer().state.inventory,
                               m_session.GetSelectedItemLabel(), m_session.GetSelectedItemLabelAge(), m_session.GetParticleBursts());

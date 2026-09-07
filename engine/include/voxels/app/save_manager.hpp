@@ -6,13 +6,15 @@
  *
  * @details Each world save is its own directory under a configurable save root: metadata in
  *          `<root>/<saveName>/level.json` (flat JSON-style text), player state in
- *          `player.dat`, and chunk data alongside via the world serialization module. All
+ *          `player.dat`, a menu preview in `preview.png`, and chunk data alongside via the
+ *          world serialization module. All
  *          metadata writes go through an atomic temp-file-then-rename. The main menu /
  *          world creation flow uses this to list, create, and load saves before handing a
  *          `GameSave` off to the world loading state.
  */
 
 #include <filesystem>
+#include <functional>
 
 #include "voxels/core/save.hpp"
 #include "voxels/gameplay/player.hpp"
@@ -48,6 +50,13 @@ public:
     bool LoadWorldState(const std::string& saveName, World& world) const;
     /// Returns `<root>/<saveName>`, or an empty path if the name is not filesystem-safe.
     [[nodiscard]] std::filesystem::path GetSaveDirectory(const std::string& saveName) const;
+    /// Returns `<root>/<saveName>/preview.png`, or an empty path if the name is unsafe.
+    [[nodiscard]] std::filesystem::path GetWorldPreviewPath(const std::string& saveName) const;
+    /// Invokes `writePreview` with a staging path and atomically replaces `preview.png` on
+    /// success. A failed writer or replacement preserves the previous preview.
+    bool SaveWorldPreview(
+        const std::string& saveName,
+        const std::function<bool(const std::filesystem::path&)>& writePreview) const;
 
     /// Serializes save metadata to the flat JSON-style `level.json` text (bools as 0/1).
     [[nodiscard]] static std::string ToMetaText(const GameSave& save);

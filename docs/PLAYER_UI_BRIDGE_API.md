@@ -58,6 +58,10 @@ Use kind prefix `ui.action.`:
 - `ui.action.join`
 - `ui.action.resume`
 - `ui.action.settings`
+- `ui.action.controls`
+- `ui.action.toggle-world-visibility`
+- `ui.action.return-to-main-menu`
+- `ui.action.exit-to-desktop`
 - `ui.action.back`
 - `ui.action.quit`
 - `ui.action.apply-settings`
@@ -124,6 +128,32 @@ Notes:
 - While splash is active, UI remains blocking and no menu actions should be shown.
 
 ## Route payload schemas
+
+### World selection route (`route = 1`)
+
+`payload` contains a `worlds` array. Each entry has `slot`, `name`, `seed`, `createdUtc`,
+`lastPlayedAt`, `playTimeSeconds`, `mode`, and `public`. When `<save>/preview.png` exists,
+native code also supplies `previewUrl` as a traversal-safe `voxels-ui://app/world-preview/...`
+resource. The browser falls back to its styled empty preview if the field is absent or the image
+cannot be decoded. Native save metadata is authoritative; the browser uses the legacy
+`save:<slot>|<name>` items only as a compatibility fallback.
+
+### Pause route (`route = 6`)
+
+```json
+{
+  "remote": false,
+  "public": true,
+  "hosting": true,
+  "port": 27015
+}
+```
+
+`toggle-world-visibility` sends the requested boolean as action `value`. Local save-and-exit
+actions are deferred until `InGameState::Render` captures a player-perspective `preview.png`
+after world entities and before HUD/web UI composition; normal persistence still completes in
+`InGameState::OnExit`. Remote leave actions do not capture local previews and reset networking to
+loopback before the state transition or process exit.
 
 ### Settings route (`route = 7`)
 

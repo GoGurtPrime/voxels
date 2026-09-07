@@ -58,8 +58,8 @@
 
 ### WEBUI-002 — Player UI display/body typefaces *(status: fulfilled)*
 * **Need:** a display typeface for titles/buttons and a body typeface for UI copy, self-hosted (no runtime network fetch).
-* **Resolution:** `Cinzel` (variable, weights 400-900) and `Inter` (variable, weights 100-900), latin subset only, downloaded from Google Fonts (`fonts.gstatic.com`) and committed at `ui/src/assets/fonts/cinzel-latin-variable.woff2` and `ui/src/assets/fonts/inter-latin-variable.woff2`. Both are licensed under the SIL Open Font License 1.1, which permits redistribution and bundling. Referenced via `@font-face` in `ui/src/styles.css`; Vite hashes and stages them into the manifest-verified bundle like any other asset.
-* **Operator action:** none required. If a different typeface pairing is preferred later, replace the two files and the `@font-face` rules together.
+* **Resolution:** `Bungee` Regular for display text and `Nunito Sans` Regular/Bold for body text, downloaded from Google Fonts and committed under `ui/src/assets/fonts/` with their respective SIL Open Font License 1.1 texts. Vite hashes and stages the referenced TTF files into the manifest-verified bundle like any other asset.
+* **Operator action:** none required. If a different typeface pairing is preferred later, replace the font files, OFL notices, and `@font-face` rules together.
 
 ---
 

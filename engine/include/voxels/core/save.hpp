@@ -11,11 +11,15 @@
  */
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "voxels/core/game_types.hpp"
 
 namespace voxels {
+
+/// Versioned directory below the user saves root used by the current persistence schema.
+inline constexpr std::string_view kCurrentSaveFormatDirectory = "v1";
 
 /// One entry in the main menu's save list.
 struct SaveSlot {

@@ -6,12 +6,15 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
+#include <fstream>
 #include <imgui.h>
+#include <nlohmann/json.hpp>
 
 #include "voxels/app/display_settings.hpp"
 #include "voxels/ui/imgui_ui_manager.hpp"
 #include "voxels/app/player_ui_dispatcher.hpp"
 #include "voxels/app/state_machine.hpp"
+#include "voxels/graphics/renderer.hpp"
 #include "voxels/platform/platform.hpp"
 #include "voxels/ui/player_ui.hpp"
 
@@ -83,6 +86,42 @@ public:
     voxels::WindowDisplayConfig lastDisplayConfig{};
 };
 
+class PreviewCaptureRenderer final : public voxels::graphics::IGraphicsRenderer {
+public:
+    bool Initialize(voxels::IPlatform&, voxels::TextureAtlas&, bool) override { return true; }
+    void Shutdown() override {}
+    bool BeginFrame(const std::array<float, 4>&) override { return true; }
+    bool EndFrame() override { return true; }
+    bool Present() override { return true; }
+    void SetViewport(int, int) override {}
+    void SetCamera(const voxels::Camera& camera) override { m_camera = camera; }
+    [[nodiscard]] const voxels::Camera& GetCamera() const noexcept override { return m_camera; }
+    [[nodiscard]] voxels::RendererBackend GetBackend() const noexcept override {
+        return voxels::RendererBackend::OpenGL;
+    }
+    [[nodiscard]] std::string_view GetName() const noexcept override { return "PreviewCaptureRenderer"; }
+    [[nodiscard]] bool CaptureScreenshot(const std::filesystem::path& path) const override {
+        ++captureCount;
+        capturedPath = path;
+        std::ofstream(path, std::ios::binary) << "png";
+        return std::filesystem::is_regular_file(path);
+    }
+
+    mutable int captureCount = 0;
+    mutable std::filesystem::path capturedPath;
+
+private:
+    voxels::Camera m_camera{};
+};
+
+class GlobalRendererScope final {
+public:
+    explicit GlobalRendererScope(voxels::graphics::IGraphicsRenderer* renderer) {
+        voxels::SetGlobalRenderer(renderer);
+    }
+    ~GlobalRendererScope() { voxels::SetGlobalRenderer(nullptr); }
+};
+
 } // namespace
 
 TEST_CASE("UIScale.ComputesExpectedFactorsAcrossResolutions", "[ui]") {
@@ -147,6 +186,25 @@ TEST_CASE("PlayerUI.DispatcherOnlyChangesStateForValidRouteAndRequest", "[player
     REQUIRE(ui.LastModel()->revision == 7);
 }
 
+TEST_CASE("PlayerUI.PlaySkipsEmptyWorldSelection", "[player-ui][world-select]") {
+    const std::filesystem::path saveRoot = std::filesystem::temp_directory_path() / "voxels_empty_world_select";
+    std::error_code error;
+    std::filesystem::remove_all(saveRoot, error);
+    voxels::SaveManager saveManager(saveRoot);
+    voxels::AppStateId requestedState = voxels::AppStateId::Boot;
+    voxels::AppContext context{};
+    context.saveManager = &saveManager;
+    context.requestTransition = [&requestedState](std::unique_ptr<voxels::IAppState> state) {
+        requestedState = state->GetId();
+    };
+
+    const voxels::PlayerUIActionDispatcher dispatcher;
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::MainMenu,
+                                {.requestId = 1, .kind = voxels::PlayerUIActionKind::Play}, context));
+    REQUIRE(requestedState == voxels::AppStateId::WorldCreation);
+    std::filesystem::remove_all(saveRoot, error);
+}
+
 TEST_CASE("PlayerUI.DispatcherCreatesWorldSaveBeforeLoading", "[player-ui]") {
     const std::filesystem::path saveRoot = std::filesystem::temp_directory_path() / "voxels_player_ui_dispatcher";
     std::error_code error;
@@ -162,7 +220,7 @@ TEST_CASE("PlayerUI.DispatcherCreatesWorldSaveBeforeLoading", "[player-ui]") {
         .requestId = 41,
         .kind = voxels::PlayerUIActionKind::CreateWorld,
         .primary = "Web UI World",
-        .secondary = R"({"seed":"violet mesa","sandbox":true,"peaceful":false,"permadeath":false,"sunny":true,"public":false,"distance":10})"
+        .secondary = R"({"seed":"violetMesa","sandbox":true,"peaceful":false,"permadeath":false,"sunny":true,"public":false,"distance":10})"
     };
 
     const voxels::PlayerUIActionDispatcher dispatcher;
@@ -171,8 +229,195 @@ TEST_CASE("PlayerUI.DispatcherCreatesWorldSaveBeforeLoading", "[player-ui]") {
     const auto saves = saveManager.ListSaves();
     REQUIRE(saves.size() == 1);
     REQUIRE(saves.front().save.worldName == "Web UI World");
-    REQUIRE(saves.front().save.seed == static_cast<voxels::WorldSeed>(voxels::SeedFromText("violet mesa")));
+    REQUIRE(saves.front().save.seed == static_cast<voxels::WorldSeed>(voxels::SeedFromText("violetMesa")));
     REQUIRE(saves.front().save.publicVisibility == false);
+    std::filesystem::remove_all(saveRoot, error);
+}
+
+TEST_CASE("PlayerUI.DispatcherRejectsSeedCharactersOutsideLettersAndNumbers", "[player-ui][world-create]") {
+    const std::filesystem::path saveRoot = std::filesystem::temp_directory_path() / "voxels_invalid_seed";
+    std::error_code error;
+    std::filesystem::remove_all(saveRoot, error);
+    voxels::SaveManager saveManager(saveRoot);
+    voxels::AppStateId requestedState = voxels::AppStateId::Boot;
+    voxels::AppContext context{};
+    context.saveManager = &saveManager;
+    context.requestTransition = [&requestedState](std::unique_ptr<voxels::IAppState> state) {
+        requestedState = state->GetId();
+    };
+
+    const voxels::PlayerUIActionDispatcher dispatcher;
+    REQUIRE(dispatcher.Dispatch(
+        voxels::PlayerUIRoute::WorldCreation,
+        {.requestId = 2,
+         .kind = voxels::PlayerUIActionKind::CreateWorld,
+         .primary = "Invalid Seed World",
+         .secondary = R"({"seed":"not valid!","distance":8})"},
+        context));
+    REQUIRE(requestedState == voxels::AppStateId::Error);
+    REQUIRE(saveManager.ListSaves().empty());
+    std::filesystem::remove_all(saveRoot, error);
+}
+
+TEST_CASE("PlayerUI.PauseActionsRetainNativeSideEffects", "[player-ui][pause]") {
+    const std::filesystem::path saveRoot = std::filesystem::temp_directory_path() / "voxels_pause_actions";
+    std::error_code error;
+    std::filesystem::remove_all(saveRoot, error);
+    voxels::SaveManager saveManager(saveRoot);
+    voxels::GameSave save{};
+    save.saveName = "PauseWorld";
+    save.worldName = "Pause World";
+    save.playerName = "Player";
+    save.publicVisibility = false;
+    REQUIRE(saveManager.Save(save));
+
+    voxels::AppContext context{};
+    context.saveManager = &saveManager;
+    voxels::InGameState game(&context);
+    game.SetActiveSave(save);
+    context.activeGame = &game;
+    voxels::AppStateId requestedState = voxels::AppStateId::Boot;
+    voxels::AppStateId requestedOverlay = voxels::AppStateId::Boot;
+    bool quitRequested = false;
+    context.requestTransition = [&requestedState](std::unique_ptr<voxels::IAppState> state) {
+        requestedState = state->GetId();
+    };
+    context.requestPushOverlay = [&requestedOverlay](std::unique_ptr<voxels::IAppState> state) {
+        requestedOverlay = state->GetId();
+    };
+    context.requestQuit = [&quitRequested]() { quitRequested = true; };
+
+    const voxels::PlayerUIActionDispatcher dispatcher;
+    REQUIRE(dispatcher.Dispatch(
+        voxels::PlayerUIRoute::Pause,
+        {.requestId = 3, .kind = voxels::PlayerUIActionKind::ToggleWorldVisibility, .value = 1.0f},
+        context));
+    voxels::GameSave persisted{};
+    REQUIRE(saveManager.Load(save.saveName, persisted));
+    REQUIRE(persisted.publicVisibility);
+
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Pause,
+                                {.requestId = 4, .kind = voxels::PlayerUIActionKind::OpenControls}, context));
+    REQUIRE(requestedOverlay == voxels::AppStateId::ControlsCard);
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Pause,
+                                {.requestId = 5, .kind = voxels::PlayerUIActionKind::ReturnToMainMenu}, context));
+    REQUIRE(requestedState == voxels::AppStateId::Boot);
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Pause,
+                                {.requestId = 6, .kind = voxels::PlayerUIActionKind::ExitToDesktop}, context));
+    REQUIRE_FALSE(quitRequested);
+    std::filesystem::remove_all(saveRoot, error);
+}
+
+TEST_CASE("PlayerUI.RemotePauseReturnRestoresLocalNetworking", "[player-ui][pause][networking]") {
+    voxels::AppContext context{};
+    voxels::InGameState game(&context);
+    game.SetRemoteSession(true);
+    context.activeGame = &game;
+    bool resetRequested = false;
+    bool menuRequested = false;
+    context.resetNetworkToLocal = [&resetRequested]() { resetRequested = true; };
+    context.requestTransition = [&menuRequested](std::unique_ptr<voxels::IAppState> state) {
+        menuRequested = state->GetId() == voxels::AppStateId::MainMenu;
+    };
+
+    const voxels::PlayerUIActionDispatcher dispatcher;
+    REQUIRE(dispatcher.Dispatch(
+        voxels::PlayerUIRoute::Pause,
+        {.requestId = 7, .kind = voxels::PlayerUIActionKind::ReturnToMainMenu}, context));
+    REQUIRE(resetRequested);
+    REQUIRE(menuRequested);
+}
+
+TEST_CASE("PlayerUI.LocalPauseExitCapturesPreviewBeforeLeaving", "[player-ui][pause][preview]") {
+    const std::filesystem::path saveRoot = std::filesystem::temp_directory_path() / "voxels_pause_preview";
+    std::error_code error;
+    std::filesystem::remove_all(saveRoot, error);
+    voxels::SaveManager saveManager(saveRoot);
+    voxels::GameSave save{};
+    save.saveName = "Preview World";
+    save.worldName = "Preview World";
+    save.playerName = "Player";
+    REQUIRE(saveManager.Save(save));
+
+    voxels::AppStateId requestedState = voxels::AppStateId::Boot;
+    bool quitRequested = false;
+    voxels::AppContext context{};
+    context.saveManager = &saveManager;
+    context.requestTransition = [&requestedState](std::unique_ptr<voxels::IAppState> state) {
+        requestedState = state->GetId();
+    };
+    context.requestQuit = [&quitRequested]() { quitRequested = true; };
+    voxels::InGameState game(&context);
+    game.SetActiveSave(save);
+    PreviewCaptureRenderer renderer;
+    const GlobalRendererScope rendererScope(&renderer);
+
+    game.RequestSaveAndReturnToMenu();
+    REQUIRE(requestedState == voxels::AppStateId::Boot);
+    game.Render();
+    REQUIRE(renderer.captureCount == 1);
+    REQUIRE(std::filesystem::is_regular_file(saveManager.GetWorldPreviewPath(save.saveName)));
+    REQUIRE(requestedState == voxels::AppStateId::MainMenu);
+
+    game.RequestSaveAndExitToDesktop();
+    REQUIRE_FALSE(quitRequested);
+    game.Render();
+    REQUIRE(renderer.captureCount == 2);
+    REQUIRE(std::filesystem::is_regular_file(saveManager.GetWorldPreviewPath(save.saveName)));
+    REQUIRE(quitRequested);
+    std::filesystem::remove_all(saveRoot, error);
+}
+
+TEST_CASE("PlayerUI.FirstLocalWorldFrameCreatesMissingPreview", "[player-ui][world-select][preview]") {
+    const std::filesystem::path saveRoot = std::filesystem::temp_directory_path() / "voxels_first_world_preview";
+    std::error_code error;
+    std::filesystem::remove_all(saveRoot, error);
+    voxels::SaveManager saveManager(saveRoot);
+    voxels::GameSave save{};
+    save.saveName = "New World";
+    save.worldName = "New World";
+    save.playerName = "Player";
+    REQUIRE(saveManager.Save(save));
+
+    voxels::AppContext context{};
+    context.saveManager = &saveManager;
+    voxels::InGameState game(&context);
+    game.SetActiveSave(save);
+    PreviewCaptureRenderer renderer;
+    const GlobalRendererScope rendererScope(&renderer);
+
+    game.OnEnter();
+    game.Render();
+    REQUIRE(renderer.captureCount == 1);
+    REQUIRE(std::filesystem::is_regular_file(saveManager.GetWorldPreviewPath(save.saveName)));
+    game.OnExit();
+    std::filesystem::remove_all(saveRoot, error);
+}
+
+TEST_CASE("PlayerUI.WorldSelectionAddsPreviewUrlOnlyWhenImageExists", "[player-ui][world-select][preview]") {
+    const std::filesystem::path saveRoot = std::filesystem::temp_directory_path() / "voxels_world_preview_model";
+    std::error_code error;
+    std::filesystem::remove_all(saveRoot, error);
+    voxels::SaveManager saveManager(saveRoot);
+    voxels::GameSave save{};
+    save.saveName = "Preview World";
+    save.worldName = "Preview World";
+    REQUIRE(saveManager.Save(save));
+
+    voxels::NullPlayerUI ui;
+    voxels::AppContext context{};
+    context.saveManager = &saveManager;
+    context.ui = &ui;
+    voxels::WorldSelectState state(&context);
+    state.OnEnter();
+    nlohmann::json payload = nlohmann::json::parse(ui.LastModel()->payload);
+    REQUIRE_FALSE(payload["worlds"][0].contains("previewUrl"));
+
+    std::ofstream(saveManager.GetWorldPreviewPath(save.saveName), std::ios::binary) << "png";
+    state.OnEnter();
+    payload = nlohmann::json::parse(ui.LastModel()->payload);
+    REQUIRE(payload["worlds"][0]["previewUrl"] ==
+            "voxels-ui://app/world-preview/Preview%20World.png");
     std::filesystem::remove_all(saveRoot, error);
 }
 

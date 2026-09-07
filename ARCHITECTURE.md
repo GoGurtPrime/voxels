@@ -4,6 +4,9 @@
 >
 > **Companion documents:** [DIAGRAMS.md](DIAGRAMS.md) (process/state flow diagrams), [AGENT_RULES.md](AGENT_RULES.md) (engineering standards), [work_items/README.md](work_items/README.md) (execution roadmap), [ASSET_REQUESTS.md](ASSET_REQUESTS.md) (content the human operator must supply).
 
+Player-facing CEF routes must also follow [docs/PLAYER_UI_DESIGN.md](docs/PLAYER_UI_DESIGN.md),
+the authoritative visual, responsive-layout, accessibility, and controller-navigation guide.
+
 ---
 
 ## 🚫 Naming Constraint
@@ -179,9 +182,13 @@ format namespace; unsupported unversioned save directories are removed at deskto
 | :--- | :--- |
 | `level.json` | Schema version, display name, seed, world options, created/last-played timestamps, spawn point. |
 | `player.dat` | Position, velocity, yaw/pitch, health, hotbar/inventory. |
+| `preview.png` | Latest player-perspective world preview, captured after world rendering and before HUD/web UI composition. |
 | `regions/r.<rx>.<rz>.vrg` | Versioned, CRC-checked, sector-aligned RLE chunk sections grouped into 32×32-chunk regions. |
 
 All writes are **atomic** (write temp → flush → rename). Every file carries a schema version; loaders migrate or refuse cleanly, and never crash on malformed input.
+`preview.png` is optional derived presentation data: a new world captures it after its first
+visible world frame, and local save-and-exit actions refresh it before leaving gameplay. Missing
+or corrupt previews do not invalidate a save and render as the world browser's built-in fallback.
 
 ### 6.6 Assets & Content Pipeline
 Authoring (editor) → `.vmdl` models + textures + audio → **bundler** → `.vpk` pack + manifest → shipped in `app/assets/packs/` → mounted by `AssetManager` at boot.

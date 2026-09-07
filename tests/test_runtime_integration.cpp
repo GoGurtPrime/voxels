@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <system_error>
 
@@ -62,6 +63,39 @@ TEST_CASE("PlayerSave.RoundTrip", "[runtime][save]") {
     REQUIRE(loaded == state);
 
     std::filesystem::remove_all(std::filesystem::path(root) / "TestWorld");
+}
+
+TEST_CASE("WorldSave.PreviewPathStaysInsideValidatedSaveDirectory", "[runtime][save]") {
+    const std::filesystem::path root = TempRoot("preview_path");
+    voxels::SaveManager saveManager(root);
+
+    REQUIRE(saveManager.GetWorldPreviewPath("TestWorld") == root / "TestWorld" / "preview.png");
+    REQUIRE(saveManager.GetWorldPreviewPath("../escape").empty());
+    REQUIRE(saveManager.GetWorldPreviewPath("nested/world").empty());
+
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("WorldSave.FailedPreviewRefreshPreservesPreviousImage", "[runtime][save]") {
+    const std::filesystem::path root = TempRoot("preview_atomic");
+    voxels::SaveManager saveManager(root);
+    voxels::GameSave save{};
+    save.saveName = "TestWorld";
+    REQUIRE(saveManager.Save(save));
+    REQUIRE(saveManager.SaveWorldPreview(save.saveName, [](const std::filesystem::path& path) {
+        std::ofstream(path, std::ios::binary) << "first";
+        return true;
+    }));
+
+    REQUIRE_FALSE(saveManager.SaveWorldPreview(save.saveName, [](const std::filesystem::path& path) {
+        std::ofstream(path, std::ios::binary) << "broken";
+        return false;
+    }));
+    std::ifstream preview(saveManager.GetWorldPreviewPath(save.saveName), std::ios::binary);
+    REQUIRE(std::string(std::istreambuf_iterator<char>(preview), std::istreambuf_iterator<char>()) == "first");
+    preview.close();
+
+    std::filesystem::remove_all(root);
 }
 
 TEST_CASE("GameLoop.RunsBoundedTicksHeadless", "[runtime][loop]") {

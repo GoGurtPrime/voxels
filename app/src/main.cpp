@@ -127,7 +127,6 @@ private:
 
 constexpr double kFixedStepSeconds = 1.0 / 60.0;
 constexpr int kMaxSimulationStepsPerFrame = 4;
-constexpr char kSaveFormatDirectory[] = "v1";
 volatile std::sig_atomic_t g_serverRunning = 1;
 
 void HandleServerInterrupt(int) {
@@ -150,7 +149,7 @@ void RemoveUnversionedSaves() {
     const std::filesystem::path savesRoot = voxels::Paths::SavesDir();
     std::error_code error;
     for (const auto& entry : std::filesystem::directory_iterator(savesRoot, error)) {
-        if (error || !entry.is_directory() || entry.path().filename() == kSaveFormatDirectory) continue;
+        if (error || !entry.is_directory() || entry.path().filename() == voxels::kCurrentSaveFormatDirectory) continue;
         std::filesystem::remove_all(entry.path(), error);
         if (error) return;
     }
@@ -724,7 +723,7 @@ int main(int argc, char** argv) {
         BootLog().Warn("Menu music sound id 'music/menu_theme' is missing from sounds.json.");
     }
     RemoveUnversionedSaves();
-    voxels::SaveManager saveManager(voxels::Paths::SavesDir() / kSaveFormatDirectory);
+    voxels::SaveManager saveManager(voxels::Paths::SavesDir() / voxels::kCurrentSaveFormatDirectory);
     bool running = true;
     voxels::AppStateMachine stateMachine;
     voxels::AppContext appContext{};

@@ -5,9 +5,9 @@ import { Route, parseJson, sendUiAction, useVoxelsActionGate, useVoxelsBridgeMod
 
 const splashLogo = "/assets/studio-logo.png";
 
-function ActionButton({ children, kind, fields, className = "", style, ...props }) {
+function ActionButton({ children, kind, fields, className = "", style, onClick, ...props }) {
   return (
-    <button className={`action-button ${className}`} type="button" style={style} onClick={() => sendUiAction(kind, fields)} {...props}>
+    <button className={`action-button ${className}`} type="button" style={style} onClick={onClick || (() => sendUiAction(kind, fields))} {...props}>
       {children}
     </button>
   );
@@ -34,8 +34,34 @@ function MenuAtmosphere({ opacity = 1 }) {
   return <div className="menu-atmosphere" style={{ opacity }} aria-hidden="true" />;
 }
 
+function useDirectionalNavigation(route) {
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        if (route === Route.Pause) sendUiAction("resume");
+        else if (![Route.MainMenu, Route.Loading, Route.Hud, Route.Splash].includes(route)) sendUiAction("back");
+        return;
+      }
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      const target = event.target;
+      if ((target instanceof HTMLInputElement && ["text", "number", "range"].includes(target.type)) &&
+          ["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      const controls = [...document.querySelectorAll("button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex='-1'])")]
+        .filter((element) => element.getClientRects().length > 0);
+      if (!controls.length) return;
+      const current = controls.indexOf(document.activeElement);
+      const delta = ["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : -1;
+      const next = current < 0 ? 0 : (current + delta + controls.length) % controls.length;
+      event.preventDefault();
+      controls[next].focus();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [route]);
+}
+
 /** Shared frame for every route except the main menu's own hero layout. */
-function RouteShell({ title, kicker = "Voxels Engine", subtitle, children, footer, blocking = false, wide = false, autoFocusHeading = true }) {
+function RouteShell({ title, kicker = "Voxels Engine", subtitle, children, footer, blocking = false, wide = false, autoFocusHeading = true, className = "" }) {
   const heading = useRef(null);
   useEffect(() => {
     if (!autoFocusHeading) return;
@@ -43,7 +69,7 @@ function RouteShell({ title, kicker = "Voxels Engine", subtitle, children, foote
   }, [title, autoFocusHeading]);
   return (
     <main className="player-ui" aria-busy={blocking} style={{ alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <section className="carved-panel route-shell anim-rise" style={wide ? { width: "min(760px, calc(100vw - 48px))" } : undefined} aria-labelledby="route-title">
+      <section className={`glass-panel route-shell anim-rise ${wide ? "route-shell-wide" : ""} ${className}`} aria-labelledby="route-title">
         <div className="route-shell-header">
           <p className="kicker">{kicker}</p>
           <h1 id="route-title" className="route-title" tabIndex="-1" ref={heading}>{title}</h1>
@@ -71,21 +97,19 @@ function MainMenu() {
           <h1 className="hero-title anim-glow">Voxels</h1>
           <p className="hero-subtitle">A block-based world is waiting.</p>
         </div>
-        <div className="hero-nav-row">
-          <nav aria-label="Main menu" className="hero-nav">
-            {items.map((item, index) => (
-              <ActionButton
-                key={item.kind}
-                kind={item.kind}
-                className={`${item.className} anim-rise`}
-                style={{ animationDelay: `${120 + index * 70}ms` }}
-              >
-                {item.label}
-              </ActionButton>
-            ))}
-          </nav>
-          <p className="version-tag anim-rise" style={{ animationDelay: "460ms" }}>VoxelsEngine</p>
-        </div>
+        <nav aria-label="Main menu" className="hero-nav">
+          {items.map((item, index) => (
+            <ActionButton
+              key={item.kind}
+              kind={item.kind}
+              className={`${item.className} anim-rise`}
+              style={{ animationDelay: `${120 + index * 70}ms` }}
+            >
+              {item.label}
+            </ActionButton>
+          ))}
+        </nav>
+        <p className="version-tag anim-rise" style={{ animationDelay: "460ms" }}>VoxelsEngine</p>
       </div>
     </main>
   );
@@ -94,42 +118,114 @@ function MainMenu() {
 function WorldSelect({ model }) {
   const [selected, setSelected] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const worlds = model.items.filter((item) => item.startsWith("save:")).map((item) => {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [hasMoreWorlds, setHasMoreWorlds] = useState(false);
+  const worldListRef = useRef(null);
+  const payload = parseJson(model.payload, {});
+  const fallbackWorlds = model.items.filter((item) => item.startsWith("save:")).map((item) => {
     const [slot, name] = item.slice(5).split("|");
     return { slot, name: name || slot };
   });
+  const worlds = Array.isArray(payload.worlds) ? payload.worlds : fallbackWorlds;
   const target = selected || worlds[0]?.slot || "";
-  const selectedWorld = worlds.find((world) => world.slot === target)?.name || target;
+  const selectedWorld = worlds.find((world) => world.slot === target);
+  useEffect(() => setPreviewFailed(false), [selectedWorld?.previewUrl]);
+  const refreshWorldListIndicator = () => {
+    const list = worldListRef.current;
+    setHasMoreWorlds(Boolean(list && list.scrollTop + list.clientHeight < list.scrollHeight - 1));
+  };
+  useEffect(() => {
+    const list = worldListRef.current;
+    if (!list) return undefined;
+    refreshWorldListIndicator();
+    const observer = new ResizeObserver(refreshWorldListIndicator);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [worlds.length, confirmingDelete]);
+
+  if (confirmingDelete && selectedWorld) {
+    return (
+      <RouteShell
+        title="Delete World?"
+        kicker="Permanent action"
+        subtitle={`This will permanently remove ${selectedWorld.name}.`}
+        footer={
+          <div className="action-row">
+            <ActionButton className="danger" kind="confirm-delete" fields={{ primary: target, secondary: confirmation }} disabled={confirmation !== selectedWorld.name}>Delete Forever</ActionButton>
+            <ActionButton className="ghost" onClick={() => { setConfirmingDelete(false); setConfirmation(""); }}>Cancel</ActionButton>
+          </div>
+        }
+      >
+        <label className="field-row">
+          <span className="field-label">Type {selectedWorld.name} to confirm</span>
+          <input type="text" value={confirmation} maxLength={48} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" autoFocus />
+        </label>
+      </RouteShell>
+    );
+  }
+
   return (
     <RouteShell
       title="Select World"
-      subtitle="Choose a saved world or start a new one."
+      subtitle="Choose a world, inspect its details, then continue your journey."
+      wide
+      className="world-select-shell"
       footer={
-        <div className="action-stack">
+        <div className="action-row">
           <ActionButton kind="create-world">New World</ActionButton>
           <ActionButton kind="load-world" fields={{ primary: target }} disabled={!target}>Play Selected</ActionButton>
+          <ActionButton className="danger quiet-danger" onClick={() => setConfirmingDelete(true)} disabled={!target}>Delete</ActionButton>
           <ActionButton className="ghost" kind="back">Back</ActionButton>
         </div>
       }
     >
-      <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
-        <legend className="section-title">Saved worlds</legend>
-        {worlds.length ? worlds.map((world) => (
-          <label className="world-option" key={world.slot}>
-            <input type="radio" name="world" value={world.slot} checked={target === world.slot} onChange={() => setSelected(world.slot)} />
-            <span className="world-name">{world.name}</span>
-          </label>
-        )) : <p className="supporting">No worlds yet — create your first one below.</p>}
-      </fieldset>
-      {target ? (
-        <div className="danger-zone">
-          <p className="field-label" style={{ marginBottom: 8 }}>Type <strong>{selectedWorld || target}</strong> to delete it</p>
-          <input id="delete-confirmation" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" />
-          <div style={{ marginTop: 10 }}>
-            <ActionButton className="danger" kind="confirm-delete" fields={{ primary: target, secondary: confirmation }} disabled={confirmation !== (selectedWorld || target)}>Delete World</ActionButton>
-          </div>
+      <div className="world-browser">
+        <div className="world-list-frame">
+          <section className="world-list" aria-label="Saved worlds" ref={worldListRef} onScroll={refreshWorldListIndicator}>
+            <p className="section-title">Saved Worlds</p>
+            {worlds.length ? worlds.map((world) => (
+              <button
+                className={`world-option ${target === world.slot ? "selected" : ""}`}
+                key={world.slot}
+                type="button"
+                aria-pressed={target === world.slot}
+                onClick={() => setSelected(world.slot)}
+              >
+                <span className="world-marker" aria-hidden="true" />
+                <span>
+                  <strong className="world-name">{world.name}</strong>
+                  <span className="world-mode">{world.mode || "World save"}</span>
+                </span>
+              </button>
+            )) : (
+              <div className="empty-worlds">
+                <p className="section-title">No saved worlds</p>
+                <p className="supporting">Create your first world to begin exploring.</p>
+              </div>
+            )}
+          </section>
+          {hasMoreWorlds ? <span className="world-list-more" aria-hidden="true" /> : null}
         </div>
-      ) : null}
+        <section className="world-details" aria-live="polite">
+          <div className="world-preview-window" role="img" aria-label={selectedWorld ? `World preview for ${selectedWorld.name}` : "World preview"}>
+            {selectedWorld?.previewUrl && !previewFailed ? (
+              <img src={selectedWorld.previewUrl} alt="" aria-hidden="true" onError={() => setPreviewFailed(true)} />
+            ) : null}
+            <span>{selectedWorld ? selectedWorld.name : "A new horizon"}</span>
+          </div>
+          {selectedWorld ? (
+            <dl className="world-metadata">
+              <div><dt>Mode</dt><dd>{selectedWorld.mode || "Survival"}</dd></div>
+              <div><dt>Seed</dt><dd>{selectedWorld.seed ?? "Unknown"}</dd></div>
+              <div><dt>Created</dt><dd>{selectedWorld.createdUtc || "Unknown"}</dd></div>
+              <div><dt>Last played</dt><dd>{selectedWorld.lastPlayedAt || "Never"}</dd></div>
+              <div><dt>Play time</dt><dd>{Math.floor((selectedWorld.playTimeSeconds || 0) / 60)} min</dd></div>
+              <div><dt>Access</dt><dd>{selectedWorld.public ? "Public LAN" : "Private"}</dd></div>
+            </dl>
+          ) : <p className="supporting">Select or create a world to see its details.</p>}
+        </section>
+      </div>
     </RouteShell>
   );
 }
@@ -178,12 +274,12 @@ function WorldCreation() {
         <p className="section-title">Basics</p>
         <div className="field-grid">
           <label className="field-row">
-            <span className="field-label">World name</span>
-            <input value={name} maxLength="48" onChange={(event) => setName(event.target.value)} required />
+            <span className="field-heading"><span className="field-label">World name</span><output>{name.length}/48</output></span>
+            <input type="text" value={name} maxLength={48} onChange={(event) => setName(event.target.value.replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 48))} required autoFocus />
           </label>
           <label className="field-row">
-            <span className="field-label">Seed <span className="optional">optional</span></span>
-            <input value={seed} maxLength="20" onChange={(event) => setSeed(event.target.value)} />
+            <span className="field-heading"><span className="field-label">Seed <span className="optional">optional</span></span><output>{seed.length}/20</output></span>
+            <input type="text" value={seed} maxLength={20} onChange={(event) => setSeed(event.target.value.replace(/[^A-Za-z0-9]/g, "").slice(0, 20))} inputMode="text" />
           </label>
         </div>
 
@@ -294,14 +390,58 @@ function Controls() {
 }
 
 function SliderField({ label, value, min, max, step = 1, onChange, format }) {
+  const clampValue = (next) => onChange(Math.min(max, Math.max(min, next)));
   return (
-    <>
+    <div className="slider-control">
       <div className="slider-row">
         <span className="field-label">{label}</span>
         <span className="slider-value">{format ? format(value) : value}</span>
       </div>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number.parseFloat(event.target.value))} />
-    </>
+      <div className="slider-input-row">
+        <button type="button" onClick={() => clampValue(value - step)} aria-label={`Decrease ${label}`}>-</button>
+        <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number.parseFloat(event.target.value))} />
+        <button type="button" onClick={() => clampValue(value + step)} aria-label={`Increase ${label}`}>+</button>
+      </div>
+    </div>
+  );
+}
+
+function PauseMenu({ model }) {
+  const payload = parseJson(model?.payload, {});
+  const [isPublic, setIsPublic] = useState(Boolean(payload.public));
+  useEffect(() => setIsPublic(Boolean(payload.public)), [model?.revision, payload.public]);
+  const remote = Boolean(payload.remote);
+  const toggleVisibility = () => {
+    const next = !isPublic;
+    setIsPublic(next);
+    sendUiAction("toggle-world-visibility", { value: next ? 1 : 0 });
+  };
+  return (
+    <RouteShell
+      title="Paused"
+      kicker={remote ? "Connected session" : "World suspended"}
+      subtitle={remote ? "The remote world remains connected while this menu is open." : "Your local world is held while you choose what comes next."}
+      className="pause-shell"
+    >
+      <div className="pause-layout">
+        <nav className="pause-actions" aria-label="Pause menu">
+          <ActionButton kind="resume" autoFocus>Resume</ActionButton>
+          <ActionButton className="quiet" kind="settings">Settings</ActionButton>
+          <ActionButton className="quiet" kind="controls">Controls</ActionButton>
+          {!remote ? <ActionButton className="quiet" onClick={toggleVisibility}>{isPublic ? "Set World Private" : "Set World Public"}</ActionButton> : null}
+          <ActionButton className="ghost" kind="return-to-main-menu">{remote ? "Leave Server" : "Save and Quit to Menu"}</ActionButton>
+          <ActionButton className="danger quiet-danger" kind="exit-to-desktop">{remote ? "Leave and Exit" : "Save and Exit"}</ActionButton>
+        </nav>
+        <aside className="session-details">
+          <p className="section-title">Session</p>
+          <dl className="world-metadata">
+            <div><dt>Type</dt><dd>{remote ? "Remote" : "Local host"}</dd></div>
+            {!remote ? <div><dt>Access</dt><dd>{isPublic ? "Public LAN" : "Private"}</dd></div> : null}
+            {payload.hosting ? <div><dt>UDP port</dt><dd>{payload.port}</dd></div> : null}
+          </dl>
+        </aside>
+      </div>
+    </RouteShell>
   );
 }
 
@@ -442,7 +582,8 @@ function Settings({ model }) {
 
 function App() {
   const [model] = useVoxelsBridgeModel({ route: Route.MainMenu, revision: 0, progress: 0, items: [] });
-  const showAtmosphere = model.route !== Route.Hud && model.route !== Route.Pause;
+  const showAtmosphere = ![Route.MainMenu, Route.Hud, Route.Pause].includes(model.route);
+  useDirectionalNavigation(model.route);
 
   // Example usage for future gameplay overlays:
   // const { runGuardedAction } = useVoxelsActionGate();
@@ -461,7 +602,7 @@ function App() {
           case Route.Error: return <ErrorRoute model={model} />;
           case Route.FatalError: return <ErrorRoute model={model} />;
           case Route.Hud: return null;
-          case Route.Pause: return null;
+          case Route.Pause: return <PauseMenu model={model} />;
           case Route.Settings: return <Settings model={model} />;
           case Route.ControlsCard: return <Controls />;
           default: return null;

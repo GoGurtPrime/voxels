@@ -370,7 +370,7 @@ flowchart TD
 flowchart TD
     SDL["SDL2 events: key, mouse, wheel, controller,<br/>display and DPI changes"] --> PLATE["IPlatform.PollEvents<br/>logical input + drawable metrics"]
     PLATE --> LISTEN["Dispatch to IPlatformEventListener list"]
-    LISTEN --> UIL["IPlayerUI backend<br/>React/CEF menus when enabled;<br/>ImGui HUD/pause"]
+    LISTEN --> UIL["IPlayerUI backend<br/>React/CEF menus and pause;<br/>gamepad D-pad/A/B maps to directional focus,<br/>activate, and Back; ImGui HUD remains native"]
     LISTEN --> IM["InputManager"]
     IM --> MAP["Action map from Preferences<br/>MoveForward, Jump, Break, Place, Hotbar1-9, Pause"]
     MAP --> CTX{"PlayerUIInputPolicy"}
@@ -432,6 +432,7 @@ Contract notes:
 flowchart TD
     subgraph SAVEP["Save"]
         S1["Trigger: autosave timer, Save and Quit, or world unload"] --> S2["Collect dirty chunk sections"]
+        S1 --> SP["For local save-and-exit: render world entities<br/>capture preview.png before HUD/web UI"]
         S2 --> S3["Serialize chunks: RLE per section"]
         S3 --> S4["Group into 32×32 region files"]
         S4 --> S5["Write temp file → flush → atomic rename"]
@@ -444,6 +445,7 @@ flowchart TD
         L2 --> L3{"Version supported?"}
         L3 -- no --> L4["Migrate or reject with a clear message"]
         L3 -- yes --> L5["Restore seed + WorldOptions into GenerationPipeline"]
+        L3 -- yes --> LP["Expose optional preview.png through<br/>the constrained CEF resource route"]
         L5 --> L6["Load player.dat → spawn player"]
         L6 --> L7["ChunkStreamer requests chunks; region hit → decode, miss → generate"]
     end

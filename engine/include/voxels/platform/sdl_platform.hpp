@@ -36,6 +36,7 @@ public:
     void SetWindowTitle(const std::string& title) override;
     void SetRelativeMouseMode(bool enabled) override;
     void SetCursorVisible(bool visible) override;
+    void SetTextInputEnabled(bool enabled) override;
     void SetVSync(bool enabled) override;
     std::pair<int, int> GetDrawableSize() const override;
     [[nodiscard]] WindowMetrics GetWindowMetrics() const override;

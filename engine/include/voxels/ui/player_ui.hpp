@@ -35,7 +35,26 @@ struct PlayerUIViewModel {
     bool blocking = false;
 };
 
-enum class PlayerUIActionKind : std::uint8_t { Play, CreateWorld, LoadWorld, DeleteWorld, ConfirmDelete, Join, Resume, OpenSettings, Back, Quit, ApplySettings, DismissControls, HudHotbar, AcknowledgeError };
+enum class PlayerUIActionKind : std::uint8_t {
+    Play,
+    CreateWorld,
+    LoadWorld,
+    DeleteWorld,
+    ConfirmDelete,
+    Join,
+    Resume,
+    OpenSettings,
+    OpenControls,
+    ToggleWorldVisibility,
+    ReturnToMainMenu,
+    ExitToDesktop,
+    Back,
+    Quit,
+    ApplySettings,
+    DismissControls,
+    HudHotbar,
+    AcknowledgeError
+};
 
 struct PlayerUIAction {
     std::uint32_t requestId = 0;

@@ -27,6 +27,16 @@ bool IsSafeFolderName(const std::string& name) {
     return !name.empty() && name != "." && name != ".." && name.find_first_of("\\/:*?\"<>|") == std::string::npos;
 }
 
+bool AtomicReplace(const std::filesystem::path& temporary, const std::filesystem::path& target) {
+#if defined(_WIN32)
+    return MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+    std::error_code error;
+    std::filesystem::rename(temporary, target, error);
+    return !error;
+#endif
+}
+
 bool AtomicWriteText(const std::filesystem::path& target, const std::string& text) {
     const std::filesystem::path temporary = target.string() + ".tmp";
     std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
@@ -35,13 +45,7 @@ bool AtomicWriteText(const std::filesystem::path& target, const std::string& tex
     output.flush();
     if (!output) return false;
     output.close();
-#if defined(_WIN32)
-    return MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
-#else
-    std::error_code error;
-    std::filesystem::rename(temporary, target, error);
-    return !error;
-#endif
+    return AtomicReplace(temporary, target);
 }
 
 std::string JsonString(const std::string& value) { return "\"" + value + "\""; }
@@ -64,6 +68,30 @@ SaveManager::SaveManager(std::filesystem::path saveRootPath) : m_saveRoot(std::m
 
 std::filesystem::path SaveManager::GetSaveDirectory(const std::string& saveName) const {
     return IsSafeFolderName(saveName) ? m_saveRoot / saveName : std::filesystem::path{};
+}
+
+std::filesystem::path SaveManager::GetWorldPreviewPath(const std::string& saveName) const {
+    const std::filesystem::path saveDirectory = GetSaveDirectory(saveName);
+    return saveDirectory.empty() ? std::filesystem::path{} : saveDirectory / "preview.png";
+}
+
+bool SaveManager::SaveWorldPreview(
+    const std::string& saveName,
+    const std::function<bool(const std::filesystem::path&)>& writePreview) const {
+    const std::filesystem::path target = GetWorldPreviewPath(saveName);
+    if (target.empty() || !writePreview) return false;
+    const std::filesystem::path temporary = target.string() + ".tmp";
+    std::error_code error;
+    std::filesystem::remove(temporary, error);
+    if (!writePreview(temporary) || !std::filesystem::is_regular_file(temporary, error)) {
+        std::filesystem::remove(temporary, error);
+        return false;
+    }
+    if (!AtomicReplace(temporary, target)) {
+        std::filesystem::remove(temporary, error);
+        return false;
+    }
+    return true;
 }
 
 std::string SaveManager::ToMetaText(const GameSave& save) {

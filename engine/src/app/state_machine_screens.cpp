@@ -84,6 +84,23 @@ std::string TimestampNow() {
     return stream.str();
 }
 
+std::string EncodeUrlPathSegment(std::string_view value) {
+    constexpr char hexDigits[] = "0123456789ABCDEF";
+    std::string encoded;
+    encoded.reserve(value.size() * 3U);
+    for (const unsigned char character : value) {
+        if (std::isalnum(character) != 0 || character == '-' || character == '_' ||
+            character == '.' || character == '~') {
+            encoded.push_back(static_cast<char>(character));
+        } else {
+            encoded.push_back('%');
+            encoded.push_back(hexDigits[character >> 4U]);
+            encoded.push_back(hexDigits[character & 0x0FU]);
+        }
+    }
+    return encoded;
+}
+
 void ConfigureInGameState(InGameState& state, AppContext* context, const GameSave& save) {
     state.SetBlockRegistry(context->blockRegistry);
     state.SetTextureAtlas(context->textureAtlas);
@@ -127,6 +144,16 @@ std::string BuildSettingsPayload(const GamePreferences& preferences, RendererBac
 void MainMenuState::OnEnter() {
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
     if (m_context != nullptr && m_context->input != nullptr) m_context->input->ClearGameplayInput();
+
+    if (IsMainMenuBackdropActive() && IsMainMenuBackdropReady()) {
+        m_publishedReadyMenu = true;
+        m_controlsCardQueued = false;
+        m_phaseElapsedSeconds = 0.0f;
+        m_runLogoSequence = false;
+        m_phase = IntroPhase::Ready;
+        PublishReadyMenu();
+        return;
+    }
 
     const std::uint64_t seed = static_cast<std::uint64_t>(std::random_device{}()) ^
                                static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -198,7 +225,26 @@ void WorldSelectState::OnEnter() {
     if (m_context != nullptr && m_context->saveManager != nullptr) m_saves = m_context->saveManager->ListSaves();
     if (m_context != nullptr && m_context->ui != nullptr) {
         PlayerUIViewModel model{.route = PlayerUIRoute::SaveSelection, .revision = 1, .title = "SELECT WORLD", .items = {"New World", "Play Selected", "Delete Selected", "Back"}};
-        for (const SaveSlot& save : m_saves) model.items.push_back("save:" + save.slotName + "|" + save.save.worldName);
+        nlohmann::json worlds = nlohmann::json::array();
+        for (const SaveSlot& save : m_saves) {
+            model.items.push_back("save:" + save.slotName + "|" + save.save.worldName);
+            nlohmann::json world{{"slot", save.slotName},
+                                 {"name", save.save.worldName},
+                                 {"seed", save.save.seed},
+                                 {"createdUtc", save.save.createdUtc},
+                                 {"lastPlayedAt", save.save.lastPlayedAt},
+                                 {"playTimeSeconds", save.save.playTimeSeconds},
+                                 {"mode", save.save.sandboxMode ? "Creative" : save.save.peaceful ? "Peaceful" : "Survival"},
+                                 {"public", save.save.publicVisibility}};
+            std::error_code error;
+            const std::filesystem::path previewPath = m_context->saveManager->GetWorldPreviewPath(save.slotName);
+            if (!previewPath.empty() && std::filesystem::is_regular_file(previewPath, error)) {
+                world["previewUrl"] = "voxels-ui://app/world-preview/" +
+                                      EncodeUrlPathSegment(save.slotName) + ".png";
+            }
+            worlds.push_back(std::move(world));
+        }
+        model.payload = nlohmann::json{{"worlds", std::move(worlds)}}.dump();
         m_context->ui->Publish(std::move(model));
     }
 }
@@ -374,7 +420,6 @@ void JoinGameState::Render() {
 }
 
 void JoinLoadingState::OnEnter() {
-    StopMainMenuBackdrop();
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::Loading, .revision = 1, .title = "JOINING...", .message = m_endpointLabel, .progress = 0.0f, .blocking = true});
     m_world = std::make_unique<World>();
@@ -458,6 +503,7 @@ void JoinLoadingState::Update(double deltaSeconds) {
     game->SetRemoteSession(true);
     game->SetRemoteSpawn(info.spawnPosition);
     game->SetPreparedWorld(std::move(m_world));
+    StopMainMenuBackdrop();
     m_context->requestTransition(std::move(game));
 }
 
@@ -593,7 +639,22 @@ void LoadingScreenState::Render() {
 
 void PauseMenuState::OnEnter() {
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::Pause, .revision = 1, .title = "PAUSED", .items = {"Resume", "Settings", "Save and Quit"}});
+    if (m_context != nullptr && m_context->ui != nullptr) {
+        const bool isPublic = m_context->activeGame != nullptr
+                                  ? m_context->activeGame->GetActiveSave().publicVisibility
+                                  : m_activeSave.publicVisibility;
+        const bool hosting = !m_remoteSession && m_context->networkServer != nullptr &&
+                             m_context->networkServer->IsRunning();
+        const nlohmann::json payload{{"remote", m_remoteSession},
+                                     {"public", isPublic},
+                                     {"hosting", hosting},
+                                     {"port", hosting ? m_context->networkServer->Port() : 0}};
+        m_context->ui->Publish({.route = PlayerUIRoute::Pause,
+                                .revision = 1,
+                                .title = "PAUSED",
+                                .items = {"Resume", "Settings", "Controls"},
+                                .payload = payload.dump()});
+    }
     if (m_context != nullptr && m_context->input != nullptr) m_context->input->ClearGameplayInput();
 }
 void PauseMenuState::OnExit() {
@@ -602,7 +663,8 @@ void PauseMenuState::OnExit() {
 }
 void PauseMenuState::Update(double) {}
 void PauseMenuState::Render() {
-    if (m_context == nullptr) return;
+    if (m_context == nullptr || m_context->ui == nullptr ||
+        !m_context->ui->UsesNativeRoutePresentation(PlayerUIRoute::Pause)) return;
     CenterNextWindow();
     ImGui::SetNextWindowSize({390.0f, 0.0f}, ImGuiCond_Always);
     ImGui::Begin("Paused", nullptr, kMenuWindowFlags);
@@ -624,17 +686,9 @@ void PauseMenuState::Render() {
         return;
     }
     if (ui::MenuButton(m_activeSave.publicVisibility ? "Set World Private" : "Set World Public")) {
-        m_activeSave.publicVisibility = !m_activeSave.publicVisibility;
-        if (m_context->saveManager != nullptr) m_context->saveManager->Save(m_activeSave);
-        if (m_context->activeGame != nullptr) {
-            // Visibility gates non-loopback joiners server-side, so republish the world.
-            WorldOptions options{.seed = m_activeSave.seed,
-                                 .generatorVersion = m_activeSave.generatorVersion,
-                                 .isPublic = m_activeSave.publicVisibility};
-            if (m_context->networkServer != nullptr) {
-                m_context->networkServer->SetWorldReady(options,
-                                                        {m_activeSave.spawnX, m_activeSave.spawnY, m_activeSave.spawnZ});
-            }
+        const bool nextVisibility = !m_activeSave.publicVisibility;
+        if (m_context->activeGame != nullptr && m_context->activeGame->SetPublicVisibility(nextVisibility)) {
+            m_activeSave.publicVisibility = nextVisibility;
         }
     }
     if (m_context->networkServer != nullptr && m_context->networkServer->IsRunning()) {
@@ -644,14 +698,10 @@ void PauseMenuState::Render() {
                                                           : "private: this machine only");
     }
     if (ui::MenuButton("Save and Quit to Menu")) {
-        m_activeSave.lastPlayedAt = TimestampNow();
-        if (m_context->saveManager != nullptr) m_context->saveManager->Save(m_activeSave);
-        m_context->requestTransition(std::make_unique<MainMenuState>(m_context));
+        if (m_context->activeGame != nullptr) m_context->activeGame->RequestSaveAndReturnToMenu();
     }
     if (ui::MenuButton("Save and Exit to Desktop")) {
-        m_activeSave.lastPlayedAt = TimestampNow();
-        if (m_context->saveManager != nullptr) m_context->saveManager->Save(m_activeSave);
-        m_context->requestQuit();
+        if (m_context->activeGame != nullptr) m_context->activeGame->RequestSaveAndExitToDesktop();
     }
     ImGui::End();
 }

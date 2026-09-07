@@ -35,8 +35,14 @@ void RequestError(AppContext& context, std::string detail) {
 std::optional<WorldOptions> WorldOptionsFromAction(const PlayerUIAction& action) {
     try {
         const nlohmann::json payload = nlohmann::json::parse(action.secondary);
+        const std::string seed = payload.value("seed", "");
+        if (seed.size() > 20 || !std::all_of(seed.begin(), seed.end(), [](unsigned char character) {
+                return std::isalnum(character) != 0;
+            })) {
+            return std::nullopt;
+        }
         WorldOptions options{};
-        options.seed = static_cast<WorldSeed>(SeedFromText(payload.value("seed", "")));
+        options.seed = static_cast<WorldSeed>(SeedFromText(seed));
         options.sandboxMode = payload.value("sandbox", false);
         options.peaceful = payload.value("peaceful", false);
         options.permadeath = payload.value("permadeath", false);
@@ -57,7 +63,11 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
     switch (action.kind) {
         case PlayerUIActionKind::Play:
             if (activeRoute != PlayerUIRoute::MainMenu || !context.requestTransition) return false;
-            context.requestTransition(std::make_unique<WorldSelectState>(&context));
+            if (context.saveManager != nullptr && context.saveManager->ListSaves().empty()) {
+                context.requestTransition(std::make_unique<WorldCreationState>(&context));
+            } else {
+                context.requestTransition(std::make_unique<WorldSelectState>(&context));
+            }
             return true;
         case PlayerUIActionKind::CreateWorld: {
             if (activeRoute == PlayerUIRoute::SaveSelection && context.requestTransition) {
@@ -66,8 +76,8 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
             }
             if (activeRoute != PlayerUIRoute::WorldCreation || context.saveManager == nullptr || !context.requestTransition) return false;
             const auto options = WorldOptionsFromAction(action);
-            if (!options || !IsFilesystemSafeWorldName(action.primary)) {
-                RequestError(context, "World names use letters, numbers, spaces, hyphens, and underscores only.");
+            if (!options || action.primary.size() > 48 || !IsFilesystemSafeWorldName(action.primary)) {
+                RequestError(context, "Use a world name up to 48 characters and a seed up to 20 letters or numbers.");
                 return true;
             }
             if (std::filesystem::exists(context.saveManager->GetSaveDirectory(action.primary))) {
@@ -144,6 +154,34 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
         case PlayerUIActionKind::Resume:
             if (activeRoute != PlayerUIRoute::Pause || !context.requestPopOverlay) return false;
             context.requestPopOverlay();
+            return true;
+        case PlayerUIActionKind::OpenControls:
+            if (activeRoute != PlayerUIRoute::Pause || !context.requestPushOverlay) return false;
+            context.requestPushOverlay(std::make_unique<ControlsCardState>(&context));
+            return true;
+        case PlayerUIActionKind::ToggleWorldVisibility:
+            if (activeRoute != PlayerUIRoute::Pause || context.activeGame == nullptr ||
+                context.activeGame->IsRemoteSession()) return false;
+            return context.activeGame->SetPublicVisibility(action.value >= 0.5f);
+        case PlayerUIActionKind::ReturnToMainMenu:
+            if (activeRoute != PlayerUIRoute::Pause || context.activeGame == nullptr ||
+                !context.requestTransition) return false;
+            if (context.activeGame->IsRemoteSession()) {
+                if (context.resetNetworkToLocal) context.resetNetworkToLocal();
+                context.requestTransition(std::make_unique<MainMenuState>(&context));
+            } else {
+                context.activeGame->RequestSaveAndReturnToMenu();
+            }
+            return true;
+        case PlayerUIActionKind::ExitToDesktop:
+            if (activeRoute != PlayerUIRoute::Pause || context.activeGame == nullptr ||
+                !context.requestQuit) return false;
+            if (context.activeGame->IsRemoteSession()) {
+                if (context.resetNetworkToLocal) context.resetNetworkToLocal();
+                context.requestQuit();
+            } else {
+                context.activeGame->RequestSaveAndExitToDesktop();
+            }
             return true;
         case PlayerUIActionKind::DismissControls:
             if (activeRoute != PlayerUIRoute::ControlsCard || !context.requestPopOverlay) return false;
@@ -228,7 +266,11 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
                 return true;
             }
             if (activeRoute == PlayerUIRoute::WorldCreation) {
-                context.requestTransition(std::make_unique<WorldSelectState>(&context));
+                if (context.saveManager != nullptr && context.saveManager->ListSaves().empty()) {
+                    context.requestTransition(std::make_unique<MainMenuState>(&context));
+                } else {
+                    context.requestTransition(std::make_unique<WorldSelectState>(&context));
+                }
                 return true;
             }
             return false;
