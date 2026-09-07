@@ -661,6 +661,21 @@ void InGameState::OnExit() {
     m_worldGenerated = false;
 }
 
+void InGameState::OnResume() {
+    if (m_context != nullptr && m_context->ui != nullptr) {
+        m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Gameplay);
+        m_context->ui->Publish({.route = PlayerUIRoute::Hud, .revision = 1, .title = "HUD"});
+    } else if (m_platform != nullptr) {
+        m_platform->SetRelativeMouseMode(true);
+    }
+    if (m_context != nullptr && m_context->input != nullptr) {
+        m_context->input->ClearGameplayInput();
+    }
+    if (m_cameraOverride != nullptr) {
+        *m_cameraOverride = m_session.GetCamera();
+    }
+}
+
 void InGameState::GenerateInitialWorld() {
     if (m_worldGenerated) {
         return;

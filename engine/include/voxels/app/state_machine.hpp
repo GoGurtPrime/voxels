@@ -303,11 +303,13 @@ class InGameState final : public IAppState {public:
     void ApplyPreferences(const GamePreferences& preferences) noexcept { m_session.SetPreferences(preferences); }
 
     void OnEnter() override;
+    void OnResume() override;
     void OnExit() override;
     void Update(double deltaSeconds) override;
     void Render() override;
 
     [[nodiscard]] const World& GetWorld() const noexcept { return m_session.GetWorld(); }
+    [[nodiscard]] const Player& GetPlayer() const noexcept { return m_session.GetPlayer(); }
     [[nodiscard]] graphics::ChunkRenderer* GetChunkRenderer() const noexcept { return m_chunkRenderer.get(); }
 
 private:

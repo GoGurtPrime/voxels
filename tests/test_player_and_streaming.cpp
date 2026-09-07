@@ -61,6 +61,37 @@ TEST_CASE("InGameState.InitializesVisibleWorldRenderer", "[player][streaming]") 
     state.OnExit();
 }
 
+TEST_CASE("InGameState.ResumeDoesNotTeleportPlayerToInitialSpawn", "[player][streaming][app]") {
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::TextureAtlas atlas(16, 16);
+    atlas.PopulateFromBlockRegistry(registry, "app/assets/textures");
+
+    voxels::GameSave save{};
+    save.spawnX = 8.5f;
+    save.spawnY = 100.0f;
+    save.spawnZ = 8.5f;
+
+    voxels::InGameState state;
+    state.SetBlockRegistry(&registry);
+    state.SetTextureAtlas(&atlas);
+    state.SetWorldOptions({.seed = 123u, .renderDistanceChunks = 4, .simulationDistanceChunks = 3});
+    state.SetActiveSave(save);
+    state.OnEnter();
+
+    const float spawnY = state.GetPlayer().state.position.y;
+    for (int i = 0; i < 10; ++i) {
+        state.Update(1.0 / 60.0);
+    }
+    const float simulatedY = state.GetPlayer().state.position.y;
+    REQUIRE(simulatedY < spawnY);
+
+    state.OnResume();
+    const float resumedY = state.GetPlayer().state.position.y;
+    REQUIRE(resumedY == Catch::Approx(simulatedY).margin(0.001f));
+
+    state.OnExit();
+}
+
 TEST_CASE("Input.RebindingMoveForwardChangesResultingIntent", "[player][input]") {
     voxels::InputManager manager;
     manager.BindAction("MoveForward", voxels::InputBinding{"", 87, 0, voxels::InputDeviceType::Keyboard});
