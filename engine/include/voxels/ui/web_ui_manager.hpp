@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 
+#include "include/internal/cef_ptr.h"
 #include "voxels/ui/player_ui.hpp"
 #include "voxels/ui/web_ui_compositor.hpp"
 
@@ -44,7 +45,10 @@ public:
 private:
     class BrowserClient;
     void SubmitAction(PlayerUIAction action);
-    std::unique_ptr<BrowserClient> m_client;
+    // CEF-managed: CefBrowserHost holds its own reference to the client for the lifetime of the
+    // browser, so this must be released via refcounting (CefRefPtr), never destroyed directly
+    // while a close is in flight (that segfaults CEF's internal browser teardown).
+    CefRefPtr<BrowserClient> m_client;
     WebUiFrameQueue m_frames;
     WebUiOpenGLCompositor m_compositor;
     IPlatform* m_platform = nullptr;

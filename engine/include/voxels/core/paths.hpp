@@ -21,8 +21,6 @@ public:
     static std::filesystem::path LogsDir();
     static std::filesystem::path SettingsFile();
     static std::filesystem::path AssetsDir();
-
-private:
     static std::filesystem::path ExecutableDir();
 };
 

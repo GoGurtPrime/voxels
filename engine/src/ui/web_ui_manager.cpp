@@ -10,12 +10,15 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
+#include <thread>
 #include <nlohmann/json.hpp>
 
 #include "include/cef_app.h"
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
+#include "include/cef_command_line.h"
 #include "include/cef_life_span_handler.h"
 #include "include/cef_render_handler.h"
 #include "include/cef_request_handler.h"
@@ -24,6 +27,22 @@
 #include "voxels/ui/web_ui_manifest.hpp"
 
 namespace voxels {
+namespace {
+
+/// Relaxes Chromium's opaque per-file-URL origin model so the bundled `file://` UI can load its
+/// own same-directory Vite ES-module/CSS chunks; without it every subresource load is treated as
+/// cross-origin and silently dropped (the overlay would build a browser but paint nothing).
+class FileAccessApp final : public CefApp {
+public:
+    void OnBeforeCommandLineProcessing(const CefString&, CefRefPtr<CefCommandLine> commandLine) override {
+        commandLine->AppendSwitch("allow-file-access-from-files");
+    }
+
+private:
+    IMPLEMENT_REFCOUNTING(FileAccessApp);
+};
+
+} // namespace
 
 class WebUIManager::BrowserClient final : public CefClient,
                                            public CefRenderHandler,
@@ -62,6 +81,10 @@ public:
         m_height = std::max(height, 1);
         if (m_browser) m_browser->GetHost()->WasResized();
     }
+    /// Requests an asynchronous close; the browser stays alive (`OnBeforeClose` not yet fired)
+    /// until the pumped message loop finishes tearing it down.
+    void CloseBrowser() { if (m_browser) m_browser->GetHost()->CloseBrowser(true); }
+    [[nodiscard]] bool HasBrowser() const noexcept { return static_cast<bool>(m_browser); }
     void Publish(const PlayerUIViewModel& model) {
         if (!m_browser) return;
         const nlohmann::json json{{"route", static_cast<int>(model.route)}, {"revision", model.revision}, {"title", model.title}, {"message", model.message}, {"items", model.items}, {"progress", model.progress}, {"blocking", model.blocking}};
@@ -92,22 +115,61 @@ private:
 
 WebUIManager::WebUIManager() = default;
 WebUIManager::~WebUIManager() { Shutdown(); }
-int WebUIManager::ExecuteSubprocess(int, char**) { CefMainArgs args(GetModuleHandle(nullptr)); return CefExecuteProcess(args, nullptr, nullptr); }
+int WebUIManager::ExecuteSubprocess(int, char**) {
+    CefMainArgs args(GetModuleHandle(nullptr));
+    return CefExecuteProcess(args, new FileAccessApp(), nullptr);
+}
 bool WebUIManager::Initialize(IPlatform* platform, graphics::IGraphicsRenderer*) {
     if (platform == nullptr || platform->GetContext().name != "SDL2") return false;
     WebUiManifest manifest; std::string error;
     if (!LoadAndVerifyWebUiManifest(Paths::AssetsDir() / "ui/ui-manifest.json", manifest, error)) return false;
     CefSettings settings; settings.windowless_rendering_enabled = true; settings.external_message_pump = true;
+    // No sandbox loader is staged (ADR-015: cef_sandbox.lib is /MT-only, incompatible with the
+    // engine's /MD runtime); tell CEF explicitly rather than let it warn/misbehave at startup.
+    settings.no_sandbox = 1;
+    // Pin every retail path explicitly so layout is deterministic regardless of CEF's own
+    // executable-relative guesses, and keep CEF's user-writable state out of the read-only
+    // install directory per ADR-011.
+    const std::filesystem::path executableDir = Paths::ExecutableDir();
+    CefString(&settings.resources_dir_path).FromString(executableDir.string());
+    CefString(&settings.locales_dir_path).FromString((executableDir / "locales").string());
+    const std::filesystem::path cacheDir = Paths::UserDataDir() / "cef_cache";
+    std::error_code cacheError;
+    std::filesystem::create_directories(cacheDir, cacheError);
+    CefString(&settings.root_cache_path).FromString(cacheDir.string());
+    CefString(&settings.log_file).FromString((Paths::LogsDir() / "cef.log").string());
     CefMainArgs args(GetModuleHandle(nullptr));
-    if (!CefInitialize(args, settings, nullptr, nullptr)) return false;
+    if (!CefInitialize(args, settings, new FileAccessApp(), nullptr)) return false;
     m_platform = platform; const auto [width, height] = platform->GetDrawableSize();
-    m_client = std::make_unique<BrowserClient>(*this); m_client->Resize(width, height);
+    m_client = new BrowserClient(*this); m_client->Resize(width, height);
     CefWindowInfo info; info.SetAsWindowless(nullptr);
     const std::string url = "file:///" + std::filesystem::absolute(Paths::AssetsDir() / "ui" / manifest.entryHtml).generic_string();
     if (!CefBrowserHost::CreateBrowser(info, m_client.get(), url, CefBrowserSettings{}, nullptr, nullptr)) { Shutdown(); return false; }
     m_initialized = true; return true;
 }
-void WebUIManager::Shutdown() { if (!m_initialized) return; m_client.reset(); CefShutdown(); m_compositor.Shutdown(); m_initialized = false; m_platform = nullptr; }
+void WebUIManager::Shutdown() {
+    if (!m_initialized) return;
+    // CEF's windowless/external-pump shutdown contract: request an async browser close, then
+    // keep pumping the message loop until CEF signals completion (OnBeforeClose) before
+    // releasing our client or calling CefShutdown(); doing it immediately segfaults on exit
+    // because the browser/renderer process is still tearing down. CEF's own scheduled-work
+    // callbacks for the browser process arrive as native OS messages on this thread (SDL's
+    // pump normally forwards them during the frame loop), so the platform must keep polling
+    // here too or CloseBrowser() never actually completes.
+    if (m_client) {
+        m_client->CloseBrowser();
+        for (int pumpIteration = 0; pumpIteration < 240 && m_client->HasBrowser(); ++pumpIteration) {
+            if (m_platform != nullptr) m_platform->PollEvents(nullptr);
+            CefDoMessageLoopWork();
+            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+        }
+    }
+    m_client.reset();
+    CefShutdown();
+    m_compositor.Shutdown();
+    m_initialized = false;
+    m_platform = nullptr;
+}
 void WebUIManager::BeginFrame() { if (!m_initialized) return; CefDoMessageLoopWork(); m_frameActive = true; }
 void WebUIManager::EndFrame() { if (m_frameActive) static_cast<void>(m_compositor.UploadAndComposite(m_frames)); m_frameActive = false; }
 void WebUIManager::OnPlatformEvent(const PlatformEvent& event) { if (event.type == PlatformEventType::WindowResized && m_client) m_client->Resize(event.width, event.height); }
