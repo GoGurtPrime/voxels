@@ -109,7 +109,7 @@ sequenceDiagram
     Main->>Main: CliParser.Parse
     Main->>Paths: Resolve user data dir + assets dir
     Main->>Prefs: Load settings.json, apply CLI overrides
-    Main->>Plat: Initialize window + GL 3.3 Core context
+    Main->>Plat: Initialize window + GL 3.3 Core context<br/>in windowed mode
     alt window or GL context fails
         Plat-->>Main: error
         Main->>OS: log + message box + exit(1)
@@ -124,6 +124,9 @@ sequenceDiagram
     Main->>SM: Start BootState → transition MainMenuState
     loop every frame until quit
         Main->>Main: Frame Loop (see diagram 4)
+        opt first presented frame and fullscreen requested
+            Main->>Plat: Apply SDL desktop fullscreen atomically
+        end
     end
     Main->>SM: Shutdown active state (autosave if in-game)
     Main->>Aud: Stop and close device

@@ -619,11 +619,6 @@ int main(int argc, char** argv) {
     auto* platform = engine.getPlatform();
     if (platform != nullptr) {
         platform->SetWindowTitle(windowTitle);
-        if (!voxels::ApplyWindowPreferences(*platform, runtimeWindowMode, runtimeResolution)) {
-            std::cerr << "Voxels could not apply the requested display mode." << std::endl;
-            engine.shutdown();
-            return 1;
-        }
         if (options.vsyncOverride) {
             platform->SetVSync(options.vsyncValue);
         }
@@ -826,6 +821,8 @@ int main(int argc, char** argv) {
     musicDirector.InitializeFromPreferences(preferences);
     auto lastTime = std::chrono::steady_clock::now();
     int frameCount = 0;
+    bool initialDisplayTransitionPending = runtimeWindowMode != voxels::WindowMode::Windowed;
+    bool displayTransitionFailed = false;
     const int maxFrames = options.maxFrames > 0 ? options.maxFrames : std::numeric_limits<int>::max();
 
     while (running && frameCount < maxFrames) {
@@ -907,6 +904,19 @@ int main(int argc, char** argv) {
         static_cast<void>(renderer->EndFrame());
         static_cast<void>(renderer->Present());
 
+        // Establish the GL/CEF presentation path with one windowed frame before entering
+        // fullscreen. Windows otherwise applies a different initial colour state until the
+        // player manually cycles modes; using the normal live transition also keeps SDL's
+        // native window, drawable, and input bounds synchronized.
+        if (initialDisplayTransitionPending) {
+            initialDisplayTransitionPending = false;
+            if (!voxels::ApplyWindowPreferences(*platform, runtimeWindowMode, runtimeResolution)) {
+                std::cerr << "Voxels could not apply the requested display mode." << std::endl;
+                displayTransitionFailed = true;
+                running = false;
+            }
+        }
+
         ++frameCount;
     }
 
@@ -937,5 +947,5 @@ int main(int argc, char** argv) {
     voxels::SetGlobalRenderer(nullptr);
     renderer->Shutdown();
     engine.shutdown();
-    return 0;
+    return displayTransitionFailed ? 1 : 0;
 }

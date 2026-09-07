@@ -156,7 +156,7 @@ Every state receives an `AppContext&` holding non-owning references to the servi
 - `IRenderer`: `Initialize(IPlatform&)`, `BeginFrame`, `EndFrame`/`Present`, resource creation (`CreateBuffer`, `CreateTexture`, `CreateShader`, `CreatePipeline`), `Submit(DrawCall)`, `SetViewport`, `Clear`.
 - `GLRenderer` implements this against GL 3.3 Core. Shaders live in `app/assets/shaders/*.glsl` with a compiled-in fallback source string so a missing file never blanks the screen.
 - OpenGL scene lighting is linear: colour textures use sRGB internal formats and an sRGB-capable default framebuffer encodes scene output for SDR presentation. CEF and ImGui surfaces already contain display-encoded colours, so their final composition temporarily bypasses framebuffer sRGB conversion and restores it afterward.
-- On Windows with Advanced Color enabled, a `Fullscreen` request uses desktop fullscreen instead of changing the monitor's exclusive display mode. This keeps the SDR OpenGL surface inside the Windows HDR compositor and avoids mode-dependent luminance changes. OpenGL 3.3 remains an SDR renderer and does not advertise HDR metadata or rely on driver Auto HDR.
+- On Windows, `Fullscreen` uses SDL desktop fullscreen so native window, drawable, and input bounds remain synchronized. At startup the app presents one complete windowed frame before applying the requested fullscreen mode; this establishes the same Windows colour state used by later live mode transitions in both HDR and SDR. OpenGL 3.3 remains an SDR renderer and does not advertise HDR metadata or rely on driver Auto HDR.
 - Passes per frame, in order: **opaque chunks → sub-voxel models/entities → transparent (water) → debug lines → UI**.
 
 ### 6.2 World & Meshing

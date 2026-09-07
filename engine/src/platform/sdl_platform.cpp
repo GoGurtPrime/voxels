@@ -12,16 +12,6 @@
 #include <optional>
 #include <glad/glad.h>
 
-#include "voxels/core/logger.hpp"
-
-#if defined(_WIN32)
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <Windows.h>
-#include <SDL_syswm.h>
-#endif
-
 namespace {
 
 std::optional<SDL_DisplayMode> ExactDisplayMode(SDL_Window* window, int width, int height) {
@@ -50,56 +40,6 @@ std::optional<SDL_DisplayMode> ExactDisplayMode(SDL_Window* window, int width, i
         }
     }
     return best;
-}
-
-bool IsWindowsAdvancedColorEnabled(SDL_Window* window) noexcept {
-#if defined(_WIN32)
-    if (window == nullptr) return false;
-
-    SDL_SysWMinfo windowInfo{};
-    SDL_VERSION(&windowInfo.version);
-    if (SDL_GetWindowWMInfo(window, &windowInfo) != SDL_TRUE) return false;
-
-    const HMONITOR monitor = MonitorFromWindow(windowInfo.info.win.window, MONITOR_DEFAULTTONEAREST);
-    MONITORINFOEXW monitorInfo{};
-    monitorInfo.cbSize = sizeof(monitorInfo);
-    if (monitor == nullptr || GetMonitorInfoW(monitor, &monitorInfo) == FALSE) return false;
-
-    UINT32 pathCount = 0;
-    UINT32 modeCount = 0;
-    if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS) return false;
-
-    std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
-    std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
-    if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount, modes.data(),
-                           nullptr) != ERROR_SUCCESS) {
-        return false;
-    }
-
-    for (UINT32 index = 0; index < pathCount; ++index) {
-        const DISPLAYCONFIG_PATH_INFO& path = paths[index];
-        DISPLAYCONFIG_SOURCE_DEVICE_NAME sourceName{};
-        sourceName.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
-        sourceName.header.size = sizeof(sourceName);
-        sourceName.header.adapterId = path.sourceInfo.adapterId;
-        sourceName.header.id = path.sourceInfo.id;
-        if (DisplayConfigGetDeviceInfo(&sourceName.header) != ERROR_SUCCESS ||
-            _wcsicmp(sourceName.viewGdiDeviceName, monitorInfo.szDevice) != 0) {
-            continue;
-        }
-
-        DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO colorInfo{};
-        colorInfo.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO;
-        colorInfo.header.size = sizeof(colorInfo);
-        colorInfo.header.adapterId = path.targetInfo.adapterId;
-        colorInfo.header.id = path.targetInfo.id;
-        return DisplayConfigGetDeviceInfo(&colorInfo.header) == ERROR_SUCCESS &&
-               colorInfo.advancedColorSupported != 0U && colorInfo.advancedColorEnabled != 0U;
-    }
-#else
-    static_cast<void>(window);
-#endif
-    return false;
 }
 
 std::uint32_t NormalizeModifiers(const SDL_Keymod keyModifiers, const Uint32 mouseButtons) noexcept {
@@ -406,8 +346,6 @@ bool SDLPlatform::ApplyWindowDisplayConfig(const WindowDisplayConfig& config) {
     SDL_SetWindowResizable(m_window, config.resizable ? SDL_TRUE : SDL_FALSE);
     SDL_SetWindowBordered(m_window, config.mode == WindowPresentationMode::Windowed ? SDL_TRUE : SDL_FALSE);
 
-    const bool useAdvancedColorFullscreen = config.mode == WindowPresentationMode::Fullscreen &&
-                                            IsWindowsAdvancedColorEnabled(m_window);
     bool applied = false;
     switch (config.mode) {
         case WindowPresentationMode::Windowed:
@@ -422,15 +360,14 @@ bool SDLPlatform::ApplyWindowDisplayConfig(const WindowDisplayConfig& config) {
             applied = SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN_DESKTOP) == 0;
             break;
         case WindowPresentationMode::Fullscreen:
-            if (useAdvancedColorFullscreen) {
-                applied = SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN_DESKTOP) == 0;
-                if (applied) {
-                    Logger{}.Info("Windows HDR is active; using desktop fullscreen to preserve Advanced Color composition.");
-                }
-            } else if (const auto displayMode = ExactDisplayMode(m_window, config.width, config.height);
-                       displayMode.has_value() && SDL_SetWindowDisplayMode(m_window, &*displayMode) == 0) {
+#if defined(_WIN32)
+            applied = SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN_DESKTOP) == 0;
+#else
+            if (const auto displayMode = ExactDisplayMode(m_window, config.width, config.height);
+                displayMode.has_value() && SDL_SetWindowDisplayMode(m_window, &*displayMode) == 0) {
                 applied = SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN) == 0;
             }
+#endif
             break;
     }
 
@@ -449,7 +386,7 @@ bool SDLPlatform::ApplyWindowDisplayConfig(const WindowDisplayConfig& config) {
     m_width = metrics.logicalWidth;
     m_height = metrics.logicalHeight;
     m_fullscreen = applied && config.mode != WindowPresentationMode::Windowed;
-    m_borderless = applied && (config.mode == WindowPresentationMode::Borderless || useAdvancedColorFullscreen);
+    m_borderless = applied && config.mode == WindowPresentationMode::Borderless;
     return applied;
 }
 
