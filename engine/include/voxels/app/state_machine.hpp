@@ -106,6 +106,11 @@ public:
     [[nodiscard]] virtual AppStateId GetId() const noexcept = 0;
     virtual void OnEnter() {}
     virtual void OnExit() {}
+    /// Called when an overlay above this state pops and reveals it again. Defaults to
+    /// re-running `OnEnter()` so states that publish a `PlayerUIViewModel` (the web UI's
+    /// only source of the currently displayed route) republish it; the browser layer has
+    /// no other signal that the underlying route is visible again.
+    virtual void OnResume() { OnEnter(); }
     virtual void Update(double deltaSeconds) { (void)deltaSeconds; }
     virtual void Render() {}
 

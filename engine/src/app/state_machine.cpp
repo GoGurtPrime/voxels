@@ -97,6 +97,10 @@ void AppStateMachine::PopOverlay() {
     m_overlays.back()->OnExit();
     m_log.push_back({m_overlays.back()->GetId(), false});
     m_overlays.pop_back();
+    // The web UI has no signal that the state beneath the popped overlay is visible again
+    // besides a fresh Publish, so resume the revealed state explicitly.
+    IAppState* revealed = m_overlays.empty() ? m_current.get() : m_overlays.back().get();
+    if (revealed) revealed->OnResume();
 }
 
 void AppStateMachine::RequestPopOverlay() {
