@@ -364,7 +364,14 @@ public:
     CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
     CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
     void GetViewRect(CefRefPtr<CefBrowser>, CefRect& rect) override { rect = CefRect(0, 0, m_width, m_height); }
-    void OnAfterCreated(CefRefPtr<CefBrowser> browser) override { m_browser = browser; m_mainFrameReady = false; }
+    void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
+        m_browser = browser;
+        m_mainFrameReady = false;
+        if (m_browser) {
+            m_browser->GetHost()->WasResized();
+            m_browser->GetHost()->Invalidate(PET_VIEW);
+        }
+    }
     void OnBeforeClose(CefRefPtr<CefBrowser>) override { m_browser = nullptr; m_mainFrameReady = false; }
     void OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int) override {
         if (!frame || !frame->IsMain()) return;
@@ -419,14 +426,25 @@ public:
         if (url == "about:blank") return false;
         return !IsUiUrl(url);
     }
-    void Resize(int windowWidth, int windowHeight, int drawableWidth, int drawableHeight) {
+    void ResizeSurface(int drawableWidth, int drawableHeight) {
+        const int newWidth = std::max(drawableWidth, 1);
+        const int newHeight = std::max(drawableHeight, 1);
+        if (newWidth == m_width && newHeight == m_height) {
+            return;
+        }
+        m_width = newWidth;
+        m_height = newHeight;
+        if (m_browser) {
+            m_browser->GetHost()->WasResized();
+            m_browser->GetHost()->Invalidate(PET_VIEW);
+        }
+    }
+
+    void UpdateInputScale(int windowWidth, int windowHeight, int drawableWidth, int drawableHeight) {
         const int safeWindowWidth = std::max(windowWidth, 1);
         const int safeWindowHeight = std::max(windowHeight, 1);
-        m_width = std::max(drawableWidth, 1);
-        m_height = std::max(drawableHeight, 1);
-        m_mouseScaleX = static_cast<float>(m_width) / static_cast<float>(safeWindowWidth);
-        m_mouseScaleY = static_cast<float>(m_height) / static_cast<float>(safeWindowHeight);
-        if (m_browser) m_browser->GetHost()->WasResized();
+        m_mouseScaleX = static_cast<float>(std::max(drawableWidth, 1)) / static_cast<float>(safeWindowWidth);
+        m_mouseScaleY = static_cast<float>(std::max(drawableHeight, 1)) / static_cast<float>(safeWindowHeight);
     }
     void ForwardEvent(const PlatformEvent& event) {
         if (!m_browser || m_owner.m_policy == PlayerUIInputPolicy::Gameplay) return;
@@ -594,8 +612,12 @@ bool WebUIManager::Initialize(IPlatform* platform, graphics::IGraphicsRenderer*)
     }
     m_platform = platform;
     const auto [width, height] = platform->GetDrawableSize();
+    m_lastDrawableWidth = std::max(width, 1);
+    m_lastDrawableHeight = std::max(height, 1);
     m_client = new BrowserClient(*this);
-    m_client->Resize(width, height, width, height);
+    m_client->ResizeSurface(m_lastDrawableWidth, m_lastDrawableHeight);
+    m_client->UpdateInputScale(m_lastDrawableWidth, m_lastDrawableHeight,
+                               m_lastDrawableWidth, m_lastDrawableHeight);
     CefWindowInfo info; info.SetAsWindowless(nullptr);
     const std::string url = std::string(kUiOriginPrefix) + m_entryHtmlPath;
     if (!CefBrowserHost::CreateBrowser(info, m_client.get(), url, CefBrowserSettings{}, nullptr, nullptr)) { Shutdown(); return false; }
@@ -627,13 +649,21 @@ void WebUIManager::Shutdown() {
     m_initialized = false;
     m_platform = nullptr;
 }
-void WebUIManager::BeginFrame() { if (!m_initialized) return; CefDoMessageLoopWork(); m_frameActive = true; }
+void WebUIManager::BeginFrame() {
+    if (!m_initialized) return;
+    SyncSurfaceSizeFromPlatform();
+    CefDoMessageLoopWork();
+    m_frameActive = true;
+}
 void WebUIManager::EndFrame() { if (m_frameActive) static_cast<void>(m_compositor.UploadAndComposite(m_frames)); m_frameActive = false; }
 void WebUIManager::OnPlatformEvent(const PlatformEvent& event) {
     if (!m_client) return;
     if (event.type == PlatformEventType::WindowResized && m_platform != nullptr) {
         const auto [drawableWidth, drawableHeight] = m_platform->GetDrawableSize();
-        m_client->Resize(event.width, event.height, drawableWidth, drawableHeight);
+        m_lastDrawableWidth = std::max(drawableWidth, 1);
+        m_lastDrawableHeight = std::max(drawableHeight, 1);
+        m_client->UpdateInputScale(event.width, event.height, m_lastDrawableWidth, m_lastDrawableHeight);
+        m_client->ResizeSurface(m_lastDrawableWidth, m_lastDrawableHeight);
     }
     m_client->ForwardEvent(event);
 }
@@ -648,6 +678,20 @@ void WebUIManager::ShowToast(std::string, float) {}
 void WebUIManager::SubmitAction(PlayerUIAction action) { if (m_actions.empty() || m_actions.back().requestId != action.requestId) m_actions.push_back(std::move(action)); }
 void WebUIManager::RepublishLatestModel() {
     if (m_client && m_lastModel.has_value()) m_client->Publish(*m_lastModel);
+}
+
+void WebUIManager::SyncSurfaceSizeFromPlatform() {
+    if (m_platform == nullptr || !m_client) return;
+    const auto [drawableWidthRaw, drawableHeightRaw] = m_platform->GetDrawableSize();
+    const int drawableWidth = std::max(drawableWidthRaw, 1);
+    const int drawableHeight = std::max(drawableHeightRaw, 1);
+    if (drawableWidth == m_lastDrawableWidth && drawableHeight == m_lastDrawableHeight) {
+        return;
+    }
+    m_lastDrawableWidth = drawableWidth;
+    m_lastDrawableHeight = drawableHeight;
+    m_client->UpdateInputScale(drawableWidth, drawableHeight, drawableWidth, drawableHeight);
+    m_client->ResizeSurface(drawableWidth, drawableHeight);
 }
 
 } // namespace voxels

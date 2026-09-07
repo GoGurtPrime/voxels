@@ -53,7 +53,7 @@ bool SDLPlatform::Initialize(const WindowConfig& config) {
     }
     if (m_graphicsApi == WindowGraphicsApi::OpenGL) flags |= SDL_WINDOW_OPENGL;
     if (config.fullscreen) {
-        flags |= SDL_WINDOW_FULLSCREEN;
+        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
     }
 
     m_window = SDL_CreateWindow(config.title.c_str(), SDL_WINDOWPOS_CENTERED,
@@ -241,15 +241,7 @@ void SDLPlatform::SwapBuffers() {
 void SDLPlatform::SetWindowFullscreen(bool fullscreen) {
     m_fullscreen = fullscreen;
     if (m_window != nullptr) {
-        if (fullscreen) {
-            SDL_DisplayMode mode{};
-            mode.w = m_width;
-            mode.h = m_height;
-            mode.refresh_rate = 0;
-            mode.format = 0;
-            SDL_SetWindowDisplayMode(m_window, &mode);
-        }
-        SDL_SetWindowFullscreen(m_window, fullscreen ? SDL_WINDOW_FULLSCREEN : 0);
+        SDL_SetWindowFullscreen(m_window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
     }
 }
 

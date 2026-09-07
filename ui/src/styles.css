@@ -502,6 +502,49 @@ progress {
   text-align: right;
 }
 
+.option-picker {
+  display: grid;
+  grid-template-columns: 48px 1fr 48px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  background: rgba(6, 8, 13, 0.9);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+}
+
+.option-picker-value {
+  text-align: center;
+  font-weight: 700;
+  color: #f3ead6;
+  letter-spacing: 0.01em;
+}
+
+.option-picker-button {
+  border: 1px solid #7a4d0c;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #ffd889 0%, #f2a93b 55%, #d98a1f 100%);
+  color: #211405;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 8px 0;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.22),
+    0 2px 0 #6b4409;
+}
+
+.option-picker-button:hover {
+  filter: brightness(1.06);
+}
+
+.option-picker-button:active {
+  transform: translateY(1px);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Main menu hero layout                                                   */
 /* ---------------------------------------------------------------------- */

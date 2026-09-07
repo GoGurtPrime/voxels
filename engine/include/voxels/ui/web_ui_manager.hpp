@@ -50,6 +50,7 @@ private:
     class BrowserClient;
     void SubmitAction(PlayerUIAction action);
     void RepublishLatestModel();
+    void SyncSurfaceSizeFromPlatform();
     // CEF-managed: CefBrowserHost holds its own reference to the client for the lifetime of the
     // browser, so this must be released via refcounting (CefRefPtr), never destroyed directly
     // while a close is in flight (that segfaults CEF's internal browser teardown).
@@ -62,6 +63,8 @@ private:
     std::vector<PlayerUIAction> m_actions;
     std::optional<PlayerUIViewModel> m_lastModel;
     std::string m_entryHtmlPath;
+    int m_lastDrawableWidth = 0;
+    int m_lastDrawableHeight = 0;
     bool m_initialized = false;
     bool m_frameActive = false;
     bool m_discardNextMouseDelta = false;

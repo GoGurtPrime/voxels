@@ -305,14 +305,31 @@ function SliderField({ label, value, min, max, step = 1, onChange, format }) {
   );
 }
 
+function OptionPicker({ label, valueLabel, onPrevious, onNext }) {
+  return (
+    <div className="field-row">
+      <span className="field-label">{label}</span>
+      <div className="option-picker" role="group" aria-label={label}>
+        <button className="option-picker-button" type="button" onClick={onPrevious} aria-label={`Previous ${label}`}>
+          &lt;
+        </button>
+        <span className="option-picker-value">{valueLabel}</span>
+        <button className="option-picker-button" type="button" onClick={onNext} aria-label={`Next ${label}`}>
+          &gt;
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const WINDOW_MODES = ["Windowed", "Borderless", "Fullscreen"];
 const RESOLUTION_PRESETS = [
-  { width: 1280, height: 720, label: "1280 x 720" },
-  { width: 1366, height: 768, label: "1366 x 768" },
-  { width: 1600, height: 900, label: "1600 x 900" },
-  { width: 1920, height: 1080, label: "1920 x 1080" },
-  { width: 2560, height: 1440, label: "2560 x 1440" },
-  { width: 3840, height: 2160, label: "3840 x 2160" }
+  { width: 1280, height: 720, aspect: "16:9", label: "1280 x 720 (16:9)" },
+  { width: 1366, height: 768, aspect: "16:9", label: "1366 x 768 (16:9)" },
+  { width: 1600, height: 900, aspect: "16:9", label: "1600 x 900 (16:9)" },
+  { width: 1920, height: 1080, aspect: "16:9", label: "1920 x 1080 (16:9)" },
+  { width: 2560, height: 1440, aspect: "16:9", label: "2560 x 1440 (16:9)" },
+  { width: 3840, height: 2160, aspect: "16:9", label: "3840 x 2160 (16:9)" }
 ];
 
 function ResolutionKey(width, height) {
@@ -357,6 +374,21 @@ function Settings({ model }) {
   const update = (key, value) => setSettings({ ...settings, [key]: value });
   const percent = (value) => `${Math.round(value * 100)}%`;
   const selectedResolution = ResolutionKey(settings.resolutionWidth, settings.resolutionHeight);
+  const modeIndex = Math.max(0, WINDOW_MODES.indexOf(settings.windowMode));
+  const resolutionIndex = Math.max(0, RESOLUTION_PRESETS.findIndex((resolution) => ResolutionKey(resolution.width, resolution.height) === selectedResolution));
+  const currentResolution = RESOLUTION_PRESETS[resolutionIndex] || RESOLUTION_PRESETS[0];
+
+  const stepWindowMode = (delta) => {
+    const nextIndex = (modeIndex + delta + WINDOW_MODES.length) % WINDOW_MODES.length;
+    setSettings({ ...settings, windowMode: WINDOW_MODES[nextIndex] });
+  };
+
+  const stepResolution = (delta) => {
+    const nextIndex = (resolutionIndex + delta + RESOLUTION_PRESETS.length) % RESOLUTION_PRESETS.length;
+    const nextResolution = RESOLUTION_PRESETS[nextIndex];
+    setSettings({ ...settings, resolutionWidth: nextResolution.width, resolutionHeight: nextResolution.height });
+  };
+
   return (
     <RouteShell
       title="Settings"
@@ -376,35 +408,18 @@ function Settings({ model }) {
         });
       }}>
         <p className="section-title">Video</p>
-        <div className="field-row">
-          <label className="field-label" htmlFor="window-mode">Window mode</label>
-          <select
-            id="window-mode"
-            value={settings.windowMode}
-            onChange={(event) => update("windowMode", event.target.value)}
-          >
-            {WINDOW_MODES.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
-          </select>
-        </div>
-        <div className="field-row">
-          <label className="field-label" htmlFor="resolution-preset">Resolution</label>
-          <select
-            id="resolution-preset"
-            value={selectedResolution}
-            onChange={(event) => {
-              const [width, height] = event.target.value.split("x").map((value) => Number.parseInt(value, 10));
-              if (Number.isFinite(width) && Number.isFinite(height)) {
-                setSettings({ ...settings, resolutionWidth: width, resolutionHeight: height });
-              }
-            }}
-          >
-            {RESOLUTION_PRESETS.map((resolution) => (
-              <option key={ResolutionKey(resolution.width, resolution.height)} value={ResolutionKey(resolution.width, resolution.height)}>
-                {resolution.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <OptionPicker
+          label="Window mode"
+          valueLabel={WINDOW_MODES[modeIndex]}
+          onPrevious={() => stepWindowMode(-1)}
+          onNext={() => stepWindowMode(1)}
+        />
+        <OptionPicker
+          label="Resolution"
+          valueLabel={currentResolution.label}
+          onPrevious={() => stepResolution(-1)}
+          onNext={() => stepResolution(1)}
+        />
         <SliderField label="Field of view" value={settings.fov} min={60} max={110} onChange={(value) => update("fov", value)} format={(value) => `${value}°`} />
         <SliderField label="Render distance" value={settings.renderDistance} min={2} max={16} onChange={(value) => update("renderDistance", Math.round(value))} format={(value) => `${value} chunks`} />
         <SliderField label="Simulation distance" value={settings.simulationDistance} min={2} max={12} onChange={(value) => update("simulationDistance", Math.round(value))} format={(value) => `${value} chunks`} />
