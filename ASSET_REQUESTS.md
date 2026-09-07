@@ -56,6 +56,11 @@
 * **Current state:** the packaged executable and window use no custom icon (OS default) and the working title "VoxelsEngine".
 * **Operator action:** supply the icon and branding art files, and confirm the final title, when available.
 
+### WEBUI-002 — Player UI display/body typefaces *(status: fulfilled)*
+* **Need:** a display typeface for titles/buttons and a body typeface for UI copy, self-hosted (no runtime network fetch).
+* **Resolution:** `Cinzel` (variable, weights 400-900) and `Inter` (variable, weights 100-900), latin subset only, downloaded from Google Fonts (`fonts.gstatic.com`) and committed at `ui/src/assets/fonts/cinzel-latin-variable.woff2` and `ui/src/assets/fonts/inter-latin-variable.woff2`. Both are licensed under the SIL Open Font License 1.1, which permits redistribution and bundling. Referenced via `@font-face` in `ui/src/styles.css`; Vite hashes and stages them into the manifest-verified bundle like any other asset.
+* **Operator action:** none required. If a different typeface pairing is preferred later, replace the two files and the `@font-face` rules together.
+
 ---
 
 ## Placeholder Inventory (filler content currently shipping)
