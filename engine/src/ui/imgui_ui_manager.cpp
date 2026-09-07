@@ -15,6 +15,7 @@
 #include <SDL.h>
 #include <backends/imgui_impl_opengl3.h>
 #include <backends/imgui_impl_sdl2.h>
+#include <glad/glad.h>
 #include <imgui.h>
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -128,7 +129,12 @@ void ImGuiUIManager::EndFrame() {
     RenderErrorModal();
     RenderToasts();
     ImGui::Render();
-    if (m_rendererBackend == RendererBackend::OpenGL) ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    if (m_rendererBackend == RendererBackend::OpenGL) {
+        const GLboolean framebufferSrgbEnabled = glIsEnabled(GL_FRAMEBUFFER_SRGB);
+        glDisable(GL_FRAMEBUFFER_SRGB);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        if (framebufferSrgbEnabled == GL_TRUE) glEnable(GL_FRAMEBUFFER_SRGB);
+    }
 #if defined(_WIN32)
     if (m_rendererBackend == RendererBackend::Direct3D11) ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 #endif

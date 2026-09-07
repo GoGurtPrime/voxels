@@ -101,6 +101,7 @@ bool GLRenderer::BeginFrame(const std::array<float, 4>& clearColor, int viewport
     if (m_viewportWidth > 0 && m_viewportHeight > 0) {
         glViewport(0, 0, m_viewportWidth, m_viewportHeight);
     }
+    glEnable(GL_FRAMEBUFFER_SRGB);
     glClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
@@ -135,6 +136,9 @@ void GLRenderer::CreateDefaultAtlas() {
 }
 
 void GLRenderer::SetupState() {
+    // Scene shaders produce linear light values. Let an sRGB-capable default framebuffer
+    // perform the transfer to the SDR signal consumed by the desktop compositor.
+    glEnable(GL_FRAMEBUFFER_SRGB);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glEnable(GL_CULL_FACE);

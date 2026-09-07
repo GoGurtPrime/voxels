@@ -195,7 +195,7 @@ bool TextureAtlas::BuildGLTexture() {
     glTexImage3D(
         GL_TEXTURE_2D_ARRAY,
         0,
-        GL_RGBA8,
+        GL_SRGB8_ALPHA8,
         m_tileWidth,
         m_tileHeight,
         layerCount,

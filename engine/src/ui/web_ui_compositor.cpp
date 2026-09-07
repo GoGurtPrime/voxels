@@ -130,8 +130,13 @@ bool WebUiOpenGLCompositor::UploadAndComposite(WebUiFrameQueue& queue) {
 
     const GLboolean depthEnabled = glIsEnabled(GL_DEPTH_TEST);
     const GLboolean cullEnabled = glIsEnabled(GL_CULL_FACE);
+    const GLboolean framebufferSrgbEnabled = glIsEnabled(GL_FRAMEBUFFER_SRGB);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
+    // CEF supplies premultiplied BGRA in display-encoded sRGB. Writing those values directly
+    // preserves browser colours and its premultiplication; decoding them as linear would make
+    // translucent edges too dark before blending over the scene.
+    glDisable(GL_FRAMEBUFFER_SRGB);
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     glUseProgram(m_program);
@@ -139,6 +144,7 @@ bool WebUiOpenGLCompositor::UploadAndComposite(WebUiFrameQueue& queue) {
     glBindTexture(GL_TEXTURE_2D, m_texture);
     glBindVertexArray(m_vertexArray);
     glDrawArrays(GL_TRIANGLES, 0, 3);
+    if (framebufferSrgbEnabled == GL_TRUE) glEnable(GL_FRAMEBUFFER_SRGB);
     if (depthEnabled == GL_TRUE) glEnable(GL_DEPTH_TEST);
     if (cullEnabled == GL_TRUE) glEnable(GL_CULL_FACE);
     return true;

@@ -287,15 +287,15 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    BEGIN["Renderer.BeginFrame<br/>clear color + depth"] --> CAMU["Update camera matrices<br/>view, projection, interpolated eye"]
+    BEGIN["Renderer.BeginFrame<br/>bind sRGB SDR framebuffer<br/>clear color + depth"] --> CAMU["Update camera matrices<br/>view, projection, interpolated eye"]
     CAMU --> FRUS["Build frustum, cull chunk meshes"]
     FRUS --> OPAQUE["Pass 1: opaque chunk meshes<br/>atlas texture, depth write on"]
     OPAQUE --> MODELS["Pass 2: sub-voxel models + entities<br/>.vmdl instances, players"]
     MODELS --> WATER["Pass 3: transparent<br/>water, leaves, glass — sorted back to front, depth write off"]
     WATER --> DEBUG["Pass 4: debug lines<br/>targeted block outline, chunk bounds if enabled"]
     DEBUG --> HUD["Pass 5: HUD primitives<br/>crosshair, hotbar, held item"]
-    HUD --> IMGUI["Pass 6: ImGui draw data<br/>menus, settings, F3 overlay"]
-    IMGUI --> WEBUI["Pass 7 (VOXELS_ENABLE_WEB_UI only): CEF React menu layer<br/>WebUiOpenGLCompositor draws the browser's premultiplied-BGRA<br/>paint as a transparent full-frame quad; menu routes replace ImGui,<br/>while pause/HUD remain native"]
+    HUD --> IMGUI["Pass 6: ImGui draw data<br/>display-encoded UI bypasses framebuffer sRGB conversion"]
+    IMGUI --> WEBUI["Pass 7 (VOXELS_ENABLE_WEB_UI only): CEF React menu layer<br/>WebUiOpenGLCompositor draws the browser's premultiplied-BGRA<br/>paint with framebuffer sRGB conversion bypassed, then restores it;<br/>menu routes replace ImGui, while pause/HUD remain native"]
     WEBUI --> PRES["Renderer.EndFrame → Present"]
 ```
 

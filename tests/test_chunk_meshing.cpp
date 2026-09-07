@@ -408,6 +408,7 @@ TEST_CASE("ChunkRenderer.RendersGeneratedChunkToOffscreenTarget", "[render][chun
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
 
     const int fbWidth = 256;
     const int fbHeight = 256;
@@ -424,15 +425,19 @@ TEST_CASE("ChunkRenderer.RendersGeneratedChunkToOffscreenTarget", "[render][chun
     REQUIRE(atlas.BuildGLTexture());
     GLint wrapS = 0;
     GLint wrapT = 0;
+    GLint internalFormat = 0;
     glBindTexture(GL_TEXTURE_2D_ARRAY, atlas.GetTextureHandle());
     glGetTexParameteriv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, &wrapS);
     glGetTexParameteriv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, &wrapT);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_INTERNAL_FORMAT, &internalFormat);
     REQUIRE(wrapS == GL_REPEAT);
     REQUIRE(wrapT == GL_REPEAT);
+    REQUIRE(internalFormat == GL_SRGB8_ALPHA8);
 
     voxels::graphics::GLRenderer glRenderer;
     glRenderer.SetTextureAtlas(&atlas);
     REQUIRE(glRenderer.Initialize());
+    REQUIRE(glIsEnabled(GL_FRAMEBUFFER_SRGB) == GL_TRUE);
 
     voxels::WorldOptions options;
     options.seed = 777u;
@@ -487,9 +492,14 @@ TEST_CASE("ChunkRenderer.RendersGeneratedChunkToOffscreenTarget", "[render][chun
     std::vector<std::uint8_t> pixels(static_cast<std::size_t>(fbWidth * fbHeight * 4), 0);
     glReadPixels(0, 0, fbWidth, fbHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
-    const int expectedSkyR = static_cast<int>(skyColor[0] * 255.0f);
-    const int expectedSkyG = static_cast<int>(skyColor[1] * 255.0f);
-    const int expectedSkyB = static_cast<int>(skyColor[2] * 255.0f);
+    const auto encodeSrgb = [](const float linear) {
+        const float encoded = linear <= 0.0031308f ? linear * 12.92f
+                                                   : 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
+        return static_cast<int>(encoded * 255.0f + 0.5f);
+    };
+    const int expectedSkyR = encodeSrgb(skyColor[0]);
+    const int expectedSkyG = encodeSrgb(skyColor[1]);
+    const int expectedSkyB = encodeSrgb(skyColor[2]);
 
     int geometryPixelCount = 0;
     for (int y = 0; y < fbHeight; ++y) {
