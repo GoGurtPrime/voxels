@@ -31,6 +31,7 @@ add_executable(voxels_tests
     test_web_ui_manifest.cpp
     test_web_ui_runtime_proof.cpp
     test_web_ui_compositor.cpp
+    test_web_ui_app_composition.cpp
 )
 
 target_link_libraries(voxels_tests
@@ -55,6 +56,24 @@ if(WIN32 AND TARGET SDL2::SDL2)
             "$<TARGET_FILE:SDL2::SDL2>"
             "$<TARGET_FILE_DIR:voxels_tests>"
         COMMENT "Staging SDL2 runtime next to the test executable"
+    )
+endif()
+
+if(VOXELS_ENABLE_WEB_UI)
+    # voxels_tests links the CEF wrapper (test_web_ui_app_composition.cpp constructs a
+    # WebUIManager), so libcef.dll must be resolvable at process load time, not just at link
+    # time, or even test *discovery* fails with STATUS_DLL_NOT_FOUND before any test runs.
+    file(GLOB VOXELS_CEF_RELEASE_ITEMS "${VOXELS_CEF_ROOT}/Release/*")
+    list(FILTER VOXELS_CEF_RELEASE_ITEMS EXCLUDE REGEX "\\.lib$")
+    list(FILTER VOXELS_CEF_RELEASE_ITEMS EXCLUDE REGEX "[/\\\\]bootstrap[^/\\\\]*\\.exe$")
+    set(VOXELS_CEF_TEST_STAGE_COMMANDS)
+    foreach(voxels_cef_item IN LISTS VOXELS_CEF_RELEASE_ITEMS)
+        list(APPEND VOXELS_CEF_TEST_STAGE_COMMANDS COMMAND ${CMAKE_COMMAND} -E copy_if_different "${voxels_cef_item}" "$<TARGET_FILE_DIR:voxels_tests>")
+    endforeach()
+    add_custom_command(TARGET voxels_tests POST_BUILD
+        ${VOXELS_CEF_TEST_STAGE_COMMANDS}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${VOXELS_CEF_ROOT}/Resources" "$<TARGET_FILE_DIR:voxels_tests>"
+        COMMENT "Staging verified CEF runtime next to the test executable"
     )
 endif()
 

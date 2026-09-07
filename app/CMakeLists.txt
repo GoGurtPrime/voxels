@@ -39,10 +39,19 @@ if(VOXELS_STEAM_ACTIVE)
 endif()
 
 if(VOXELS_ENABLE_WEB_UI)
+    # Stage every Release/ file except import libraries (*.lib, link-time only) and the
+    # sandbox bootstrap loaders (bootstrap*.exe, unused since USE_SANDBOX=OFF per ADR-015).
+    file(GLOB VOXELS_CEF_RELEASE_ITEMS "${VOXELS_CEF_ROOT}/Release/*")
+    list(FILTER VOXELS_CEF_RELEASE_ITEMS EXCLUDE REGEX "\\.lib$")
+    list(FILTER VOXELS_CEF_RELEASE_ITEMS EXCLUDE REGEX "[/\\\\]bootstrap[^/\\\\]*\\.exe$")
+    set(VOXELS_CEF_STAGE_COMMANDS)
+    foreach(voxels_cef_item IN LISTS VOXELS_CEF_RELEASE_ITEMS)
+        list(APPEND VOXELS_CEF_STAGE_COMMANDS COMMAND ${CMAKE_COMMAND} -E copy_if_different "${voxels_cef_item}" "$<TARGET_FILE_DIR:voxels_app>")
+    endforeach()
     add_custom_command(TARGET voxels_app POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${VOXELS_CEF_ROOT}/Release" "$<TARGET_FILE_DIR:voxels_app>"
+        ${VOXELS_CEF_STAGE_COMMANDS}
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${VOXELS_CEF_ROOT}/Resources" "$<TARGET_FILE_DIR:voxels_app>"
-        COMMENT "Staging verified CEF runtime next to the executable"
+        COMMENT "Staging verified CEF runtime next to the executable (import libs/sandbox loaders excluded)"
     )
 endif()
 
@@ -69,7 +78,9 @@ if(VOXELS_STEAM_ACTIVE)
 endif()
 
 if(VOXELS_ENABLE_WEB_UI)
-    install(DIRECTORY "${VOXELS_CEF_ROOT}/Release/" DESTINATION .)
+    install(DIRECTORY "${VOXELS_CEF_ROOT}/Release/" DESTINATION .
+        PATTERN "*.lib" EXCLUDE
+        PATTERN "bootstrap*.exe" EXCLUDE)
     install(DIRECTORY "${VOXELS_CEF_ROOT}/Resources/" DESTINATION .)
     install(FILES "${VOXELS_CEF_ROOT}/LICENSE.txt" DESTINATION . OPTIONAL)
 endif()
