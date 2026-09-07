@@ -30,6 +30,7 @@ The desktop game presents React/Tailwind player UI as a transparent final render
 | 01 | `01_web_ui_build_and_runtime_contract.md` | Pinned CEF runtime and deterministic React/Tailwind pipeline |
 | 02 | `02_player_ui_contract_and_protocol.md` | Backend-neutral UI contract, schemas, dispatcher, input policy |
 | 03 | `03_cef_offscreen_compositor.md` | CEF browser, transparent OpenGL compositor, event forwarding |
+| 03.02 | `03_cef_offscreen_compositor_02.md` | Wire CEF into the running app: subprocess bootstrap, runtime staging, on-screen transparent overlay, clean shutdown |
 | 04 | `04_web_main_menu_and_world_flow.md` | Web main menu, world management, loading, errors |
 | 05 | `05_cinematic_menu_background.md` | Rendered voxel-world cinematic behind web menus |
 | 06 | `06_web_gameplay_hud_and_pause.md` | Web HUD, pause, settings, controls, notifications |
