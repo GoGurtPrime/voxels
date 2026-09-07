@@ -177,21 +177,30 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
             return true;
         case PlayerUIActionKind::ApplySettings:
             if (activeRoute != PlayerUIRoute::Settings || context.preferences == nullptr) return false;
+            {
+                const GamePreferences previous = *context.preferences;
+                bool hasDisplaySettings = false;
             try {
                 nlohmann::json payload = nlohmann::json::object();
                 if (!action.secondary.empty()) payload = nlohmann::json::parse(action.secondary);
                 if (payload.contains("settings") && payload.at("settings").is_object()) payload = payload.at("settings");
+                if (!payload.is_object() || payload.empty()) return false;
                 if (const auto windowMode = payload.find("windowMode");
                     windowMode != payload.end() && windowMode->is_string()) {
+                    hasDisplaySettings = true;
                     context.preferences->windowMode =
                         WindowModeFromSettingsString(windowMode->get<std::string>(), context.preferences->windowMode);
                 }
                 if (const auto resolution = payload.find("resolution");
                     resolution != payload.end() && resolution->is_object()) {
+                    hasDisplaySettings = true;
                     context.preferences->resolution.width =
                         std::clamp(resolution->value("width", context.preferences->resolution.width), 640, 7680);
                     context.preferences->resolution.height =
                         std::clamp(resolution->value("height", context.preferences->resolution.height), 360, 4320);
+                }
+                if (payload.contains("resolutionWidth") || payload.contains("resolutionHeight")) {
+                    hasDisplaySettings = true;
                 }
                 context.preferences->resolution.width =
                     std::clamp(payload.value("resolutionWidth", context.preferences->resolution.width), 640, 7680);
@@ -210,13 +219,17 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
                 RequestError(context, "Settings data was malformed.");
                 return true;
             }
-            if (context.platform != nullptr) {
+            if (context.platform != nullptr && hasDisplaySettings &&
+                (context.preferences->windowMode != previous.windowMode ||
+                 context.preferences->resolution.width != previous.resolution.width ||
+                 context.preferences->resolution.height != previous.resolution.height)) {
                 ApplyWindowPreferences(*context.platform, *context.preferences);
             }
             if (context.activeGame != nullptr) context.activeGame->ApplyPreferences(*context.preferences);
             if (context.audio != nullptr) context.audio->ApplyVolumes(context.preferences->masterVolume, context.preferences->musicVolume, context.preferences->sfxVolume, 0.7f);
             if (context.platform != nullptr) PreferencesManager(Paths::UserDataDir() / "settings.json", context.platform->GetContext().type).Save(*context.preferences);
             return true;
+            }
         case PlayerUIActionKind::AcknowledgeError:
             if ((activeRoute != PlayerUIRoute::Error && activeRoute != PlayerUIRoute::FatalError) ||
                 !context.requestTransition) return false;

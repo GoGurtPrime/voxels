@@ -63,6 +63,8 @@ private:
     std::vector<PlayerUIAction> m_actions;
     std::optional<PlayerUIViewModel> m_lastModel;
     std::string m_entryHtmlPath;
+    int m_lastInputWidth = 0;
+    int m_lastInputHeight = 0;
     int m_lastDrawableWidth = 0;
     int m_lastDrawableHeight = 0;
     bool m_initialized = false;

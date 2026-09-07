@@ -435,6 +435,7 @@ public:
         m_width = newWidth;
         m_height = newHeight;
         if (m_browser) {
+            m_browser->GetHost()->NotifyScreenInfoChanged();
             m_browser->GetHost()->WasResized();
             m_browser->GetHost()->Invalidate(PET_VIEW);
         }
@@ -611,12 +612,16 @@ bool WebUIManager::Initialize(IPlatform* platform, graphics::IGraphicsRenderer*)
         return false;
     }
     m_platform = platform;
-    const auto [width, height] = platform->GetDrawableSize();
-    m_lastDrawableWidth = std::max(width, 1);
-    m_lastDrawableHeight = std::max(height, 1);
+    const auto [drawableWidthRaw, drawableHeightRaw] = platform->GetDrawableSize();
+    m_lastDrawableWidth = std::max(drawableWidthRaw, 1);
+    m_lastDrawableHeight = std::max(drawableHeightRaw, 1);
+    // SDL mouse events and SDL resize events share the same coordinate space.
+    // Keep input scaling anchored to that event space and use drawable size only for paint.
+    m_lastInputWidth = m_lastDrawableWidth;
+    m_lastInputHeight = m_lastDrawableHeight;
     m_client = new BrowserClient(*this);
     m_client->ResizeSurface(m_lastDrawableWidth, m_lastDrawableHeight);
-    m_client->UpdateInputScale(m_lastDrawableWidth, m_lastDrawableHeight,
+    m_client->UpdateInputScale(m_lastInputWidth, m_lastInputHeight,
                                m_lastDrawableWidth, m_lastDrawableHeight);
     CefWindowInfo info; info.SetAsWindowless(nullptr);
     const std::string url = std::string(kUiOriginPrefix) + m_entryHtmlPath;
@@ -659,10 +664,13 @@ void WebUIManager::EndFrame() { if (m_frameActive) static_cast<void>(m_composito
 void WebUIManager::OnPlatformEvent(const PlatformEvent& event) {
     if (!m_client) return;
     if (event.type == PlatformEventType::WindowResized && m_platform != nullptr) {
-        const auto [drawableWidth, drawableHeight] = m_platform->GetDrawableSize();
-        m_lastDrawableWidth = std::max(drawableWidth, 1);
-        m_lastDrawableHeight = std::max(drawableHeight, 1);
-        m_client->UpdateInputScale(event.width, event.height, m_lastDrawableWidth, m_lastDrawableHeight);
+        const auto [drawableWidthRaw, drawableHeightRaw] = m_platform->GetDrawableSize();
+        m_lastInputWidth = std::max(event.width, 1);
+        m_lastInputHeight = std::max(event.height, 1);
+        m_lastDrawableWidth = std::max(drawableWidthRaw, 1);
+        m_lastDrawableHeight = std::max(drawableHeightRaw, 1);
+        m_client->UpdateInputScale(m_lastInputWidth, m_lastInputHeight,
+                                   m_lastDrawableWidth, m_lastDrawableHeight);
         m_client->ResizeSurface(m_lastDrawableWidth, m_lastDrawableHeight);
     }
     m_client->ForwardEvent(event);
@@ -690,8 +698,13 @@ void WebUIManager::SyncSurfaceSizeFromPlatform() {
     }
     m_lastDrawableWidth = drawableWidth;
     m_lastDrawableHeight = drawableHeight;
-    m_client->UpdateInputScale(drawableWidth, drawableHeight, drawableWidth, drawableHeight);
-    m_client->ResizeSurface(drawableWidth, drawableHeight);
+    // Without a paired window-resize event (mode switches can do this), keep 1:1 mapping
+    // to avoid over-scaling pointer coordinates.
+    m_lastInputWidth = drawableWidth;
+    m_lastInputHeight = drawableHeight;
+    m_client->UpdateInputScale(m_lastInputWidth, m_lastInputHeight,
+                               m_lastDrawableWidth, m_lastDrawableHeight);
+    m_client->ResizeSurface(m_lastDrawableWidth, m_lastDrawableHeight);
 }
 
 } // namespace voxels

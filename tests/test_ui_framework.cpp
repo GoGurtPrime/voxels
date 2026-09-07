@@ -11,7 +11,61 @@
 #include "voxels/ui/imgui_ui_manager.hpp"
 #include "voxels/app/player_ui_dispatcher.hpp"
 #include "voxels/app/state_machine.hpp"
+#include "voxels/platform/platform.hpp"
 #include "voxels/ui/player_ui.hpp"
+
+namespace {
+
+class TrackingPlatform final : public voxels::IPlatform {
+public:
+    voxels::PlatformContext GetContext() const override {
+        return {.type = voxels::PlatformType::Windows, .name = "TrackingPlatform"};
+    }
+
+    bool Initialize(const voxels::WindowConfig&) override { return true; }
+    void Shutdown() override {}
+    void PollEvents(voxels::IPlatformEventListener*) override {}
+    void SwapBuffers() override {}
+
+    void SetWindowFullscreen(bool fullscreen) override {
+        ++fullscreenCalls;
+        isFullscreen = fullscreen;
+    }
+
+    void SetWindowBorderless(bool borderless) override {
+        ++borderlessCalls;
+        isBorderless = borderless;
+    }
+
+    void SetWindowResizable(bool) override {}
+
+    void SetWindowResolution(int width, int height) override {
+        ++resolutionCalls;
+        windowWidth = width;
+        windowHeight = height;
+    }
+
+    void SetWindowTitle(const std::string&) override {}
+    void SetRelativeMouseMode(bool) override {}
+    void SetCursorVisible(bool) override {}
+    void SetVSync(bool) override {}
+
+    std::pair<int, int> GetDrawableSize() const override {
+        return {windowWidth, windowHeight};
+    }
+
+    double GetHighResTimeSeconds() const override { return 0.0; }
+
+    int fullscreenCalls = 0;
+    int borderlessCalls = 0;
+    int resolutionCalls = 0;
+    bool isFullscreen = false;
+    bool isBorderless = false;
+    int windowWidth = 1920;
+    int windowHeight = 1080;
+};
+
+} // namespace
 
 TEST_CASE("UIScale.ComputesExpectedFactorsAcrossResolutions", "[ui]") {
     const auto scaleFor = [](int width, int height) {
@@ -139,6 +193,31 @@ TEST_CASE("PlayerUI.DispatcherAppliesSettingsFromStructuredPayload", "[player-ui
     REQUIRE(preferences.mouseSensitivity == Catch::Approx(2.3f));
     REQUIRE(preferences.invertY);
     REQUIRE_FALSE(preferences.particles);
+}
+
+TEST_CASE("PlayerUI.DispatcherIgnoresPayloadlessApplySettingsForDisplayMode", "[player-ui]") {
+    voxels::GamePreferences preferences{};
+    preferences.windowMode = voxels::WindowMode::Borderless;
+    preferences.resolution = {1280, 720, 60};
+
+    TrackingPlatform platform;
+    voxels::AppContext context{};
+    context.preferences = &preferences;
+    context.platform = &platform;
+
+    const voxels::PlayerUIActionDispatcher dispatcher;
+    const voxels::PlayerUIAction action{
+        .requestId = 501,
+        .kind = voxels::PlayerUIActionKind::ApplySettings,
+        .secondary = ""};
+
+    REQUIRE_FALSE(dispatcher.Dispatch(voxels::PlayerUIRoute::Settings, action, context));
+    REQUIRE(platform.fullscreenCalls == 0);
+    REQUIRE(platform.borderlessCalls == 0);
+    REQUIRE(platform.resolutionCalls == 0);
+    REQUIRE(preferences.windowMode == voxels::WindowMode::Borderless);
+    REQUIRE(preferences.resolution.width == 1280);
+    REQUIRE(preferences.resolution.height == 720);
 }
 
 TEST_CASE("Theme.AppliesConsistentTokenSetAndIsIdempotent", "[ui]") {
