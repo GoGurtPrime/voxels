@@ -10,6 +10,33 @@
 #include <algorithm>
 #include <glad/glad.h>
 
+namespace {
+
+void ApplyBorderlessDisplayBounds(SDL_Window* window, int& width, int& height) {
+    if (window == nullptr) return;
+    const int displayIndex = SDL_GetWindowDisplayIndex(window);
+    if (displayIndex < 0) return;
+    SDL_Rect bounds{};
+    if (SDL_GetDisplayBounds(displayIndex, &bounds) != 0 || bounds.w <= 0 || bounds.h <= 0) return;
+    SDL_SetWindowPosition(window, bounds.x, bounds.y);
+    SDL_SetWindowSize(window, bounds.w, bounds.h);
+    width = bounds.w;
+    height = bounds.h;
+}
+
+void SetRequestedDisplayMode(SDL_Window* window, int width, int height) {
+    if (window == nullptr) return;
+    SDL_DisplayMode displayMode{};
+    displayMode.w = std::max(1, width);
+    displayMode.h = std::max(1, height);
+    displayMode.format = 0;
+    displayMode.refresh_rate = 0;
+    displayMode.driverdata = nullptr;
+    SDL_SetWindowDisplayMode(window, &displayMode);
+}
+
+} // namespace
+
 namespace voxels {
 
 SDLPlatform::~SDLPlatform() {
@@ -239,16 +266,40 @@ void SDLPlatform::SwapBuffers() {
 }
 
 void SDLPlatform::SetWindowFullscreen(bool fullscreen) {
-    m_fullscreen = fullscreen;
-    if (m_window != nullptr) {
-        SDL_SetWindowFullscreen(m_window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+    if (m_window == nullptr) {
+        m_fullscreen = fullscreen;
+        return;
     }
+
+    if (!fullscreen) {
+        SDL_SetWindowFullscreen(m_window, 0);
+        SDL_SetWindowDisplayMode(m_window, nullptr);
+        m_fullscreen = false;
+        return;
+    }
+
+    // Configure explicit display mode first so fullscreen input and presentation share
+    // one native surface size rather than a stretched borderless desktop composition.
+    SetRequestedDisplayMode(m_window, m_width, m_height);
+
+    if (SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN) != 0) {
+        // Some platforms/GPU drivers do not support the requested exclusive mode.
+        // Fall back to desktop fullscreen rather than failing the transition.
+        SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    }
+
+    m_fullscreen = true;
 }
 
 void SDLPlatform::SetWindowBorderless(bool borderless) {
     m_borderless = borderless;
     if (m_window != nullptr) {
         SDL_SetWindowBordered(m_window, borderless ? SDL_FALSE : SDL_TRUE);
+        // Borderless mode is expected to fill its display. Keeping an arbitrary smaller
+        // window size creates top-left anchored input/render regions on some platforms.
+        if (borderless && !m_fullscreen) {
+            ApplyBorderlessDisplayBounds(m_window, m_width, m_height);
+        }
     }
 }
 
@@ -263,7 +314,20 @@ void SDLPlatform::SetWindowResolution(int width, int height) {
     if (m_window != nullptr) {
         m_width = width;
         m_height = height;
-        SDL_SetWindowSize(m_window, width, height);
+        if (m_fullscreen) {
+            SetRequestedDisplayMode(m_window, width, height);
+            // Re-apply fullscreen mode so drivers that cache the previous output mode pick
+            // up the new resolution immediately.
+            SDL_SetWindowFullscreen(m_window, 0);
+            if (SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN) != 0) {
+                SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+            }
+        } else if (m_borderless) {
+            // Resolution does not define a borderless window size; it should match display.
+            ApplyBorderlessDisplayBounds(m_window, m_width, m_height);
+        } else {
+            SDL_SetWindowSize(m_window, width, height);
+        }
     }
 }
 
