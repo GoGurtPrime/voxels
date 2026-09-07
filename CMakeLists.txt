@@ -15,11 +15,9 @@ option(VOXELS_ENABLE_DX12 "Enable the DirectX 12 renderer backend" OFF)
 option(VOXELS_ENABLE_METAL "Enable the Metal renderer backend" OFF)
 option(VOXELS_ENABLE_DREAMCAST "Enable the Dreamcast renderer backend" OFF)
 option(VOXELS_ENABLE_STEAM "Enable optional Steamworks platform services (achievements, overlay, cloud saves)" OFF)
-# Experimental and OFF by default: the CEF-backed web player UI (WI-03..WI-08) is not the
-# shipping player UI yet (ImGui still is, per ADR-003/WI-08). Enabling it hard-requires a
-# staged CEF archive; keeping it opt-in guarantees the default build stays green. Flip to ON
-# only in a build tree where CEF is staged, and only make it default-ON when WI-08 lands.
-option(VOXELS_ENABLE_WEB_UI "Enable the experimental React/Tailwind UI build and CEF runtime contract" OFF)
+# The desktop player UI now always runs through the CEF-backed web frontend.
+# Keep this cache entry for compatibility with existing scripts, but force it on.
+set(VOXELS_ENABLE_WEB_UI ON CACHE BOOL "Enable the React/Tailwind UI build and CEF runtime contract" FORCE)
 option(VOXELS_WARNINGS_AS_ERRORS "Treat warnings as errors for first-party targets" ON)
 option(VOXELS_BUILD_DOCS "Enable the Doxygen API documentation 'docs' target (requires a Doxygen install)" ON)
 
@@ -43,11 +41,11 @@ endif()
 include(FetchContent)
 find_package(Python REQUIRED COMPONENTS Interpreter)
 
-if(VOXELS_ENABLE_WEB_UI AND VOXELS_BUILD_APP)
+if(VOXELS_BUILD_APP)
     find_program(VOXELS_NODE_EXECUTABLE NAMES node node.exe)
     find_program(VOXELS_NPM_EXECUTABLE NAMES npm npm.cmd)
     if(NOT VOXELS_NODE_EXECUTABLE OR NOT VOXELS_NPM_EXECUTABLE)
-        message(FATAL_ERROR "VOXELS_ENABLE_WEB_UI requires Node.js LTS and npm. Install Node.js 20.18-22.x, or explicitly configure -DVOXELS_ENABLE_WEB_UI=OFF.")
+        message(FATAL_ERROR "The CEF web UI requires Node.js LTS and npm. Install Node.js 20.18-22.x.")
     endif()
     set(VOXELS_WEB_UI_CEF_ARCHIVE "" CACHE FILEPATH "Verified official CEF binary archive for the host platform")
     set(VOXELS_WEB_UI_CEF_SHA256 "" CACHE STRING "Expected SHA-256 of VOXELS_WEB_UI_CEF_ARCHIVE")

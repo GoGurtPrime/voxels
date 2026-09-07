@@ -29,6 +29,7 @@
 #include "include/cef_life_span_handler.h"
 #include "include/cef_load_handler.h"
 #include "include/cef_process_message.h"
+#include "include/cef_parser.h"
 #include "include/cef_render_process_handler.h"
 #include "include/cef_render_handler.h"
 #include "include/cef_request_handler.h"
@@ -49,9 +50,21 @@ struct VerifiedUiAssets {
     std::unordered_map<std::string, std::filesystem::path> files;
 };
 
-[[nodiscard]] std::string AssetPathFromUrl(std::string_view url) {
-    if (!url.starts_with(kUiOriginPrefix)) return {};
-    std::string rawPath(url.substr(std::char_traits<char>::length(kUiOriginPrefix)));
+[[nodiscard]] bool IsUiUrl(const std::string& url) {
+    CefURLParts parts;
+    if (!CefParseURL(url, parts)) return false;
+    return CefString(&parts.scheme).ToString() == kUiScheme &&
+           CefString(&parts.host).ToString() == kUiHost;
+}
+
+[[nodiscard]] std::string AssetPathFromUrl(const std::string& url) {
+    CefURLParts parts;
+    if (!CefParseURL(url, parts) ||
+        CefString(&parts.scheme).ToString() != kUiScheme ||
+        CefString(&parts.host).ToString() != kUiHost) {
+        return {};
+    }
+    std::string rawPath = CefString(&parts.path).ToString();
     const std::size_t query = rawPath.find_first_of("?#");
     if (query != std::string::npos) rawPath.resize(query);
     if (!rawPath.empty() && rawPath.front() == '/') rawPath.erase(rawPath.begin());
@@ -76,10 +89,10 @@ struct VerifiedUiAssets {
 
 [[nodiscard]] std::string MimeTypeForPath(const std::filesystem::path& filePath) {
     const std::string extension = filePath.extension().string();
-    if (extension == ".html") return "text/html; charset=utf-8";
-    if (extension == ".css") return "text/css; charset=utf-8";
-    if (extension == ".js") return "text/javascript; charset=utf-8";
-    if (extension == ".json") return "application/json; charset=utf-8";
+    if (extension == ".html") return "text/html";
+    if (extension == ".css") return "text/css";
+    if (extension == ".js") return "application/javascript";
+    if (extension == ".json") return "application/json";
     if (extension == ".svg") return "image/svg+xml";
     if (extension == ".png") return "image/png";
     if (extension == ".jpg" || extension == ".jpeg") return "image/jpeg";
@@ -123,9 +136,12 @@ public:
         m_mimeType = "text/plain; charset=utf-8";
 
         if (request == nullptr) return false;
-        const std::string relative = AssetPathFromUrl(request->GetURL().ToString());
+        const std::string requestUrl = request->GetURL();
+        const std::string relative = AssetPathFromUrl(requestUrl);
+        std::cerr << "Web UI request: " << requestUrl << " -> '" << relative << "'\n";
         const auto it = m_assets->files.find(relative);
         if (it == m_assets->files.end()) {
+            std::cerr << "Web UI asset lookup failed for URL: " << requestUrl << '\n';
             const std::string body = "Missing UI asset: " + relative;
             m_payload.assign(body.begin(), body.end());
             callback->Continue();
@@ -142,6 +158,8 @@ public:
         m_statusCode = 200;
         m_statusText = "OK";
         m_mimeType = MimeTypeForPath(it->second);
+        std::cerr << "Web UI serving: " << relative << " as " << m_mimeType.ToString()
+                  << " (" << m_payload.size() << " bytes)\n";
         callback->Continue();
         return true;
     }
@@ -152,6 +170,13 @@ public:
         response->SetStatus(m_statusCode);
         response->SetStatusText(m_statusText);
         response->SetMimeType(m_mimeType);
+        const std::string mime = m_mimeType.ToString();
+        if (mime.starts_with("text/") || mime == "application/javascript" || mime == "application/json") {
+            response->SetCharset("utf-8");
+        }
+        response->SetHeaderByName("Content-Type", mime, true);
+        response->SetHeaderByName("Cache-Control", "no-cache", true);
+        response->SetHeaderByName("X-Content-Type-Options", "nosniff", true);
         responseLength = static_cast<std::int64_t>(m_payload.size());
     }
 
@@ -315,8 +340,9 @@ public:
     }
     bool OnBeforeBrowse(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest> request, bool, bool) override {
         const std::string url = request->GetURL();
+        std::cerr << "Web UI browse request: " << url << '\n';
         if (url == "about:blank") return false;
-        return !url.starts_with(kUiOriginPrefix);
+        return !IsUiUrl(url);
     }
     void Resize(int width, int height) {
         m_width = std::max(width, 1);

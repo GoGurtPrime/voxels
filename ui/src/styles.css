@@ -13,3 +13,125 @@ body,
 body {
   font-family: "Atkinson Hyperlegible", sans-serif;
 }
+
+.player-ui {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #f2f6ff;
+}
+
+.menu-panel {
+  width: min(680px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(8, 14, 24, 0.78);
+  border-radius: 12px;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+}
+
+.kicker {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  color: #9eb3d1;
+}
+
+h1 {
+  margin: 0 0 14px;
+  font-size: clamp(24px, 4vw, 36px);
+}
+
+.supporting {
+  margin: 0 0 12px;
+  color: #c8d8ef;
+}
+
+.action-stack {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.action-button {
+  border: 1px solid rgba(178, 220, 255, 0.45);
+  background: rgba(44, 84, 132, 0.72);
+  color: #f8fbff;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.action-button:hover {
+  background: rgba(60, 108, 165, 0.84);
+}
+
+.action-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.action-button.quiet {
+  background: rgba(16, 24, 38, 0.6);
+}
+
+.action-button.danger {
+  border-color: rgba(255, 132, 132, 0.6);
+  background: rgba(153, 35, 35, 0.7);
+}
+
+.action-button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #9cc7ff;
+  outline-offset: 2px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+input,
+progress,
+fieldset {
+  width: 100%;
+}
+
+input {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  background: rgba(9, 15, 25, 0.92);
+  color: #eef6ff;
+  padding: 8px 10px;
+}
+
+.world-list,
+.options,
+.danger-zone {
+  margin: 12px 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.world-option,
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+}
+
+.error-copy {
+  color: #ffd7d7;
+}

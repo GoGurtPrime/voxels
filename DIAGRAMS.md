@@ -118,9 +118,7 @@ sequenceDiagram
     Main->>Assets: Mount assets/ then packs/*.vpk
     Main->>Rend: Build texture atlas from block definitions
     Main->>UI: Initialize with platform + renderer
-    opt VOXELS_ENABLE_WEB_UI
-        Main->>Main: Construct WebUIManager as appContext.ui for<br/>menu/world-management routes; ImGui stays initialized for HUD,<br/>debug, and pause presentation only
-    end
+    Main->>Main: Construct WebUIManager as appContext.ui for<br/>menu/world-management routes; ImGui stays initialized for HUD,<br/>debug, and pause presentation only
     Main->>Aud: Open audio device, start mixer
     Main->>Main: Start JobSystem worker pool
     Main->>SM: Start BootState → transition MainMenuState
@@ -130,9 +128,7 @@ sequenceDiagram
     Main->>SM: Shutdown active state (autosave if in-game)
     Main->>Aud: Stop and close device
     Main->>UI: Shutdown
-    opt VOXELS_ENABLE_WEB_UI
-        Main->>Main: WebUIManager.Shutdown()<br/>close browser, pump loop to completion, THEN CefShutdown()<br/>— before Rend teardown, or the process crashes on exit
-    end
+    Main->>Main: WebUIManager.Shutdown()<br/>close browser, pump loop to completion, THEN CefShutdown()<br/>— before Rend teardown, or the process crashes on exit
     Main->>Rend: Release GPU resources, shutdown
     Main->>Plat: Destroy context + window
     Main->>OS: exit(0)
