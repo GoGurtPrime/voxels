@@ -13,7 +13,9 @@ export const Route = {
   Error: 5,
   Pause: 6,
   Settings: 7,
-  ControlsCard: 8
+  ControlsCard: 8,
+  Hud: 9,
+  FatalError: 10
 };
 
 /**

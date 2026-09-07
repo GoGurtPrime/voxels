@@ -362,24 +362,28 @@ function Settings({ model }) {
 
 function App() {
   const [model] = useVoxelsBridgeModel({ route: Route.MainMenu, revision: 0, progress: 0, items: [] });
+  const showBackdrop = model.route !== Route.Hud && model.route !== Route.Pause;
 
   // Example usage for future gameplay overlays:
   // const { runGuardedAction } = useVoxelsActionGate();
   // runGuardedAction("pause-resume", "resume", {});
   return (
     <>
-      <SceneBackdrop />
+      {showBackdrop ? <SceneBackdrop /> : null}
       {(() => {
         switch (model.route) {
-          case Route.Pause: return null;
+          case Route.MainMenu: return <MainMenu />;
           case Route.SaveSelection: return <WorldSelect model={model} />;
           case Route.WorldCreation: return <WorldCreation />;
           case Route.Loading: return <Loading model={model} />;
           case Route.Join: return <JoinGame />;
           case Route.Error: return <ErrorRoute model={model} />;
+          case Route.FatalError: return <ErrorRoute model={model} />;
+          case Route.Hud: return null;
+          case Route.Pause: return null;
           case Route.Settings: return <Settings model={model} />;
           case Route.ControlsCard: return <Controls />;
-          default: return <MainMenu />;
+          default: return null;
         }
       })()}
     </>
