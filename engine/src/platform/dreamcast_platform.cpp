@@ -36,6 +36,10 @@ void DreamcastPlatform::SwapBuffers() {
     // TODO: present the PowerVR2 framebuffer via the Dreamcast renderer backend.
 }
 
+bool DreamcastPlatform::ApplyWindowDisplayConfig(const WindowDisplayConfig&) {
+    return true;
+}
+
 void DreamcastPlatform::SetWindowFullscreen(bool /*fullscreen*/) {
     // No-op: the Dreamcast has no windowed display mode.
 }
@@ -70,6 +74,10 @@ void DreamcastPlatform::SetVSync(bool /*enabled*/) {
 
 std::pair<int, int> DreamcastPlatform::GetDrawableSize() const {
     return {kFixedWidth, kFixedHeight};
+}
+
+WindowMetrics DreamcastPlatform::GetWindowMetrics() const {
+    return {kFixedWidth, kFixedHeight, kFixedWidth, kFixedHeight};
 }
 
 double DreamcastPlatform::GetHighResTimeSeconds() const {

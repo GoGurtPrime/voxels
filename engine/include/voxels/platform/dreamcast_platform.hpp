@@ -26,6 +26,7 @@ public:
     void Shutdown() override;
     void PollEvents(IPlatformEventListener* listener) override;
     void SwapBuffers() override;
+    [[nodiscard]] bool ApplyWindowDisplayConfig(const WindowDisplayConfig& config) override;
     void SetWindowFullscreen(bool fullscreen) override;
     void SetWindowBorderless(bool borderless) override;
     void SetWindowResizable(bool resizable) override;
@@ -35,6 +36,7 @@ public:
     void SetCursorVisible(bool visible) override;
     void SetVSync(bool enabled) override;
     std::pair<int, int> GetDrawableSize() const override;
+    [[nodiscard]] WindowMetrics GetWindowMetrics() const override;
     double GetHighResTimeSeconds() const override;
 
     static constexpr int kFixedWidth = 640;

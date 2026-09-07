@@ -201,6 +201,8 @@ Authoring (editor) → `.vmdl` models + textures + audio → **bundler** → `.v
 - Browser routes communicate with native via a versioned JSON envelope (`PlayerUIProtocolMessage`) over the CEF process-message bridge.
 - Native remains authoritative: browser code submits actions, C++ validates and applies them, then republishes immutable route snapshots.
 - `PlayerUIViewModel.payload` carries route-specific JSON state so frontend routes can hydrate from authoritative native values (for example, settings).
+- Display changes use one atomic `WindowDisplayConfig` platform call. SDL exclusive fullscreen requires an exact supported display mode; borderless uses `SDL_WINDOW_FULLSCREEN_DESKTOP` so the native window covers and captures its selected display. Failed transitions restore a safe windowed state and are not persisted.
+- CEF off-screen view and pointer coordinates use SDL logical window pixels. `CefScreenInfo.device_scale_factor` maps that view to SDL drawable pixels for high-DPI painting; logical and drawable metrics are queried together after every resize and once per frame to cover mode changes that do not emit a reliable resize event.
 - The canonical contract for message kinds and payload schemas lives in `docs/PLAYER_UI_BRIDGE_API.md` and must be updated in the same change as any bridge contract modification.
 
 ---

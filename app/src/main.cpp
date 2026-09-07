@@ -32,6 +32,7 @@
 #include <nlohmann/json.hpp>
 
 #include "voxels/app/cli_parser.hpp"
+#include "voxels/app/display_settings.hpp"
 #include "voxels/app/player_ui_dispatcher.hpp"
 #include "voxels/app/state_machine.hpp"
 #include "voxels/assets/texture_loader.hpp"
@@ -190,29 +191,6 @@ voxels::WindowMode ResolveWindowMode(const voxels::GamePreferences& preferences,
         return options.fullscreenValue ? voxels::WindowMode::Fullscreen : voxels::WindowMode::Windowed;
     }
     return preferences.windowMode;
-}
-
-void ApplyWindowPreferences(voxels::IPlatform& platform,
-                            const voxels::WindowMode mode,
-                            const voxels::Resolution& resolution) {
-    platform.SetWindowResizable(false);
-    switch (mode) {
-        case voxels::WindowMode::Windowed:
-            platform.SetWindowFullscreen(false);
-            platform.SetWindowBorderless(false);
-            platform.SetWindowResolution(resolution.width, resolution.height);
-            break;
-        case voxels::WindowMode::Borderless:
-            platform.SetWindowFullscreen(false);
-            platform.SetWindowBorderless(true);
-            platform.SetWindowResolution(resolution.width, resolution.height);
-            break;
-        case voxels::WindowMode::Fullscreen:
-            platform.SetWindowBorderless(false);
-            platform.SetWindowResolution(resolution.width, resolution.height);
-            platform.SetWindowFullscreen(true);
-            break;
-    }
 }
 
 voxels::AudioCategory AudioCategoryFromString(const std::string& category) {
@@ -642,7 +620,11 @@ int main(int argc, char** argv) {
     auto* platform = engine.getPlatform();
     if (platform != nullptr) {
         platform->SetWindowTitle(windowTitle);
-        ApplyWindowPreferences(*platform, runtimeWindowMode, runtimeResolution);
+        if (!voxels::ApplyWindowPreferences(*platform, runtimeWindowMode, runtimeResolution)) {
+            std::cerr << "Voxels could not apply the requested display mode." << std::endl;
+            engine.shutdown();
+            return 1;
+        }
         if (options.vsyncOverride) {
             platform->SetVSync(options.vsyncValue);
         }

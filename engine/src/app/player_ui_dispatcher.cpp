@@ -11,6 +11,7 @@
 #include <string_view>
 #include <nlohmann/json.hpp>
 
+#include "voxels/app/display_settings.hpp"
 #include "voxels/app/menus.hpp"
 #include "voxels/app/save_manager.hpp"
 #include "voxels/app/state_machine.hpp"
@@ -25,29 +26,6 @@ WindowMode WindowModeFromSettingsString(std::string_view value, WindowMode fallb
     if (value == "Borderless") return WindowMode::Borderless;
     if (value == "Fullscreen") return WindowMode::Fullscreen;
     return fallback;
-}
-
-void ApplyWindowPreferences(IPlatform& platform, const GamePreferences& preferences) {
-    const int width = std::clamp(preferences.resolution.width, 640, 7680);
-    const int height = std::clamp(preferences.resolution.height, 360, 4320);
-    platform.SetWindowResizable(false);
-    switch (preferences.windowMode) {
-        case WindowMode::Windowed:
-            platform.SetWindowFullscreen(false);
-            platform.SetWindowBorderless(false);
-            platform.SetWindowResolution(width, height);
-            break;
-        case WindowMode::Borderless:
-            platform.SetWindowFullscreen(false);
-            platform.SetWindowBorderless(true);
-            platform.SetWindowResolution(width, height);
-            break;
-        case WindowMode::Fullscreen:
-            platform.SetWindowBorderless(false);
-            platform.SetWindowResolution(width, height);
-            platform.SetWindowFullscreen(true);
-            break;
-    }
 }
 
 void RequestError(AppContext& context, std::string detail) {
@@ -223,7 +201,11 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
                 (context.preferences->windowMode != previous.windowMode ||
                  context.preferences->resolution.width != previous.resolution.width ||
                  context.preferences->resolution.height != previous.resolution.height)) {
-                ApplyWindowPreferences(*context.platform, *context.preferences);
+                if (!ApplyWindowPreferences(*context.platform, *context.preferences)) {
+                    *context.preferences = previous;
+                    RequestError(context, "The requested display mode is unavailable on this monitor.");
+                    return true;
+                }
             }
             if (context.activeGame != nullptr) context.activeGame->ApplyPreferences(*context.preferences);
             if (context.audio != nullptr) context.audio->ApplyVolumes(context.preferences->masterVolume, context.preferences->musicVolume, context.preferences->sfxVolume, 0.7f);

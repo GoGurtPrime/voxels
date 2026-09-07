@@ -368,7 +368,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    SDL["SDL2 events: key, mouse, wheel, controller"] --> PLATE["IPlatform.PollEvents"]
+    SDL["SDL2 events: key, mouse, wheel, controller,<br/>display and DPI changes"] --> PLATE["IPlatform.PollEvents<br/>logical input + drawable metrics"]
     PLATE --> LISTEN["Dispatch to IPlatformEventListener list"]
     LISTEN --> UIL["IPlayerUI backend<br/>React/CEF menus when enabled;<br/>ImGui HUD/pause"]
     LISTEN --> IM["InputManager"]
@@ -412,6 +412,8 @@ sequenceDiagram
     WU->>BP: ExecuteJavaScript(__voxelsReceiveBridgeMessage)
     BP->>RP: Bridge envelope ui.model
     RP->>JS: hydrate route state and render
+    LOOP->>WU: BeginFrame queries atomic SDL window metrics
+    WU->>WU: CEF view/input use logical pixels;<br/>device scale produces drawable-pixel paint
 ```
 
 Contract notes:
@@ -419,6 +421,7 @@ Contract notes:
 - Envelope schema is versioned and bounded; native rejects invalid version, empty kind, request id `0`, or oversized payload.
 - Browser routes submit intents only; state authority remains in native C++.
 - Settings route uses `PlayerUIViewModel.payload` to push authoritative values to web controls.
+- Windowed, borderless, and exclusive-fullscreen settings are applied as one native transition; an unavailable exclusive resolution rolls back instead of persisting a partial mode.
 - Canonical bridge API and payload schemas live in `docs/PLAYER_UI_BRIDGE_API.md` and must stay in sync with code.
 
 ---

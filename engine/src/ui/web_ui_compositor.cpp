@@ -6,6 +6,7 @@
 #include "voxels/ui/web_ui_compositor.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <utility>
 
@@ -35,6 +36,22 @@ std::optional<WebUiDirtyRect> ClipRect(const WebUiDirtyRect rect, const int widt
 }
 
 } // namespace
+
+WebUiSurfaceMetrics ResolveWebUiSurfaceMetrics(const int logicalWidth, const int logicalHeight,
+                                               const int drawableWidth, const int drawableHeight) noexcept {
+    WebUiSurfaceMetrics metrics{};
+    metrics.viewWidth = std::max(logicalWidth, 1);
+    metrics.viewHeight = std::max(logicalHeight, 1);
+    const float scaleX = static_cast<float>(std::max(drawableWidth, 1)) /
+                         static_cast<float>(metrics.viewWidth);
+    const float scaleY = static_cast<float>(std::max(drawableHeight, 1)) /
+                         static_cast<float>(metrics.viewHeight);
+    if (std::isfinite(scaleX) && std::isfinite(scaleY) && scaleX >= 0.5f && scaleX <= 8.0f &&
+        std::abs(scaleX - scaleY) <= 0.05f) {
+        metrics.deviceScaleFactor = (scaleX + scaleY) * 0.5f;
+    }
+    return metrics;
+}
 
 WebUiFrameQueue::WebUiFrameQueue(const std::size_t maximumPaintBytes)
     : m_maximumPaintBytes(maximumPaintBytes) {}

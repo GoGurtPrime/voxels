@@ -51,6 +51,30 @@ struct WindowConfig {
     WindowGraphicsApi graphicsApi = WindowGraphicsApi::OpenGL;
 };
 
+enum class WindowPresentationMode {
+    Windowed,
+    Borderless,
+    Fullscreen
+};
+
+/// Complete display transition requested from the platform. Applying all fields in one call
+/// prevents native window state from being observed between partially-applied mode changes.
+struct WindowDisplayConfig {
+    int width = 1280;
+    int height = 720;
+    WindowPresentationMode mode = WindowPresentationMode::Windowed;
+    bool resizable = true;
+};
+
+/// Authoritative native window dimensions. Logical dimensions are the coordinate space used by
+/// SDL input events; drawable dimensions are framebuffer pixels and may differ on high-DPI output.
+struct WindowMetrics {
+    int logicalWidth = 1;
+    int logicalHeight = 1;
+    int drawableWidth = 1;
+    int drawableHeight = 1;
+};
+
 enum class PlatformEventType {
     None = 0,
     WindowClosed,
@@ -73,6 +97,19 @@ enum class PlatformEventType {
     QuitRequested
 };
 
+enum PlatformEventModifier : std::uint32_t {
+    PlatformModifierNone = 0U,
+    PlatformModifierShift = 1U << 0U,
+    PlatformModifierControl = 1U << 1U,
+    PlatformModifierAlt = 1U << 2U,
+    PlatformModifierSuper = 1U << 3U,
+    PlatformModifierCapsLock = 1U << 4U,
+    PlatformModifierNumLock = 1U << 5U,
+    PlatformModifierLeftMouse = 1U << 6U,
+    PlatformModifierMiddleMouse = 1U << 7U,
+    PlatformModifierRightMouse = 1U << 8U
+};
+
 /// Native OS/window event normalized into an engine-agnostic representation.
 struct PlatformEvent {
     PlatformEventType type = PlatformEventType::None;
@@ -85,6 +122,7 @@ struct PlatformEvent {
     int wheelX = 0;
     int wheelY = 0;
     int button = 0;
+    int clickCount = 0;
     int controllerIndex = 0;
     std::uint32_t keyCode = 0;
     std::uint32_t scancode = 0;
@@ -124,6 +162,10 @@ public:
     /// Presents the back buffer (no-op on headless).
     virtual void SwapBuffers() = 0;
 
+    /// Applies a complete window mode transition. Returns false if the platform cannot establish
+    /// either the requested mode or a coverage-preserving fullscreen fallback.
+    [[nodiscard]] virtual bool ApplyWindowDisplayConfig(const WindowDisplayConfig& config) = 0;
+
     virtual void SetWindowFullscreen(bool fullscreen) = 0;
     virtual void SetWindowBorderless(bool borderless) = 0;
     virtual void SetWindowResizable(bool resizable) = 0;
@@ -138,6 +180,9 @@ public:
     /// Returns the drawable framebuffer size in pixels, which may differ from the logical
     /// window size on high-DPI displays.
     virtual std::pair<int, int> GetDrawableSize() const = 0;
+
+    /// Returns logical input-space and drawable framebuffer dimensions from one native snapshot.
+    [[nodiscard]] virtual WindowMetrics GetWindowMetrics() const = 0;
 
     /// Opaque native window object used by graphics/UI adapters. SDL platforms return the
     /// SDL_Window pointer; headless platforms return null.

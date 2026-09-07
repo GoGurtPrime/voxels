@@ -28,6 +28,7 @@ public:
     void Shutdown() override;
     void PollEvents(IPlatformEventListener* listener) override;
     void SwapBuffers() override;
+    [[nodiscard]] bool ApplyWindowDisplayConfig(const WindowDisplayConfig& config) override;
     void SetWindowFullscreen(bool fullscreen) override;
     void SetWindowBorderless(bool borderless) override;
     void SetWindowResizable(bool resizable) override;
@@ -37,6 +38,7 @@ public:
     void SetCursorVisible(bool visible) override;
     void SetVSync(bool enabled) override;
     std::pair<int, int> GetDrawableSize() const override;
+    [[nodiscard]] WindowMetrics GetWindowMetrics() const override;
     [[nodiscard]] void* GetNativeWindowHandle() const noexcept override { return m_window; }
     double GetHighResTimeSeconds() const override;
     void RegisterEventListener(IPlatformEventListener* listener, int priority = 0) override;
@@ -54,10 +56,14 @@ private:
     std::string m_title;
     int m_width = 1280;
     int m_height = 720;
+    int m_requestedWidth = 1280;
+    int m_requestedHeight = 720;
     bool m_fullscreen = false;
     bool m_borderless = false;
     bool m_resizable = true;
     bool m_vsync = true;
+    bool m_relativeMouseModeRequested = false;
+    bool m_cursorVisible = true;
     WindowGraphicsApi m_graphicsApi = WindowGraphicsApi::OpenGL;
     std::vector<ListenerEntry> m_listeners;
     IPlatformEventListener* m_defaultListener = nullptr;

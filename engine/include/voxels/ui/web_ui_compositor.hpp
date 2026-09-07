@@ -20,6 +20,18 @@
 
 namespace voxels {
 
+/// Stable CEF off-screen metrics derived from SDL logical and framebuffer dimensions.
+struct WebUiSurfaceMetrics {
+    int viewWidth = 1;
+    int viewHeight = 1;
+    float deviceScaleFactor = 1.0f;
+};
+
+/// Resolves CEF's DIP view size and uniform paint scale. Inconsistent axis ratios indicate a
+/// transient native resize snapshot and fall back to unscaled paint until the next frame.
+[[nodiscard]] WebUiSurfaceMetrics ResolveWebUiSurfaceMetrics(int logicalWidth, int logicalHeight,
+                                                              int drawableWidth, int drawableHeight) noexcept;
+
 /// Pixel-space rectangle describing a changed region of a browser frame.
 struct WebUiDirtyRect {
     int x = 0;

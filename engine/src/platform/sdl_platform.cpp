@@ -8,31 +8,52 @@
 #include "voxels/platform/sdl_platform.hpp"
 
 #include <algorithm>
+#include <limits>
+#include <optional>
 #include <glad/glad.h>
 
 namespace {
 
-void ApplyBorderlessDisplayBounds(SDL_Window* window, int& width, int& height) {
-    if (window == nullptr) return;
+std::optional<SDL_DisplayMode> ExactDisplayMode(SDL_Window* window, int width, int height) {
+    if (window == nullptr) return std::nullopt;
     const int displayIndex = SDL_GetWindowDisplayIndex(window);
-    if (displayIndex < 0) return;
-    SDL_Rect bounds{};
-    if (SDL_GetDisplayBounds(displayIndex, &bounds) != 0 || bounds.w <= 0 || bounds.h <= 0) return;
-    SDL_SetWindowPosition(window, bounds.x, bounds.y);
-    SDL_SetWindowSize(window, bounds.w, bounds.h);
-    width = bounds.w;
-    height = bounds.h;
+    if (displayIndex < 0) return std::nullopt;
+
+    SDL_DisplayMode desktop{};
+    static_cast<void>(SDL_GetDesktopDisplayMode(displayIndex, &desktop));
+    std::optional<SDL_DisplayMode> best;
+    int bestScore = std::numeric_limits<int>::min();
+    const int modeCount = SDL_GetNumDisplayModes(displayIndex);
+    for (int index = 0; index < modeCount; ++index) {
+        SDL_DisplayMode candidate{};
+        if (SDL_GetDisplayMode(displayIndex, index, &candidate) != 0 ||
+            candidate.w != width || candidate.h != height) {
+            continue;
+        }
+        const int refreshDifference = desktop.refresh_rate > 0 && candidate.refresh_rate > 0
+                                          ? std::abs(candidate.refresh_rate - desktop.refresh_rate)
+                                          : 0;
+        const int score = (candidate.format == desktop.format ? 100000 : 0) - refreshDifference;
+        if (!best.has_value() || score > bestScore) {
+            best = candidate;
+            bestScore = score;
+        }
+    }
+    return best;
 }
 
-void SetRequestedDisplayMode(SDL_Window* window, int width, int height) {
-    if (window == nullptr) return;
-    SDL_DisplayMode displayMode{};
-    displayMode.w = std::max(1, width);
-    displayMode.h = std::max(1, height);
-    displayMode.format = 0;
-    displayMode.refresh_rate = 0;
-    displayMode.driverdata = nullptr;
-    SDL_SetWindowDisplayMode(window, &displayMode);
+std::uint32_t NormalizeModifiers(const SDL_Keymod keyModifiers, const Uint32 mouseButtons) noexcept {
+    std::uint32_t modifiers = voxels::PlatformModifierNone;
+    if ((keyModifiers & KMOD_SHIFT) != 0) modifiers |= voxels::PlatformModifierShift;
+    if ((keyModifiers & KMOD_CTRL) != 0) modifiers |= voxels::PlatformModifierControl;
+    if ((keyModifiers & KMOD_ALT) != 0) modifiers |= voxels::PlatformModifierAlt;
+    if ((keyModifiers & KMOD_GUI) != 0) modifiers |= voxels::PlatformModifierSuper;
+    if ((keyModifiers & KMOD_CAPS) != 0) modifiers |= voxels::PlatformModifierCapsLock;
+    if ((keyModifiers & KMOD_NUM) != 0) modifiers |= voxels::PlatformModifierNumLock;
+    if ((mouseButtons & SDL_BUTTON_LMASK) != 0U) modifiers |= voxels::PlatformModifierLeftMouse;
+    if ((mouseButtons & SDL_BUTTON_MMASK) != 0U) modifiers |= voxels::PlatformModifierMiddleMouse;
+    if ((mouseButtons & SDL_BUTTON_RMASK) != 0U) modifiers |= voxels::PlatformModifierRightMouse;
+    return modifiers;
 }
 
 } // namespace
@@ -79,10 +100,6 @@ bool SDLPlatform::Initialize(const WindowConfig& config) {
         flags |= SDL_WINDOW_RESIZABLE;
     }
     if (m_graphicsApi == WindowGraphicsApi::OpenGL) flags |= SDL_WINDOW_OPENGL;
-    if (config.fullscreen) {
-        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-    }
-
     m_window = SDL_CreateWindow(config.title.c_str(), SDL_WINDOWPOS_CENTERED,
                                 SDL_WINDOWPOS_CENTERED, config.width, config.height, flags);
     if (m_window == nullptr) {
@@ -108,10 +125,19 @@ bool SDLPlatform::Initialize(const WindowConfig& config) {
     m_title = config.title;
     m_width = config.width;
     m_height = config.height;
-    m_fullscreen = config.fullscreen;
+    m_requestedWidth = config.width;
+    m_requestedHeight = config.height;
+    m_fullscreen = false;
     m_borderless = false;
     m_resizable = config.resizable;
     m_perfFrequency = SDL_GetPerformanceFrequency();
+    if (!ApplyWindowDisplayConfig({config.width, config.height,
+                                   config.fullscreen ? WindowPresentationMode::Fullscreen
+                                                     : WindowPresentationMode::Windowed,
+                                   config.resizable})) {
+        Shutdown();
+        return false;
+    }
     SetVSync(m_vsync);
     return true;
 }
@@ -151,17 +177,27 @@ void SDLPlatform::PollEvents(IPlatformEventListener* listener) {
                         break;
                     case SDL_WINDOWEVENT_RESIZED:
                     case SDL_WINDOWEVENT_SIZE_CHANGED:
+#if SDL_VERSION_ATLEAST(2, 0, 18)
+                    case SDL_WINDOWEVENT_DISPLAY_CHANGED:
+#endif
                         event.type = PlatformEventType::WindowResized;
-                        event.width = sdlEvent.window.data1;
-                        event.height = sdlEvent.window.data2;
+                        {
+                            const WindowMetrics metrics = GetWindowMetrics();
+                            event.width = metrics.logicalWidth;
+                            event.height = metrics.logicalHeight;
+                        }
                         m_width = event.width;
                         m_height = event.height;
                         break;
                     case SDL_WINDOWEVENT_FOCUS_GAINED:
                         event.type = PlatformEventType::WindowFocusGained;
+                        SDL_SetRelativeMouseMode(m_relativeMouseModeRequested ? SDL_TRUE : SDL_FALSE);
+                        SDL_ShowCursor(m_cursorVisible ? SDL_ENABLE : SDL_DISABLE);
                         break;
                     case SDL_WINDOWEVENT_FOCUS_LOST:
                         event.type = PlatformEventType::WindowFocusLost;
+                        SDL_CaptureMouse(SDL_FALSE);
+                        SDL_SetRelativeMouseMode(SDL_FALSE);
                         break;
                     case SDL_WINDOWEVENT_MINIMIZED:
                         event.type = PlatformEventType::WindowMinimized;
@@ -177,14 +213,14 @@ void SDLPlatform::PollEvents(IPlatformEventListener* listener) {
                 event.type = PlatformEventType::KeyDown;
                 event.keyCode = static_cast<std::uint32_t>(sdlEvent.key.keysym.sym);
                 event.scancode = static_cast<std::uint32_t>(sdlEvent.key.keysym.scancode);
-                event.modifiers = static_cast<std::uint32_t>(SDL_GetModState());
+                event.modifiers = NormalizeModifiers(SDL_GetModState(), SDL_GetMouseState(nullptr, nullptr));
                 event.repeat = sdlEvent.key.repeat != 0;
                 break;
             case SDL_KEYUP:
                 event.type = PlatformEventType::KeyUp;
                 event.keyCode = static_cast<std::uint32_t>(sdlEvent.key.keysym.sym);
                 event.scancode = static_cast<std::uint32_t>(sdlEvent.key.keysym.scancode);
-                event.modifiers = static_cast<std::uint32_t>(SDL_GetModState());
+                event.modifiers = NormalizeModifiers(SDL_GetModState(), SDL_GetMouseState(nullptr, nullptr));
                 event.repeat = sdlEvent.key.repeat != 0;
                 break;
             case SDL_TEXTINPUT:
@@ -197,23 +233,36 @@ void SDLPlatform::PollEvents(IPlatformEventListener* listener) {
                 event.y = sdlEvent.motion.y;
                 event.relativeX = sdlEvent.motion.xrel;
                 event.relativeY = sdlEvent.motion.yrel;
+                event.modifiers = NormalizeModifiers(SDL_GetModState(), sdlEvent.motion.state);
                 break;
             case SDL_MOUSEBUTTONDOWN:
                 event.type = PlatformEventType::MouseButtonDown;
                 event.button = sdlEvent.button.button;
+                event.clickCount = sdlEvent.button.clicks;
                 event.x = sdlEvent.button.x;
                 event.y = sdlEvent.button.y;
+                event.modifiers = NormalizeModifiers(SDL_GetModState(), SDL_GetMouseState(nullptr, nullptr));
+                static_cast<void>(SDL_CaptureMouse(SDL_TRUE));
                 break;
             case SDL_MOUSEBUTTONUP:
                 event.type = PlatformEventType::MouseButtonUp;
                 event.button = sdlEvent.button.button;
+                event.clickCount = sdlEvent.button.clicks;
                 event.x = sdlEvent.button.x;
                 event.y = sdlEvent.button.y;
+                event.modifiers = NormalizeModifiers(SDL_GetModState(), SDL_GetMouseState(nullptr, nullptr));
+                if ((SDL_GetMouseState(nullptr, nullptr) &
+                     (SDL_BUTTON_LMASK | SDL_BUTTON_MMASK | SDL_BUTTON_RMASK)) == 0U) {
+                    static_cast<void>(SDL_CaptureMouse(SDL_FALSE));
+                }
                 break;
             case SDL_MOUSEWHEEL:
                 event.type = PlatformEventType::MouseWheel;
-                event.wheelX = sdlEvent.wheel.x;
-                event.wheelY = sdlEvent.wheel.y;
+                event.wheelX = sdlEvent.wheel.direction == SDL_MOUSEWHEEL_FLIPPED
+                                   ? -sdlEvent.wheel.x : sdlEvent.wheel.x;
+                event.wheelY = sdlEvent.wheel.direction == SDL_MOUSEWHEEL_FLIPPED
+                                   ? -sdlEvent.wheel.y : sdlEvent.wheel.y;
+                event.modifiers = NormalizeModifiers(SDL_GetModState(), SDL_GetMouseState(&event.x, &event.y));
                 break;
             case SDL_CONTROLLERDEVICEADDED:
                 event.type = PlatformEventType::ControllerAdded;
@@ -265,42 +314,80 @@ void SDLPlatform::SwapBuffers() {
     }
 }
 
-void SDLPlatform::SetWindowFullscreen(bool fullscreen) {
+bool SDLPlatform::ApplyWindowDisplayConfig(const WindowDisplayConfig& config) {
+    if (config.width <= 0 || config.height <= 0) return false;
+    m_requestedWidth = config.width;
+    m_requestedHeight = config.height;
+    m_resizable = config.resizable;
     if (m_window == nullptr) {
-        m_fullscreen = fullscreen;
-        return;
+        m_width = config.width;
+        m_height = config.height;
+        m_fullscreen = config.mode != WindowPresentationMode::Windowed;
+        m_borderless = config.mode == WindowPresentationMode::Borderless;
+        return true;
     }
 
-    if (!fullscreen) {
-        SDL_SetWindowFullscreen(m_window, 0);
-        SDL_SetWindowDisplayMode(m_window, nullptr);
-        m_fullscreen = false;
-        return;
+    const int displayIndex = std::max(SDL_GetWindowDisplayIndex(m_window), 0);
+    if (SDL_SetWindowFullscreen(m_window, 0) != 0) return false;
+    static_cast<void>(SDL_SetWindowDisplayMode(m_window, nullptr));
+
+    SDL_SetWindowResizable(m_window, config.resizable ? SDL_TRUE : SDL_FALSE);
+    SDL_SetWindowBordered(m_window, config.mode == WindowPresentationMode::Windowed ? SDL_TRUE : SDL_FALSE);
+
+    bool applied = false;
+    switch (config.mode) {
+        case WindowPresentationMode::Windowed:
+            SDL_SetWindowSize(m_window, config.width, config.height);
+            SDL_SetWindowPosition(m_window, SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex),
+                                  SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex));
+            applied = true;
+            break;
+        case WindowPresentationMode::Borderless:
+            SDL_SetWindowPosition(m_window, SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex),
+                                  SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex));
+            applied = SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN_DESKTOP) == 0;
+            break;
+        case WindowPresentationMode::Fullscreen:
+            if (const auto displayMode = ExactDisplayMode(m_window, config.width, config.height);
+                displayMode.has_value() && SDL_SetWindowDisplayMode(m_window, &*displayMode) == 0) {
+                applied = SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN) == 0;
+            }
+            break;
     }
 
-    // Configure explicit display mode first so fullscreen input and presentation share
-    // one native surface size rather than a stretched borderless desktop composition.
-    SetRequestedDisplayMode(m_window, m_width, m_height);
-
-    if (SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN) != 0) {
-        // Some platforms/GPU drivers do not support the requested exclusive mode.
-        // Fall back to desktop fullscreen rather than failing the transition.
-        SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    const Uint32 flags = SDL_GetWindowFlags(m_window);
+    if (config.mode != WindowPresentationMode::Windowed && (flags & SDL_WINDOW_FULLSCREEN) == 0U) {
+        applied = false;
+    }
+    if (!applied) {
+        static_cast<void>(SDL_SetWindowFullscreen(m_window, 0));
+        static_cast<void>(SDL_SetWindowDisplayMode(m_window, nullptr));
+        SDL_SetWindowBordered(m_window, SDL_TRUE);
+        SDL_SetWindowSize(m_window, config.width, config.height);
     }
 
-    m_fullscreen = true;
+    const WindowMetrics metrics = GetWindowMetrics();
+    m_width = metrics.logicalWidth;
+    m_height = metrics.logicalHeight;
+    m_fullscreen = applied && config.mode != WindowPresentationMode::Windowed;
+    m_borderless = applied && config.mode == WindowPresentationMode::Borderless;
+    return applied;
+}
+
+void SDLPlatform::SetWindowFullscreen(bool fullscreen) {
+    static_cast<void>(ApplyWindowDisplayConfig({m_requestedWidth, m_requestedHeight,
+                                                fullscreen ? WindowPresentationMode::Fullscreen
+                                                           : WindowPresentationMode::Windowed,
+                                                m_resizable}));
 }
 
 void SDLPlatform::SetWindowBorderless(bool borderless) {
-    m_borderless = borderless;
-    if (m_window != nullptr) {
-        SDL_SetWindowBordered(m_window, borderless ? SDL_FALSE : SDL_TRUE);
-        // Borderless mode is expected to fill its display. Keeping an arbitrary smaller
-        // window size creates top-left anchored input/render regions on some platforms.
-        if (borderless && !m_fullscreen) {
-            ApplyBorderlessDisplayBounds(m_window, m_width, m_height);
-        }
-    }
+    const WindowPresentationMode mode = borderless
+                                            ? WindowPresentationMode::Borderless
+                                            : (m_fullscreen && !m_borderless
+                                                   ? WindowPresentationMode::Fullscreen
+                                                   : WindowPresentationMode::Windowed);
+    static_cast<void>(ApplyWindowDisplayConfig({m_requestedWidth, m_requestedHeight, mode, m_resizable}));
 }
 
 void SDLPlatform::SetWindowResizable(bool resizable) {
@@ -311,24 +398,10 @@ void SDLPlatform::SetWindowResizable(bool resizable) {
 }
 
 void SDLPlatform::SetWindowResolution(int width, int height) {
-    if (m_window != nullptr) {
-        m_width = width;
-        m_height = height;
-        if (m_fullscreen) {
-            SetRequestedDisplayMode(m_window, width, height);
-            // Re-apply fullscreen mode so drivers that cache the previous output mode pick
-            // up the new resolution immediately.
-            SDL_SetWindowFullscreen(m_window, 0);
-            if (SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN) != 0) {
-                SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-            }
-        } else if (m_borderless) {
-            // Resolution does not define a borderless window size; it should match display.
-            ApplyBorderlessDisplayBounds(m_window, m_width, m_height);
-        } else {
-            SDL_SetWindowSize(m_window, width, height);
-        }
-    }
+    const WindowPresentationMode mode = m_borderless ? WindowPresentationMode::Borderless
+                                        : m_fullscreen ? WindowPresentationMode::Fullscreen
+                                                       : WindowPresentationMode::Windowed;
+    static_cast<void>(ApplyWindowDisplayConfig({width, height, mode, m_resizable}));
 }
 
 void SDLPlatform::SetWindowTitle(const std::string& title) {
@@ -339,12 +412,14 @@ void SDLPlatform::SetWindowTitle(const std::string& title) {
 }
 
 void SDLPlatform::SetRelativeMouseMode(bool enabled) {
+    m_relativeMouseModeRequested = enabled;
     if (m_window != nullptr) {
         SDL_SetRelativeMouseMode(enabled ? SDL_TRUE : SDL_FALSE);
     }
 }
 
 void SDLPlatform::SetCursorVisible(bool visible) {
+    m_cursorVisible = visible;
     if (m_window != nullptr) {
         SDL_ShowCursor(visible ? SDL_ENABLE : SDL_DISABLE);
     }
@@ -358,14 +433,26 @@ void SDLPlatform::SetVSync(bool enabled) {
 }
 
 std::pair<int, int> SDLPlatform::GetDrawableSize() const {
-    int width = m_width;
-    int height = m_height;
-    if (m_window != nullptr && m_graphicsApi == WindowGraphicsApi::OpenGL) {
-        SDL_GL_GetDrawableSize(m_window, &width, &height);
-    } else if (m_window != nullptr) {
-        SDL_GetWindowSize(m_window, &width, &height);
+    const WindowMetrics metrics = GetWindowMetrics();
+    return {metrics.drawableWidth, metrics.drawableHeight};
+}
+
+WindowMetrics SDLPlatform::GetWindowMetrics() const {
+    WindowMetrics metrics{std::max(m_width, 1), std::max(m_height, 1),
+                          std::max(m_width, 1), std::max(m_height, 1)};
+    if (m_window == nullptr) return metrics;
+    SDL_GetWindowSize(m_window, &metrics.logicalWidth, &metrics.logicalHeight);
+    if (m_graphicsApi == WindowGraphicsApi::OpenGL) {
+        SDL_GL_GetDrawableSize(m_window, &metrics.drawableWidth, &metrics.drawableHeight);
+    } else {
+        metrics.drawableWidth = metrics.logicalWidth;
+        metrics.drawableHeight = metrics.logicalHeight;
     }
-    return {width, height};
+    metrics.logicalWidth = std::max(metrics.logicalWidth, 1);
+    metrics.logicalHeight = std::max(metrics.logicalHeight, 1);
+    metrics.drawableWidth = std::max(metrics.drawableWidth, 1);
+    metrics.drawableHeight = std::max(metrics.drawableHeight, 1);
+    return metrics;
 }
 
 double SDLPlatform::GetHighResTimeSeconds() const {

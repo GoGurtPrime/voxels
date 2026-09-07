@@ -21,6 +21,7 @@
 
 #include <imgui.h>
 
+#include "voxels/app/display_settings.hpp"
 #include "voxels/app/save_manager.hpp"
 #include "voxels/core/logger.hpp"
 #include "voxels/core/paths.hpp"
@@ -99,29 +100,6 @@ std::string_view WindowModeToString(WindowMode mode) noexcept {
         case WindowMode::Fullscreen: return "Fullscreen";
     }
     return "Windowed";
-}
-
-void ApplyWindowPreferences(IPlatform& platform, const GamePreferences& preferences) {
-    const int width = std::clamp(preferences.resolution.width, 640, 7680);
-    const int height = std::clamp(preferences.resolution.height, 360, 4320);
-    platform.SetWindowResizable(false);
-    switch (preferences.windowMode) {
-        case WindowMode::Windowed:
-            platform.SetWindowFullscreen(false);
-            platform.SetWindowBorderless(false);
-            platform.SetWindowResolution(width, height);
-            break;
-        case WindowMode::Borderless:
-            platform.SetWindowFullscreen(false);
-            platform.SetWindowBorderless(true);
-            platform.SetWindowResolution(width, height);
-            break;
-        case WindowMode::Fullscreen:
-            platform.SetWindowBorderless(false);
-            platform.SetWindowResolution(width, height);
-            platform.SetWindowFullscreen(true);
-            break;
-    }
 }
 
 std::string BuildSettingsPayload(const GamePreferences& preferences, RendererBackend activeRenderer) {
@@ -762,23 +740,32 @@ void SettingsState::Render() {
         ImGui::EndTabBar();
     }
     if (ui::MenuButton("Apply")) {
-        *m_context->preferences = m_pending;
-        if (m_context->platform != nullptr) {
-            ApplyWindowPreferences(*m_context->platform, m_pending);
-        }
-        if (m_context->activeGame != nullptr) m_context->activeGame->ApplyPreferences(m_pending);
-        if (m_context->audio != nullptr) {
-            m_context->audio->ApplyVolumes(m_pending.masterVolume, m_pending.musicVolume,
-                                           m_pending.sfxVolume, 0.7f);
-        }
-        PreferencesManager manager(Paths::UserDataDir() / "settings.json", m_context->platform->GetContext().type);
-        manager.Save(m_pending);
-        if (m_context->ui != nullptr) {
-            m_context->ui->Publish({.route = PlayerUIRoute::Settings,
-                                    .revision = 2,
-                                    .title = "SETTINGS",
-                                    .items = {"Apply", "Back"},
-                                    .payload = BuildSettingsPayload(m_pending, m_activeRenderer)});
+        const GamePreferences previous = *m_context->preferences;
+        const bool displayApplied = m_context->platform == nullptr ||
+                                    ApplyWindowPreferences(*m_context->platform, m_pending);
+        if (!displayApplied) {
+            m_pending = previous;
+            if (m_context->ui != nullptr) {
+                m_context->ui->ShowToast("The requested display mode is unavailable on this monitor.");
+            }
+        } else {
+            *m_context->preferences = m_pending;
+            if (m_context->activeGame != nullptr) m_context->activeGame->ApplyPreferences(m_pending);
+            if (m_context->audio != nullptr) {
+                m_context->audio->ApplyVolumes(m_pending.masterVolume, m_pending.musicVolume,
+                                               m_pending.sfxVolume, 0.7f);
+            }
+            if (m_context->platform != nullptr) {
+                PreferencesManager manager(Paths::UserDataDir() / "settings.json", m_context->platform->GetContext().type);
+                manager.Save(m_pending);
+            }
+            if (m_context->ui != nullptr) {
+                m_context->ui->Publish({.route = PlayerUIRoute::Settings,
+                                        .revision = 2,
+                                        .title = "SETTINGS",
+                                        .items = {"Apply", "Back"},
+                                        .payload = BuildSettingsPayload(m_pending, m_activeRenderer)});
+            }
         }
     }
     if (ui::MenuButton("Revert")) m_pending = *m_context->preferences;

@@ -44,6 +44,45 @@
 namespace voxels {
 namespace {
 
+int CefModifiers(const PlatformEvent& event) noexcept {
+    int modifiers = EVENTFLAG_NONE;
+    if ((event.modifiers & PlatformModifierShift) != 0U) modifiers |= EVENTFLAG_SHIFT_DOWN;
+    if ((event.modifiers & PlatformModifierControl) != 0U) modifiers |= EVENTFLAG_CONTROL_DOWN;
+    if ((event.modifiers & PlatformModifierAlt) != 0U) modifiers |= EVENTFLAG_ALT_DOWN;
+    if ((event.modifiers & PlatformModifierSuper) != 0U) modifiers |= EVENTFLAG_COMMAND_DOWN;
+    if ((event.modifiers & PlatformModifierCapsLock) != 0U) modifiers |= EVENTFLAG_CAPS_LOCK_ON;
+    if ((event.modifiers & PlatformModifierNumLock) != 0U) modifiers |= EVENTFLAG_NUM_LOCK_ON;
+    if ((event.modifiers & PlatformModifierLeftMouse) != 0U) modifiers |= EVENTFLAG_LEFT_MOUSE_BUTTON;
+    if ((event.modifiers & PlatformModifierMiddleMouse) != 0U) modifiers |= EVENTFLAG_MIDDLE_MOUSE_BUTTON;
+    if ((event.modifiers & PlatformModifierRightMouse) != 0U) modifiers |= EVENTFLAG_RIGHT_MOUSE_BUTTON;
+    if (event.repeat) modifiers |= EVENTFLAG_IS_REPEAT;
+    return modifiers;
+}
+
+int CefWindowsKeyCode(const PlatformEvent& event) noexcept {
+    if (event.keyCode >= static_cast<std::uint32_t>('a') && event.keyCode <= static_cast<std::uint32_t>('z')) {
+        return static_cast<int>(event.keyCode - static_cast<std::uint32_t>('a') + static_cast<std::uint32_t>('A'));
+    }
+    if (event.keyCode <= 0x7FU) return static_cast<int>(event.keyCode);
+    switch (event.scancode) {
+        case 40U: return 0x0D;
+        case 41U: return 0x1B;
+        case 42U: return 0x08;
+        case 43U: return 0x09;
+        case 73U: return 0x2D;
+        case 74U: return 0x24;
+        case 75U: return 0x21;
+        case 76U: return 0x2E;
+        case 77U: return 0x23;
+        case 78U: return 0x22;
+        case 79U: return 0x27;
+        case 80U: return 0x25;
+        case 81U: return 0x28;
+        case 82U: return 0x26;
+        default: return static_cast<int>(event.keyCode);
+    }
+}
+
 constexpr char kUiScheme[] = "voxels-ui";
 constexpr char kUiHost[] = "app";
 constexpr char kUiOriginPrefix[] = "voxels-ui://app/";
@@ -364,6 +403,15 @@ public:
     CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
     CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
     void GetViewRect(CefRefPtr<CefBrowser>, CefRect& rect) override { rect = CefRect(0, 0, m_width, m_height); }
+    bool GetScreenInfo(CefRefPtr<CefBrowser>, CefScreenInfo& screenInfo) override {
+        screenInfo.device_scale_factor = m_deviceScaleFactor;
+        screenInfo.depth = 32;
+        screenInfo.depth_per_component = 8;
+        screenInfo.is_monochrome = false;
+        screenInfo.rect = CefRect(0, 0, m_width, m_height);
+        screenInfo.available_rect = screenInfo.rect;
+        return true;
+    }
     void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
         m_browser = browser;
         m_mainFrameReady = false;
@@ -426,14 +474,17 @@ public:
         if (url == "about:blank") return false;
         return !IsUiUrl(url);
     }
-    void ResizeSurface(int drawableWidth, int drawableHeight) {
-        const int newWidth = std::max(drawableWidth, 1);
-        const int newHeight = std::max(drawableHeight, 1);
-        if (newWidth == m_width && newHeight == m_height) {
+    void ResizeSurface(const WindowMetrics& windowMetrics) {
+        const WebUiSurfaceMetrics metrics = ResolveWebUiSurfaceMetrics(
+            windowMetrics.logicalWidth, windowMetrics.logicalHeight,
+            windowMetrics.drawableWidth, windowMetrics.drawableHeight);
+        if (metrics.viewWidth == m_width && metrics.viewHeight == m_height &&
+            std::abs(metrics.deviceScaleFactor - m_deviceScaleFactor) < 0.001f) {
             return;
         }
-        m_width = newWidth;
-        m_height = newHeight;
+        m_width = metrics.viewWidth;
+        m_height = metrics.viewHeight;
+        m_deviceScaleFactor = metrics.deviceScaleFactor;
         if (m_browser) {
             m_browser->GetHost()->NotifyScreenInfoChanged();
             m_browser->GetHost()->WasResized();
@@ -441,45 +492,51 @@ public:
         }
     }
 
-    void UpdateInputScale(int windowWidth, int windowHeight, int drawableWidth, int drawableHeight) {
-        const int safeWindowWidth = std::max(windowWidth, 1);
-        const int safeWindowHeight = std::max(windowHeight, 1);
-        m_mouseScaleX = static_cast<float>(std::max(drawableWidth, 1)) / static_cast<float>(safeWindowWidth);
-        m_mouseScaleY = static_cast<float>(std::max(drawableHeight, 1)) / static_cast<float>(safeWindowHeight);
-    }
     void ForwardEvent(const PlatformEvent& event) {
         if (!m_browser || m_owner.m_policy == PlayerUIInputPolicy::Gameplay) return;
         CefRefPtr<CefBrowserHost> host = m_browser->GetHost();
         CefMouseEvent mouseEvent{};
-        mouseEvent.x = static_cast<int>(std::lround(static_cast<double>(event.x) * m_mouseScaleX));
-        mouseEvent.y = static_cast<int>(std::lround(static_cast<double>(event.y) * m_mouseScaleY));
+        mouseEvent.x = event.x;
+        mouseEvent.y = event.y;
+        mouseEvent.modifiers = CefModifiers(event);
         switch (event.type) {
             case PlatformEventType::MouseMotion: host->SendMouseMoveEvent(mouseEvent, false); break;
             case PlatformEventType::MouseButtonDown:
             case PlatformEventType::MouseButtonUp: {
                 const cef_mouse_button_type_t button = event.button == 2 ? MBT_MIDDLE : event.button == 3 ? MBT_RIGHT : MBT_LEFT;
-                host->SendMouseClickEvent(mouseEvent, button, event.type == PlatformEventType::MouseButtonUp, 1);
+                if (event.type == PlatformEventType::MouseButtonDown) host->SetFocus(true);
+                host->SendMouseClickEvent(mouseEvent, button, event.type == PlatformEventType::MouseButtonUp,
+                                          std::max(event.clickCount, 1));
                 break;
             }
-            case PlatformEventType::MouseWheel: host->SendMouseWheelEvent(mouseEvent, event.wheelX, event.wheelY); break;
+            case PlatformEventType::MouseWheel:
+                host->SendMouseWheelEvent(mouseEvent, event.wheelX * 120, event.wheelY * 120);
+                break;
             case PlatformEventType::KeyDown:
             case PlatformEventType::KeyUp: {
                 CefKeyEvent keyEvent{};
                 keyEvent.type = event.type == PlatformEventType::KeyDown ? KEYEVENT_RAWKEYDOWN : KEYEVENT_KEYUP;
-                keyEvent.windows_key_code = event.keyCode;
+                keyEvent.windows_key_code = CefWindowsKeyCode(event);
                 keyEvent.native_key_code = event.scancode;
+                keyEvent.modifiers = CefModifiers(event);
+                keyEvent.is_system_key = (event.modifiers & PlatformModifierAlt) != 0U;
                 host->SendKeyEvent(keyEvent);
                 break;
             }
-            case PlatformEventType::TextInput:
-                for (const unsigned char character : event.text) {
+            case PlatformEventType::TextInput: {
+                const std::u16string characters = CefString(event.text).ToString16();
+                for (const char16_t character : characters) {
                     CefKeyEvent keyEvent{};
                     keyEvent.type = KEYEVENT_CHAR;
                     keyEvent.character = character;
                     keyEvent.unmodified_character = character;
+                    keyEvent.modifiers = CefModifiers(event);
                     host->SendKeyEvent(keyEvent);
                 }
                 break;
+            }
+            case PlatformEventType::WindowFocusGained: host->SetFocus(true); break;
+            case PlatformEventType::WindowFocusLost: host->SetFocus(false); break;
             default: break;
         }
     }
@@ -570,8 +627,7 @@ private:
     CefRefPtr<CefBrowser> m_browser;
     int m_width = 1280;
     int m_height = 720;
-    float m_mouseScaleX = 1.0f;
-    float m_mouseScaleY = 1.0f;
+    float m_deviceScaleFactor = 1.0f;
     bool m_mainFrameReady = false;
     IMPLEMENT_REFCOUNTING(BrowserClient);
 };
@@ -612,17 +668,9 @@ bool WebUIManager::Initialize(IPlatform* platform, graphics::IGraphicsRenderer*)
         return false;
     }
     m_platform = platform;
-    const auto [drawableWidthRaw, drawableHeightRaw] = platform->GetDrawableSize();
-    m_lastDrawableWidth = std::max(drawableWidthRaw, 1);
-    m_lastDrawableHeight = std::max(drawableHeightRaw, 1);
-    // SDL mouse events and SDL resize events share the same coordinate space.
-    // Keep input scaling anchored to that event space and use drawable size only for paint.
-    m_lastInputWidth = m_lastDrawableWidth;
-    m_lastInputHeight = m_lastDrawableHeight;
+    m_lastWindowMetrics = platform->GetWindowMetrics();
     m_client = new BrowserClient(*this);
-    m_client->ResizeSurface(m_lastDrawableWidth, m_lastDrawableHeight);
-    m_client->UpdateInputScale(m_lastInputWidth, m_lastInputHeight,
-                               m_lastDrawableWidth, m_lastDrawableHeight);
+    m_client->ResizeSurface(m_lastWindowMetrics);
     CefWindowInfo info; info.SetAsWindowless(nullptr);
     const std::string url = std::string(kUiOriginPrefix) + m_entryHtmlPath;
     if (!CefBrowserHost::CreateBrowser(info, m_client.get(), url, CefBrowserSettings{}, nullptr, nullptr)) { Shutdown(); return false; }
@@ -664,14 +712,8 @@ void WebUIManager::EndFrame() { if (m_frameActive) static_cast<void>(m_composito
 void WebUIManager::OnPlatformEvent(const PlatformEvent& event) {
     if (!m_client) return;
     if (event.type == PlatformEventType::WindowResized && m_platform != nullptr) {
-        const auto [drawableWidthRaw, drawableHeightRaw] = m_platform->GetDrawableSize();
-        m_lastInputWidth = std::max(event.width, 1);
-        m_lastInputHeight = std::max(event.height, 1);
-        m_lastDrawableWidth = std::max(drawableWidthRaw, 1);
-        m_lastDrawableHeight = std::max(drawableHeightRaw, 1);
-        m_client->UpdateInputScale(m_lastInputWidth, m_lastInputHeight,
-                                   m_lastDrawableWidth, m_lastDrawableHeight);
-        m_client->ResizeSurface(m_lastDrawableWidth, m_lastDrawableHeight);
+        m_lastWindowMetrics = m_platform->GetWindowMetrics();
+        m_client->ResizeSurface(m_lastWindowMetrics);
     }
     m_client->ForwardEvent(event);
 }
@@ -690,21 +732,15 @@ void WebUIManager::RepublishLatestModel() {
 
 void WebUIManager::SyncSurfaceSizeFromPlatform() {
     if (m_platform == nullptr || !m_client) return;
-    const auto [drawableWidthRaw, drawableHeightRaw] = m_platform->GetDrawableSize();
-    const int drawableWidth = std::max(drawableWidthRaw, 1);
-    const int drawableHeight = std::max(drawableHeightRaw, 1);
-    if (drawableWidth == m_lastDrawableWidth && drawableHeight == m_lastDrawableHeight) {
+    const WindowMetrics metrics = m_platform->GetWindowMetrics();
+    if (metrics.logicalWidth == m_lastWindowMetrics.logicalWidth &&
+        metrics.logicalHeight == m_lastWindowMetrics.logicalHeight &&
+        metrics.drawableWidth == m_lastWindowMetrics.drawableWidth &&
+        metrics.drawableHeight == m_lastWindowMetrics.drawableHeight) {
         return;
     }
-    m_lastDrawableWidth = drawableWidth;
-    m_lastDrawableHeight = drawableHeight;
-    // Without a paired window-resize event (mode switches can do this), keep 1:1 mapping
-    // to avoid over-scaling pointer coordinates.
-    m_lastInputWidth = drawableWidth;
-    m_lastInputHeight = drawableHeight;
-    m_client->UpdateInputScale(m_lastInputWidth, m_lastInputHeight,
-                               m_lastDrawableWidth, m_lastDrawableHeight);
-    m_client->ResizeSurface(m_lastDrawableWidth, m_lastDrawableHeight);
+    m_lastWindowMetrics = metrics;
+    m_client->ResizeSurface(m_lastWindowMetrics);
 }
 
 } // namespace voxels

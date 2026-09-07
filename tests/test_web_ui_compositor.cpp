@@ -4,11 +4,26 @@
  */
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 
 #include <array>
 #include <vector>
 
 #include "voxels/ui/web_ui_compositor.hpp"
+
+TEST_CASE("WebUiCompositor.ResolvesLogicalViewAndPhysicalPaintScale", "[web-ui][WebUiCompositor]") {
+    const voxels::WebUiSurfaceMetrics highDpi =
+        voxels::ResolveWebUiSurfaceMetrics(1280, 720, 1920, 1080);
+    REQUIRE(highDpi.viewWidth == 1280);
+    REQUIRE(highDpi.viewHeight == 720);
+    REQUIRE(highDpi.deviceScaleFactor == Catch::Approx(1.5f));
+
+    const voxels::WebUiSurfaceMetrics transient =
+        voxels::ResolveWebUiSurfaceMetrics(1280, 720, 1920, 720);
+    REQUIRE(transient.viewWidth == 1280);
+    REQUIRE(transient.viewHeight == 720);
+    REQUIRE(transient.deviceScaleFactor == Catch::Approx(1.0f));
+}
 
 TEST_CASE("WebUiCompositor.ClipsDirtyRegionsAndDropsSupersededFrames", "[web-ui][WebUiCompositor]") {
     voxels::WebUiFrameQueue queue(64U);

@@ -67,6 +67,17 @@ void HeadlessPlatform::SwapBuffers() {
     // No-op: there is no real framebuffer to present in headless mode.
 }
 
+bool HeadlessPlatform::ApplyWindowDisplayConfig(const WindowDisplayConfig& config) {
+    if (config.width <= 0 || config.height <= 0) return false;
+    m_width = config.width;
+    m_height = config.height;
+    m_fullscreen = config.mode == WindowPresentationMode::Fullscreen;
+    m_borderless = config.mode == WindowPresentationMode::Borderless;
+    m_resizable = config.resizable;
+    SimulateEvent(PlatformEvent{PlatformEventType::WindowResized, m_width, m_height});
+    return true;
+}
+
 void HeadlessPlatform::SetWindowFullscreen(bool fullscreen) {
     m_fullscreen = fullscreen;
     SimulateEvent(PlatformEvent{PlatformEventType::WindowResized, m_width, m_height});
@@ -105,6 +116,10 @@ void HeadlessPlatform::SetVSync(bool enabled) {
 
 std::pair<int, int> HeadlessPlatform::GetDrawableSize() const {
     return {m_width, m_height};
+}
+
+WindowMetrics HeadlessPlatform::GetWindowMetrics() const {
+    return {m_width, m_height, m_width, m_height};
 }
 
 double HeadlessPlatform::GetHighResTimeSeconds() const {

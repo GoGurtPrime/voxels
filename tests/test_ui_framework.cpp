@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <imgui.h>
 
+#include "voxels/app/display_settings.hpp"
 #include "voxels/ui/imgui_ui_manager.hpp"
 #include "voxels/app/player_ui_dispatcher.hpp"
 #include "voxels/app/state_machine.hpp"
@@ -26,6 +27,16 @@ public:
     void Shutdown() override {}
     void PollEvents(voxels::IPlatformEventListener*) override {}
     void SwapBuffers() override {}
+
+    bool ApplyWindowDisplayConfig(const voxels::WindowDisplayConfig& config) override {
+        ++displayConfigCalls;
+        lastDisplayConfig = config;
+        isFullscreen = config.mode == voxels::WindowPresentationMode::Fullscreen;
+        isBorderless = config.mode == voxels::WindowPresentationMode::Borderless;
+        windowWidth = config.width;
+        windowHeight = config.height;
+        return displayConfigSucceeds;
+    }
 
     void SetWindowFullscreen(bool fullscreen) override {
         ++fullscreenCalls;
@@ -54,15 +65,22 @@ public:
         return {windowWidth, windowHeight};
     }
 
+    voxels::WindowMetrics GetWindowMetrics() const override {
+        return {windowWidth, windowHeight, windowWidth, windowHeight};
+    }
+
     double GetHighResTimeSeconds() const override { return 0.0; }
 
     int fullscreenCalls = 0;
     int borderlessCalls = 0;
     int resolutionCalls = 0;
+    int displayConfigCalls = 0;
     bool isFullscreen = false;
     bool isBorderless = false;
+    bool displayConfigSucceeds = true;
     int windowWidth = 1920;
     int windowHeight = 1080;
+    voxels::WindowDisplayConfig lastDisplayConfig{};
 };
 
 } // namespace
@@ -215,7 +233,37 @@ TEST_CASE("PlayerUI.DispatcherIgnoresPayloadlessApplySettingsForDisplayMode", "[
     REQUIRE(platform.fullscreenCalls == 0);
     REQUIRE(platform.borderlessCalls == 0);
     REQUIRE(platform.resolutionCalls == 0);
+    REQUIRE(platform.displayConfigCalls == 0);
     REQUIRE(preferences.windowMode == voxels::WindowMode::Borderless);
+    REQUIRE(preferences.resolution.width == 1280);
+    REQUIRE(preferences.resolution.height == 720);
+}
+
+TEST_CASE("PlayerUI.DispatcherRollsBackUnavailableDisplayMode", "[player-ui][settings]") {
+    voxels::GamePreferences preferences{};
+    preferences.windowMode = voxels::WindowMode::Windowed;
+    preferences.resolution = {1280, 720, 60};
+
+    TrackingPlatform platform;
+    platform.displayConfigSucceeds = false;
+    bool errorRequested = false;
+    voxels::AppContext context{};
+    context.preferences = &preferences;
+    context.platform = &platform;
+    context.requestTransition = [&errorRequested](std::unique_ptr<voxels::IAppState>) {
+        errorRequested = true;
+    };
+
+    const voxels::PlayerUIActionDispatcher dispatcher;
+    const voxels::PlayerUIAction action{
+        .requestId = 502,
+        .kind = voxels::PlayerUIActionKind::ApplySettings,
+        .secondary = R"({"settings":{"windowMode":"Fullscreen","resolutionWidth":1920,"resolutionHeight":1080}})"};
+
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Settings, action, context));
+    REQUIRE(platform.displayConfigCalls == 1);
+    REQUIRE(errorRequested);
+    REQUIRE(preferences.windowMode == voxels::WindowMode::Windowed);
     REQUIRE(preferences.resolution.width == 1280);
     REQUIRE(preferences.resolution.height == 720);
 }
@@ -251,4 +299,19 @@ TEST_CASE("DebugOverlay.RetainsLiveFrameStats", "[ui]") {
     REQUIRE(retained.glVendor == "Test Vendor");
     REQUIRE(retained.glRenderer == "Test Renderer");
     REQUIRE(retained.glVersion == "3.3");
+}
+
+TEST_CASE("DisplaySettings.AppliesOneAtomicClampedTransition", "[platform][settings]") {
+    TrackingPlatform platform;
+    const voxels::Resolution resolution{9000, 200, 60};
+
+    REQUIRE(voxels::ApplyWindowPreferences(platform, voxels::WindowMode::Fullscreen, resolution));
+    REQUIRE(platform.displayConfigCalls == 1);
+    REQUIRE(platform.fullscreenCalls == 0);
+    REQUIRE(platform.borderlessCalls == 0);
+    REQUIRE(platform.resolutionCalls == 0);
+    REQUIRE(platform.lastDisplayConfig.width == 7680);
+    REQUIRE(platform.lastDisplayConfig.height == 360);
+    REQUIRE(platform.lastDisplayConfig.mode == voxels::WindowPresentationMode::Fullscreen);
+    REQUIRE_FALSE(platform.lastDisplayConfig.resizable);
 }
