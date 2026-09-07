@@ -39,7 +39,10 @@ struct WebUiPaintFrame {
 /// Thread-safe newest-frame queue with a strict retained-paint-byte cap.
 class WebUiFrameQueue final {
 public:
-    static constexpr std::size_t kDefaultMaximumPaintBytes = 4U * 1024U * 1024U;
+    // Match the runtime resolution clamp used by settings/application code (7680x4320).
+    // A fullscreen off-screen surface larger than this is invalid for the supported range.
+    static constexpr std::size_t kDefaultMaximumPaintBytes =
+        7680U * 4320U * 4U;
 
     explicit WebUiFrameQueue(std::size_t maximumPaintBytes = kDefaultMaximumPaintBytes);
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "entry_html": "browser/index.html",
-  "source_revision": "ff11aaaf9da9ba841013464f1b48f1ea609cb6d5",
+  "source_revision": "d4f102bd3e01505544de3aeafd3084f195e89451",
   "source_sha256": "b9e63d6d6ee3bf382e577e4844912275c4ac7187f1970fd29d34292b93b61235",
   "assets": {
     "browser/assets/cinzel-latin-variable-DMUuCU8H.woff2": {

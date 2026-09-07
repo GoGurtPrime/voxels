@@ -6,6 +6,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <vector>
 
 #include "voxels/ui/web_ui_compositor.hpp"
 
@@ -34,4 +35,16 @@ TEST_CASE("WebUiCompositor.RejectsPaintBeyondTheConfiguredBudget", "[web-ui][Web
     const std::array<std::uint8_t, 16> pixels{};
     REQUIRE_FALSE(queue.Submit(2, 2, pixels, {}));
     REQUIRE_FALSE(queue.ConsumeLatest().has_value());
+}
+
+TEST_CASE("WebUiCompositor.DefaultBudgetAcceptsFullscreenSurface", "[web-ui][WebUiCompositor]") {
+    constexpr int kWidth = 1920;
+    constexpr int kHeight = 1080;
+    const std::size_t byteCount = static_cast<std::size_t>(kWidth) * static_cast<std::size_t>(kHeight) * 4U;
+    REQUIRE(voxels::WebUiFrameQueue::kDefaultMaximumPaintBytes >= byteCount);
+
+    voxels::WebUiFrameQueue queue;
+    std::vector<std::uint8_t> pixels(byteCount, 0U);
+    REQUIRE(queue.Submit(kWidth, kHeight, pixels, {}));
+    REQUIRE(queue.ConsumeLatest().has_value());
 }
