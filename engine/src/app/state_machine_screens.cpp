@@ -221,7 +221,7 @@ void MainMenuState::Render() {
 }
 
 void WorldSelectState::OnEnter() {
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
+    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::TextEntry);
     if (m_context != nullptr && m_context->saveManager != nullptr) m_saves = m_context->saveManager->ListSaves();
     if (m_context != nullptr && m_context->ui != nullptr) {
         PlayerUIViewModel model{.route = PlayerUIRoute::SaveSelection, .revision = 1, .title = "SELECT WORLD", .items = {"New World", "Play Selected", "Delete Selected", "Back"}};

@@ -150,6 +150,7 @@ function WorldSelect({ model }) {
         title="Delete World?"
         kicker="Permanent action"
         subtitle={`This will permanently remove ${selectedWorld.name}.`}
+        autoFocusHeading={false}
         footer={
           <div className="action-row">
             <ActionButton className="danger" kind="confirm-delete" fields={{ primary: target, secondary: confirmation }} disabled={confirmation !== selectedWorld.name}>Delete Forever</ActionButton>
@@ -159,7 +160,7 @@ function WorldSelect({ model }) {
       >
         <label className="field-row">
           <span className="field-label">Type {selectedWorld.name} to confirm</span>
-          <input type="text" value={confirmation} maxLength={48} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" autoFocus />
+          <input type="text" value={confirmation} maxLength={48} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} autoFocus />
         </label>
       </RouteShell>
     );
@@ -257,6 +258,7 @@ function WorldCreation() {
       title="Create World"
       subtitle="Name your world and choose how it plays."
       wide
+      autoFocusHeading={false}
       footer={
         <div className="action-stack">
           <button className="action-button" type="submit" form="world-creation-form" disabled={isPending("create-world")}>Create World</button>
@@ -275,11 +277,11 @@ function WorldCreation() {
         <div className="field-grid">
           <label className="field-row">
             <span className="field-heading"><span className="field-label">World name</span><output>{name.length}/48</output></span>
-            <input type="text" value={name} maxLength={48} onChange={(event) => setName(event.target.value.replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 48))} required autoFocus />
+            <input type="text" value={name} maxLength={48} onChange={(event) => setName(event.target.value.replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 48))} autoComplete="off" spellCheck={false} required autoFocus />
           </label>
           <label className="field-row">
             <span className="field-heading"><span className="field-label">Seed <span className="optional">optional</span></span><output>{seed.length}/20</output></span>
-            <input type="text" value={seed} maxLength={20} onChange={(event) => setSeed(event.target.value.replace(/[^A-Za-z0-9]/g, "").slice(0, 20))} inputMode="text" />
+            <input type="text" value={seed} maxLength={20} onChange={(event) => setSeed(event.target.value.replace(/[^A-Za-z0-9]/g, "").slice(0, 20))} inputMode="text" autoComplete="off" spellCheck={false} />
           </label>
         </div>
 
@@ -309,6 +311,7 @@ function JoinGame() {
     <RouteShell
       title="Join Game"
       subtitle="Enter the host address and UDP port."
+      autoFocusHeading={false}
       footer={
         <div className="action-stack">
           <button className="action-button" type="submit" form="join-form" disabled={isPending("join")}>Connect</button>
@@ -323,11 +326,11 @@ function JoinGame() {
         <div className="field-grid">
           <label className="field-row">
             <span className="field-label">Host address</span>
-            <input value={host} onChange={(event) => setHost(event.target.value)} required />
+            <input type="text" value={host} maxLength={255} onChange={(event) => setHost(event.target.value)} inputMode="url" autoComplete="off" autoCapitalize="none" spellCheck={false} required autoFocus />
           </label>
           <label className="field-row">
             <span className="field-label">UDP port</span>
-            <input type="number" min="1" max="65535" value={port} onChange={(event) => setPort(event.target.value)} required />
+            <input type="text" value={port} maxLength={5} onChange={(event) => setPort(event.target.value.replace(/\D/g, "").slice(0, 5))} inputMode="numeric" pattern="[0-9]*" autoComplete="off" required />
           </label>
         </div>
       </form>

@@ -150,6 +150,24 @@ TEST_CASE("PlayerUI.InputPoliciesCaptureAndDiscardOneTransitionDelta", "[player-
     REQUIRE_FALSE(manager.CapturesKeyboard());
 }
 
+TEST_CASE("PlayerUI.TextEntryRoutesEnableNativeTextInput", "[player-ui][input]") {
+    voxels::NullPlayerUI ui;
+    voxels::AppContext context{};
+    context.ui = &ui;
+
+    voxels::WorldSelectState worldSelect(&context);
+    worldSelect.OnEnter();
+    REQUIRE(ui.GetInputPolicy() == voxels::PlayerUIInputPolicy::TextEntry);
+
+    voxels::WorldCreationState worldCreation(&context);
+    worldCreation.OnEnter();
+    REQUIRE(ui.GetInputPolicy() == voxels::PlayerUIInputPolicy::TextEntry);
+
+    voxels::JoinGameState joinGame(&context);
+    joinGame.OnEnter();
+    REQUIRE(ui.GetInputPolicy() == voxels::PlayerUIInputPolicy::TextEntry);
+}
+
 TEST_CASE("PlayerUI.ProtocolAcceptsOnlyBoundedVersionedEnvelope", "[player-ui]") {
     const voxels::PlayerUIProtocolMessage message{.kind = "action", .requestId = 42, .payload = "resume"};
     const auto encoded = voxels::EncodePlayerUIProtocolMessage(message);

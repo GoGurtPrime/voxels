@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "entry_html": "browser/index.html",
-  "source_revision": "157f1664d4287e1b8f36b5e27974054ec5709758",
-  "source_sha256": "4015ba414f55b70b632179973ead7567cf67f887647530ba19091847b4982f93",
+  "source_revision": "9a45c094651da0bc1be8a872740de82c04b15554",
+  "source_sha256": "ba5f0373a8ff254fa671c8c2092e4f261c4839740fe42d8db3f490ab1ec92ca0",
   "assets": {
     "browser/assets/bungee-regular-edNpEo0j.ttf": {
       "sha256": "ff0ad5d7496a911460625f9052ea50b05e289065be71a1cb21c71896585224d2",
@@ -12,9 +12,9 @@
       "sha256": "b8c412204a70fa29b6aead698c70a39265d99b878e8974d825abd22bff751ff8",
       "bytes": 24033
     },
-    "browser/assets/index-Dkd0mDcz.js": {
-      "sha256": "25e0054521d5a580050e209539f2c82aa8c2f75f10e74df1c4589042102d47db",
-      "bytes": 164455
+    "browser/assets/index-D9zScjP_.js": {
+      "sha256": "03ee55a9cd7359e5324cf7ed67c4ede6185c55a033f4603fcbeef98670cbe9b1",
+      "bytes": 164780
     },
     "browser/assets/nunito-sans-bold-C1KCS0oq.ttf": {
       "sha256": "ec2336c2beb651fb7f9fb968ef4e5b69e91af624c240331a239d3aefd6e41ef0",
@@ -29,7 +29,7 @@
       "bytes": 96272
     },
     "browser/index.html": {
-      "sha256": "751c846b51f01198c651959108aded6563cbd74000bac51fa6f40fe7ea8b5bdb",
+      "sha256": "766edce3f0fe63a9546df62266c34df7ba1fbb86a9230e2eecf1efb7173d2029",
       "bytes": 451
     }
   }
