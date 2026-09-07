@@ -48,11 +48,8 @@ void CenterNextWindow() {
     ImGui::SetNextWindowPos({display.x * 0.5f, display.y * 0.5f}, ImGuiCond_Always, {0.5f, 0.5f});
 }
 
-bool BeginMenuFrame(AppContext* context) {
-    if (context == nullptr || context->ui == nullptr || !context->ui->UsesNativeRoutePresentation()) return false;
-    if (context != nullptr && context->renderer != nullptr) {
-        static_cast<void>(context->renderer->BeginFrame({0.12f, 0.16f, 0.19f, 1.0f}));
-    }
+bool BeginMenuFrame(AppContext* context, PlayerUIRoute route) {
+    if (context == nullptr || context->ui == nullptr || !context->ui->UsesNativeRoutePresentation(route)) return false;
     return true;
 }
 
@@ -105,7 +102,7 @@ void MainMenuState::OnEnter() {
 
 void MainMenuState::Render() {
     if (m_context == nullptr || m_context->ui == nullptr) return;
-    if (!BeginMenuFrame(m_context)) return;
+    if (!BeginMenuFrame(m_context, PlayerUIRoute::MainMenu)) return;
     CenterNextWindow();
     ImGui::SetNextWindowSize({390.0f, 0.0f}, ImGuiCond_Always);
     ImGui::Begin("Voxel World", nullptr, kMenuWindowFlags);
@@ -130,14 +127,18 @@ void MainMenuState::Render() {
 void WorldSelectState::OnEnter() {
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
     if (m_context != nullptr && m_context->saveManager != nullptr) m_saves = m_context->saveManager->ListSaves();
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::SaveSelection, .revision = 1, .title = "SELECT WORLD", .items = {"New World", "Play Selected", "Delete Selected", "Back"}});
+    if (m_context != nullptr && m_context->ui != nullptr) {
+        PlayerUIViewModel model{.route = PlayerUIRoute::SaveSelection, .revision = 1, .title = "SELECT WORLD", .items = {"New World", "Play Selected", "Delete Selected", "Back"}};
+        for (const SaveSlot& save : m_saves) model.items.push_back("save:" + save.slotName + "|" + save.save.worldName);
+        m_context->ui->Publish(std::move(model));
+    }
 }
 
 void WorldSelectState::Update(double) {}
 
 void WorldSelectState::Render() {
     if (m_context == nullptr || m_context->saveManager == nullptr) return;
-    if (!BeginMenuFrame(m_context)) return;
+    if (!BeginMenuFrame(m_context, PlayerUIRoute::SaveSelection)) return;
     CenterNextWindow();
     ImGui::SetNextWindowSize({560.0f, 460.0f}, ImGuiCond_Always);
     ImGui::Begin("Select World", nullptr, kMenuWindowFlags);
@@ -202,7 +203,7 @@ void WorldCreationState::Update(double) {}
 
 void WorldCreationState::Render() {
     if (m_context == nullptr || m_controller == nullptr) return;
-    BeginMenuFrame(m_context);
+    if (!BeginMenuFrame(m_context, PlayerUIRoute::WorldCreation)) return;
     CenterNextWindow();
     ImGui::SetNextWindowSize({500.0f, 0.0f}, ImGuiCond_Always);
     ImGui::Begin("Create World", nullptr, kMenuWindowFlags);
@@ -275,7 +276,7 @@ void JoinGameState::Update(double) {}
 
 void JoinGameState::Render() {
     if (m_context == nullptr) return;
-    if (!BeginMenuFrame(m_context)) return;
+    if (!BeginMenuFrame(m_context, PlayerUIRoute::Join)) return;
     CenterNextWindow();
     ImGui::SetNextWindowSize({480.0f, 0.0f}, ImGuiCond_Always);
     ImGui::Begin("Join Game", nullptr, kMenuWindowFlags);
@@ -391,7 +392,7 @@ void JoinLoadingState::Update(double deltaSeconds) {
 }
 
 void JoinLoadingState::Render() {
-    BeginMenuFrame(m_context);
+    if (!BeginMenuFrame(m_context, PlayerUIRoute::Loading)) return;
     CenterNextWindow();
     ImGui::SetNextWindowSize({460.0f, 0.0f}, ImGuiCond_Always);
     ImGui::Begin("Joining", nullptr, kMenuWindowFlags);
@@ -460,6 +461,14 @@ void LoadingScreenState::Update(double) {
         }
         const float fraction = static_cast<float>(m_generatedChunks) / static_cast<float>(m_generationQueue.size());
         m_phase = fraction < 0.33f ? GenerationPhase::Shape : fraction < 0.66f ? GenerationPhase::Caves : GenerationPhase::Vegetation;
+        if (m_context != nullptr && m_context->ui != nullptr) {
+            m_context->ui->Publish({.route = PlayerUIRoute::Loading,
+                                    .revision = static_cast<std::uint32_t>(m_generatedChunks + 2U),
+                                    .title = "LOADING...",
+                                    .message = std::string(ToString(m_phase)),
+                                    .progress = fraction,
+                                    .blocking = true});
+        }
         return;
     }
     m_phase = GenerationPhase::SpawnPlacement;
@@ -498,7 +507,7 @@ void LoadingScreenState::Update(double) {
 }
 
 void LoadingScreenState::Render() {
-        BeginMenuFrame(m_context);
+    if (!BeginMenuFrame(m_context, PlayerUIRoute::Loading)) return;
     CenterNextWindow();
     ImGui::SetNextWindowSize({460.0f, 0.0f}, ImGuiCond_Always);
     ImGui::Begin("Loading", nullptr, kMenuWindowFlags);
@@ -588,6 +597,7 @@ void SettingsState::OnEnter() {
 void SettingsState::Update(double) {}
 void SettingsState::Render() {
     if (m_context == nullptr || m_context->preferences == nullptr) return;
+    if (!BeginMenuFrame(m_context, PlayerUIRoute::Settings)) return;
     CenterNextWindow();
     SetResponsivePanelSize(760.0f, 560.0f);
     ImGui::Begin("Settings", nullptr, kMenuWindowFlags);
@@ -666,7 +676,7 @@ void ControlsCardState::OnEnter() {
 void ControlsCardState::Update(double) {}
 void ControlsCardState::Render() {
     if (m_context == nullptr) return;
-    BeginMenuFrame(m_context);
+    if (!BeginMenuFrame(m_context, PlayerUIRoute::ControlsCard)) return;
     CenterNextWindow();
     ImGui::SetNextWindowSize({460.0f, 0.0f}, ImGuiCond_Always);
     ImGui::Begin("Controls", nullptr, kMenuWindowFlags);
@@ -712,7 +722,7 @@ void ErrorState::OnEnter() {
 void ErrorState::Update(double) {}
 void ErrorState::Render() {
     if (m_context == nullptr) return;
-    BeginMenuFrame(m_context);
+    if (!BeginMenuFrame(m_context, PlayerUIRoute::Error)) return;
     CenterNextWindow();
     ImGui::SetNextWindowSize({500.0f, 0.0f}, ImGuiCond_Always);
     ImGui::Begin("Error", nullptr, kMenuWindowFlags);

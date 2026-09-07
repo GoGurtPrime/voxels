@@ -39,8 +39,7 @@ if(VOXELS_STEAM_ACTIVE)
 endif()
 
 if(VOXELS_ENABLE_WEB_UI)
-    # Stage every Release/ file except import libraries (*.lib, link-time only) and the
-    # sandbox bootstrap loaders (bootstrap*.exe, unused since USE_SANDBOX=OFF per ADR-015).
+    # Stage every Release/ file except import libraries and sandbox-only bootstrap launchers.
     file(GLOB VOXELS_CEF_RELEASE_ITEMS "${VOXELS_CEF_ROOT}/Release/*")
     list(FILTER VOXELS_CEF_RELEASE_ITEMS EXCLUDE REGEX "\\.lib$")
     list(FILTER VOXELS_CEF_RELEASE_ITEMS EXCLUDE REGEX "[/\\\\]bootstrap[^/\\\\]*\\.exe$")

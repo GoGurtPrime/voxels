@@ -5,6 +5,7 @@
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <filesystem>
 #include <imgui.h>
 
 #include "voxels/ui/imgui_ui_manager.hpp"
@@ -72,6 +73,35 @@ TEST_CASE("PlayerUI.DispatcherOnlyChangesStateForValidRouteAndRequest", "[player
     ui.Publish({.route = voxels::PlayerUIRoute::Hud, .revision = 7, .title = "HUD"});
     REQUIRE(ui.LastModel().has_value());
     REQUIRE(ui.LastModel()->revision == 7);
+}
+
+TEST_CASE("PlayerUI.DispatcherCreatesWorldSaveBeforeLoading", "[player-ui]") {
+    const std::filesystem::path saveRoot = std::filesystem::temp_directory_path() / "voxels_player_ui_dispatcher";
+    std::error_code error;
+    std::filesystem::remove_all(saveRoot, error);
+    voxels::SaveManager saveManager(saveRoot);
+    voxels::AppContext context{};
+    context.saveManager = &saveManager;
+    bool loadingRequested = false;
+    context.requestTransition = [&loadingRequested](std::unique_ptr<voxels::IAppState> state) {
+        loadingRequested = state != nullptr && state->GetId() == voxels::AppStateId::LoadingScreen;
+    };
+    const voxels::PlayerUIAction action{
+        .requestId = 41,
+        .kind = voxels::PlayerUIActionKind::CreateWorld,
+        .primary = "Web UI World",
+        .secondary = R"({"seed":"violet mesa","sandbox":true,"peaceful":false,"permadeath":false,"sunny":true,"public":false,"distance":10})"
+    };
+
+    const voxels::PlayerUIActionDispatcher dispatcher;
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::WorldCreation, action, context));
+    REQUIRE(loadingRequested);
+    const auto saves = saveManager.ListSaves();
+    REQUIRE(saves.size() == 1);
+    REQUIRE(saves.front().save.worldName == "Web UI World");
+    REQUIRE(saves.front().save.seed == static_cast<voxels::WorldSeed>(voxels::SeedFromText("violet mesa")));
+    REQUIRE(saves.front().save.publicVisibility == false);
+    std::filesystem::remove_all(saveRoot, error);
 }
 
 TEST_CASE("Theme.AppliesConsistentTokenSetAndIsIdempotent", "[ui]") {

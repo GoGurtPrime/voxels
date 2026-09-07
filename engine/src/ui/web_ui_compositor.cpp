@@ -96,14 +96,20 @@ void WebUiOpenGLCompositor::Shutdown() noexcept {
     m_textureWidth = 0;
     m_textureHeight = 0;
     m_lastUploadCount = 0U;
+    m_hasUploadedFrame = false;
 }
 
 bool WebUiOpenGLCompositor::UploadAndComposite(WebUiFrameQueue& queue) {
     m_lastUploadCount = 0U;
     if (!Initialize()) return false;
     const auto frame = queue.ConsumeLatest();
-    if (!frame.has_value()) return true;
-    if (!UploadFrame(*frame)) return false;
+    if (frame.has_value()) {
+        if (!UploadFrame(*frame)) return false;
+        m_hasUploadedFrame = true;
+    }
+    // CEF only repaints when its surface changes. Keep compositing the last complete texture
+    // on frames without a new paint instead of letting the menu flash for one frame.
+    if (!m_hasUploadedFrame) return true;
 
     const GLboolean depthEnabled = glIsEnabled(GL_DEPTH_TEST);
     const GLboolean cullEnabled = glIsEnabled(GL_CULL_FACE);
@@ -182,19 +188,12 @@ bool WebUiOpenGLCompositor::UploadFrame(const WebUiPaintFrame& frame) {
         m_lastUploadCount = 1U;
         return true;
     }
-    const std::size_t uploads = std::min<std::size_t>(frame.dirtyRects.size(), 2U);
-    for (std::size_t index = 0; index < uploads; ++index) {
-        const WebUiDirtyRect& rect = frame.dirtyRects[index];
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, frame.width);
-        glPixelStorei(GL_UNPACK_SKIP_PIXELS, rect.x);
-        glPixelStorei(GL_UNPACK_SKIP_ROWS, rect.y);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x, rect.y, rect.width, rect.height, GL_BGRA, GL_UNSIGNED_BYTE,
-                        frame.bgraPixels.data());
-    }
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-    m_lastUploadCount = uploads;
+    // CEF's buffer contains the full current surface. Uploading it once avoids stale pixels
+    // when Chromium splits an animated control's repaint into more dirty rectangles than a
+    // partial-update budget would process in one game frame.
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame.width, frame.height, GL_BGRA, GL_UNSIGNED_BYTE,
+                    frame.bgraPixels.data());
+    m_lastUploadCount = 1U;
     return true;
 }
 

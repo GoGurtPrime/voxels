@@ -64,7 +64,10 @@ public:
     [[nodiscard]] virtual bool CapturesMouse() const noexcept = 0;
     [[nodiscard]] virtual bool CapturesKeyboard() const noexcept = 0;
     [[nodiscard]] virtual bool ConsumeTransitionMouseDelta() noexcept = 0;
-    [[nodiscard]] virtual bool UsesNativeRoutePresentation() const noexcept { return true; }
+    [[nodiscard]] virtual bool UsesNativeRoutePresentation(PlayerUIRoute route) const noexcept {
+        (void)route;
+        return true;
+    }
     virtual void Publish(PlayerUIViewModel model) = 0;
     [[nodiscard]] virtual std::optional<PlayerUIAction> ConsumeAction() = 0;
     virtual void ShowToast(std::string message, float durationSeconds = 3.0f) = 0;

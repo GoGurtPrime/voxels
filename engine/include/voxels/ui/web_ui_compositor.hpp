@@ -82,6 +82,7 @@ private:
     int m_textureWidth = 0;
     int m_textureHeight = 0;
     std::size_t m_lastUploadCount = 0;
+    bool m_hasUploadedFrame = false;
 };
 
 } // namespace voxels

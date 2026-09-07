@@ -466,22 +466,17 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // ImGui remains the sole route/HUD/input-capture authority this milestone (ADR-015): it
-    // stays bound to `appContext.ui` unchanged, so every existing menu keeps rendering. When
-    // compiled with CEF, `webUiOverlay` is a second, independent IPlayerUI instance used only
-    // as a transparent diagnostic pass composited above it — never registered as `appContext.ui`,
-    // never granted input capture, and never fed into the player-UI action dispatcher.
+    voxels::IPlayerUI* playerUi = &uiManager;
 #ifdef VOXELS_HAS_CEF
-    voxels::WebUIManager webUiOverlay;
-    if (!webUiOverlay.Initialize(platform, renderer.get())) {
-        std::cerr << "Voxels web UI diagnostic overlay failed to initialize." << std::endl;
+    voxels::WebUIManager webUi;
+    if (!webUi.Initialize(platform, renderer.get())) {
+        std::cerr << "Voxels web UI failed to initialize." << std::endl;
         uiManager.Shutdown();
         renderer->Shutdown();
         engine.shutdown();
         return 1;
     }
-    webUiOverlay.Publish({.route = voxels::PlayerUIRoute::Hud, .revision = 1,
-                          .title = "Voxels Diagnostics", .message = "Web UI compositor active."});
+    playerUi = &webUi;
 #endif
 
     voxels::SetGlobalRenderer(renderer.get());
@@ -515,7 +510,7 @@ int main(int argc, char** argv) {
     voxels::AppContext appContext{};
     appContext.platform = platform;
     appContext.renderer = renderer.get();
-    appContext.ui = &uiManager;
+    appContext.ui = playerUi;
     appContext.input = &inputManager;
     appContext.blockRegistry = &blockRegistry;
     appContext.textureAtlas = &textureAtlas;
@@ -544,7 +539,7 @@ int main(int argc, char** argv) {
         stateMachine.Shutdown();
         uiManager.Shutdown();
 #ifdef VOXELS_HAS_CEF
-        webUiOverlay.Shutdown();
+        webUi.Shutdown();
 #endif
         renderer->Shutdown();
         engine.shutdown();
@@ -564,7 +559,7 @@ int main(int argc, char** argv) {
             stateMachine.Shutdown();
             uiManager.Shutdown();
 #ifdef VOXELS_HAS_CEF
-            webUiOverlay.Shutdown();
+            webUi.Shutdown();
 #endif
             renderer->Shutdown();
             engine.shutdown();
@@ -595,11 +590,11 @@ int main(int argc, char** argv) {
             &appContext, joinHost + ":" + std::to_string(joinPort)));
     }
 
-    WindowEventListener windowListener(running, *renderer, inputManager, uiManager);
+    WindowEventListener windowListener(running, *renderer, inputManager, *playerUi);
     if (platform != nullptr) {
         platform->RegisterEventListener(&uiManager, 1000);
 #ifdef VOXELS_HAS_CEF
-        platform->RegisterEventListener(&webUiOverlay, 900);
+        platform->RegisterEventListener(&webUi, 1100);
 #endif
         platform->RegisterEventListener(&windowListener, 100);
         const auto [drawableW, drawableH] = platform->GetDrawableSize();
@@ -616,8 +611,10 @@ int main(int argc, char** argv) {
         if (platform != nullptr) {
             platform->PollEvents(nullptr);
         }
-        if (const auto action = uiManager.ConsumeAction(); action.has_value()) {
-            (void)playerUIActionDispatcher.Dispatch(PlayerUIRouteForState(stateMachine.GetVisibleState()), *action, appContext);
+        if (const auto action = playerUi->ConsumeAction(); action.has_value()) {
+            if (!playerUIActionDispatcher.Dispatch(PlayerUIRouteForState(stateMachine.GetVisibleState()), *action, appContext)) {
+                std::cerr << "Web UI rejected action for the active route.\n";
+            }
         }
 
         const auto now = std::chrono::steady_clock::now();
@@ -635,8 +632,9 @@ int main(int argc, char** argv) {
         platformServices->Update();
 
 #ifdef VOXELS_HAS_CEF
-        webUiOverlay.BeginFrame();
+        webUi.BeginFrame();
 #endif
+    static_cast<void>(renderer->BeginFrame({0.12f, 0.16f, 0.19f, 1.0f}));
         uiManager.BeginFrame();
         stateMachine.Render();
         voxels::UIDebugMetrics debugMetrics{};
@@ -672,9 +670,8 @@ int main(int argc, char** argv) {
         uiManager.SetDebugMetrics(std::move(debugMetrics));
         uiManager.EndFrame();
 #ifdef VOXELS_HAS_CEF
-        // Composited last so the transparent diagnostic route sits above the world, HUD, and
-        // the ImGui F3 overlay, per the WI-03.02 z-order contract.
-        webUiOverlay.EndFrame();
+        // Composited last so web-owned menu routes appear above the active render frame.
+        webUi.EndFrame();
 #endif
         static_cast<void>(renderer->EndFrame());
         static_cast<void>(renderer->Present());
@@ -694,14 +691,14 @@ int main(int argc, char** argv) {
         platform->UnregisterEventListener(&uiManager);
         platform->UnregisterEventListener(&windowListener);
 #ifdef VOXELS_HAS_CEF
-        platform->UnregisterEventListener(&webUiOverlay);
+        platform->UnregisterEventListener(&webUi);
 #endif
     }
     uiManager.Shutdown();
 #ifdef VOXELS_HAS_CEF
     // Release CEF's browser/renderer processes before the GL context and platform are torn
     // down below; releasing it after renderer->Shutdown() hangs or crashes on exit.
-    webUiOverlay.Shutdown();
+    webUi.Shutdown();
 #endif
     audio->Shutdown();
     platformServices->Shutdown();

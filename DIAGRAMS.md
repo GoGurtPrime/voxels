@@ -119,7 +119,7 @@ sequenceDiagram
     Main->>Rend: Build texture atlas from block definitions
     Main->>UI: Initialize with platform + renderer
     opt VOXELS_ENABLE_WEB_UI
-        Main->>Main: Construct WebUIManager as a second, independent<br/>IPlayerUI diagnostic overlay (never assigned to appContext.ui —<br/>ImGui keeps native route presentation so menus never regress)
+        Main->>Main: Construct WebUIManager as appContext.ui for<br/>menu/world-management routes; ImGui stays initialized for HUD,<br/>debug, and pause presentation only
     end
     Main->>Aud: Open audio device, start mixer
     Main->>Main: Start JobSystem worker pool
@@ -284,7 +284,7 @@ flowchart LR
     WATER --> DEBUG["Pass 4: debug lines<br/>targeted block outline, chunk bounds if enabled"]
     DEBUG --> HUD["Pass 5: HUD primitives<br/>crosshair, hotbar, held item"]
     HUD --> IMGUI["Pass 6: ImGui draw data<br/>menus, settings, F3 overlay"]
-    IMGUI --> WEBUI["Pass 7 (VOXELS_ENABLE_WEB_UI only): CEF diagnostic overlay<br/>WebUiOpenGLCompositor draws the browser's premultiplied-BGRA<br/>paint as a transparent full-frame quad; independent of ImGui,<br/>never replaces menus/HUD"]
+    IMGUI --> WEBUI["Pass 7 (VOXELS_ENABLE_WEB_UI only): CEF React menu layer<br/>WebUiOpenGLCompositor draws the browser's premultiplied-BGRA<br/>paint as a transparent full-frame quad; menu routes replace ImGui,<br/>while pause/HUD remain native"]
     WEBUI --> PRES["Renderer.EndFrame → Present"]
 ```
 
@@ -359,7 +359,7 @@ flowchart TD
 flowchart TD
     SDL["SDL2 events: key, mouse, wheel, controller"] --> PLATE["IPlatform.PollEvents"]
     PLATE --> LISTEN["Dispatch to IPlatformEventListener list"]
-    LISTEN --> UIL["IPlayerUI backend<br/>ImGui adapter now; web backend later"]
+    LISTEN --> UIL["IPlayerUI backend<br/>React/CEF menus when enabled;<br/>ImGui HUD/pause"]
     LISTEN --> IM["InputManager"]
     IM --> MAP["Action map from Preferences<br/>MoveForward, Jump, Break, Place, Hotbar1-9, Pause"]
     MAP --> CTX{"PlayerUIInputPolicy"}
