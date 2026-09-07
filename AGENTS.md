@@ -55,6 +55,11 @@ The build system is **fixed infrastructure**. You may extend it (add sources, ta
 
 3. **Do not edit the build by shell.** Change `CMakeLists.txt`/`*.cmake` files with edits, not by piping into them. Keep `tasks.json`/`launch.json` pointed at `build/`.
 
+4. **No stale staged web assets in desktop smoke runs.** CEF loads the copy under the executable's staged `assets/` tree, not `ui/src/` directly.
+   - After any change under `ui/src/`, `ui/index.html`, `ui/scripts/`, or Tailwind/PostCSS config, regenerate and restage before launching: `npm --prefix ui run build` then `cmake --build build --config Debug`.
+   - Treat hash/filename mismatches in runtime logs as a stale-staging defect (for example, the app requests old `assets/index-*.css`/`*.js` names after a frontend edit).
+   - A smoke result is invalid unless the app log shows it loaded the current manifest-emitted asset hashes.
+
 ---
 
 ## 📜 3. Code Quality & Standards
