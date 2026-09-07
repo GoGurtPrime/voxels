@@ -31,6 +31,7 @@ The development roadmap is maintained in [work_items/README.md](work_items/READM
 | **[work_items/WORK_ITEM_PROMPT_TEMPLATE.md](work_items/WORK_ITEM_PROMPT_TEMPLATE.md)** | The prompt used to start each work item |
 | **[ASSET_REQUESTS.md](ASSET_REQUESTS.md)** | Art, audio, fonts, and SDKs required for development |
 | **[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)** | Steps to work through before tagging and shipping a release |
+| **[docs/PLAYER_UI_BRIDGE_API.md](docs/PLAYER_UI_BRIDGE_API.md)** | Versioned JS↔CEF↔C++ bridge contract, payload schemas, and extension rules for web developers |
 
 ---
 

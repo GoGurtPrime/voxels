@@ -1,27 +1,27 @@
 {
   "schema_version": 1,
   "entry_html": "browser/index.html",
-  "source_revision": "86924719aff22545f375d4096c0ac2738ffa2481",
-  "source_sha256": "f8bcb0966b5ed74eb812a78d09ae6c04bf4826152a90332bbe7591cd80261f8c",
+  "source_revision": "205afc28e1ad46d5fecc0e6feb6023a26dde0bbd",
+  "source_sha256": "85dcf3bf19d7b035e08351006ca55cb84243a0d646e675fe2a3060d592f255e7",
   "assets": {
     "browser/assets/cinzel-latin-variable-DMUuCU8H.woff2": {
       "sha256": "09941fb1c169c38fd414536b37690057fc01b3117a5c63dd6571186540c8f370",
       "bytes": 25904
     },
-    "browser/assets/index-6ojwHVU_.js": {
-      "sha256": "1a234da7a21c1986835c4db285d40daff08def446b88d4c92c658e705292b77e",
-      "bytes": 153875
-    },
     "browser/assets/index-BWk6lGXH.css": {
       "sha256": "3dabe4cc7139f0b365bf61d9b50b264b2d4aad41b644b6d69f0253a917972bce",
       "bytes": 13505
+    },
+    "browser/assets/index-DfJEi0fH.js": {
+      "sha256": "dfea02679510134e0dcf6705149bf96e3267e4bbef3ffe7d6ac23e0d9d19b621",
+      "bytes": 156490
     },
     "browser/assets/inter-latin-variable-Dx4kXJAl.woff2": {
       "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62",
       "bytes": 48256
     },
     "browser/index.html": {
-      "sha256": "ae45ae21f4c54057c0159c4216ea3206a3a0da9754e5084c08b15db3b8339dea",
+      "sha256": "0b41783d96fd8c728fbac7bbd2a16f9c138f8281b36a2327bcc8cb18c6447094",
       "bytes": 451
     }
   }

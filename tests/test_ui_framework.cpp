@@ -104,6 +104,38 @@ TEST_CASE("PlayerUI.DispatcherCreatesWorldSaveBeforeLoading", "[player-ui]") {
     std::filesystem::remove_all(saveRoot, error);
 }
 
+TEST_CASE("PlayerUI.DispatcherAppliesSettingsFromStructuredPayload", "[player-ui]") {
+    voxels::GamePreferences preferences{};
+    preferences.fieldOfView = 90.0f;
+    preferences.renderDistance = 8;
+    preferences.simulationDistance = 4;
+    preferences.masterVolume = 1.0f;
+    preferences.musicVolume = 0.7f;
+    preferences.sfxVolume = 0.8f;
+    preferences.mouseSensitivity = 1.0f;
+    preferences.invertY = false;
+    preferences.particles = true;
+
+    voxels::AppContext context{};
+    context.preferences = &preferences;
+    const voxels::PlayerUIActionDispatcher dispatcher;
+    const voxels::PlayerUIAction action{
+        .requestId = 77,
+        .kind = voxels::PlayerUIActionKind::ApplySettings,
+        .secondary = R"({"settings":{"fov":72.0,"renderDistance":16,"simulationDistance":12,"master":0.4,"music":0.5,"effects":0.6,"sensitivity":2.3,"invertY":true,"particles":false}})"};
+
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Settings, action, context));
+    REQUIRE(preferences.fieldOfView == Catch::Approx(72.0f));
+    REQUIRE(preferences.renderDistance == 16);
+    REQUIRE(preferences.simulationDistance == 12);
+    REQUIRE(preferences.masterVolume == Catch::Approx(0.4f));
+    REQUIRE(preferences.musicVolume == Catch::Approx(0.5f));
+    REQUIRE(preferences.sfxVolume == Catch::Approx(0.6f));
+    REQUIRE(preferences.mouseSensitivity == Catch::Approx(2.3f));
+    REQUIRE(preferences.invertY);
+    REQUIRE_FALSE(preferences.particles);
+}
+
 TEST_CASE("Theme.AppliesConsistentTokenSetAndIsIdempotent", "[ui]") {
     ImGui::CreateContext();
     voxels::ApplyVoxelsTheme();

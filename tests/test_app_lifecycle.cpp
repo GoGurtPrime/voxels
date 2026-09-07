@@ -8,13 +8,17 @@
  */
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 
 #include <filesystem>
+
+#include <nlohmann/json.hpp>
 
 #include "voxels/app/cli_parser.hpp"
 #include "voxels/app/menus.hpp"
 #include "voxels/app/save_manager.hpp"
 #include "voxels/app/state_machine.hpp"
+#include "voxels/ui/player_ui.hpp"
 #include "voxels/ui/ui_manager.hpp"
 
 TEST_CASE("CLIParser.ParseArguments", "[app][cli]") {
@@ -221,4 +225,38 @@ TEST_CASE("NullUIManager.ScaleRespondsToHighDpiResize", "[app][ui]") {
     REQUIRE_FALSE(manager.IsFrameActive());
 
     manager.Shutdown();
+}
+
+TEST_CASE("SettingsState.PublishesAuthoritativeSettingsPayload", "[app][ui][player-ui]") {
+    voxels::GamePreferences preferences{};
+    preferences.fieldOfView = 77.0f;
+    preferences.renderDistance = 11;
+    preferences.simulationDistance = 9;
+    preferences.masterVolume = 0.9f;
+    preferences.musicVolume = 0.4f;
+    preferences.sfxVolume = 0.2f;
+    preferences.mouseSensitivity = 1.8f;
+    preferences.invertY = true;
+    preferences.particles = false;
+
+    voxels::NullPlayerUI ui;
+    voxels::AppContext context{};
+    context.ui = &ui;
+    context.preferences = &preferences;
+
+    voxels::SettingsState state(&context);
+    state.OnEnter();
+
+    REQUIRE(ui.LastModel().has_value());
+    REQUIRE(ui.LastModel()->route == voxels::PlayerUIRoute::Settings);
+    const nlohmann::json payload = nlohmann::json::parse(ui.LastModel()->payload);
+    REQUIRE(payload.value("fov", 0.0f) == Catch::Approx(77.0f));
+    REQUIRE(payload.value("renderDistance", 0) == 11);
+    REQUIRE(payload.value("simulationDistance", 0) == 9);
+    REQUIRE(payload.value("master", 0.0f) == Catch::Approx(0.9f));
+    REQUIRE(payload.value("music", 0.0f) == Catch::Approx(0.4f));
+    REQUIRE(payload.value("effects", 0.0f) == Catch::Approx(0.2f));
+    REQUIRE(payload.value("sensitivity", 0.0f) == Catch::Approx(1.8f));
+    REQUIRE(payload.value("invertY", false));
+    REQUIRE_FALSE(payload.value("particles", true));
 }

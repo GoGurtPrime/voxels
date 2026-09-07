@@ -17,6 +17,8 @@
 #include <random>
 #include <sstream>
 
+#include <nlohmann/json.hpp>
+
 #include <imgui.h>
 
 #include "voxels/app/save_manager.hpp"
@@ -87,6 +89,24 @@ void ConfigureInGameState(InGameState& state, AppContext* context, const GameSav
     state.SetInputManager(context->input);
     state.SetPlatform(context->platform);
     state.SetActiveSave(save);
+}
+
+std::string BuildSettingsPayload(const GamePreferences& preferences, RendererBackend activeRenderer) {
+    const nlohmann::json payload{
+        {"fov", preferences.fieldOfView},
+        {"renderDistance", preferences.renderDistance},
+        {"simulationDistance", preferences.simulationDistance},
+        {"master", preferences.masterVolume},
+        {"music", preferences.musicVolume},
+        {"effects", preferences.sfxVolume},
+        {"sensitivity", preferences.mouseSensitivity},
+        {"invertY", preferences.invertY},
+        {"particles", preferences.particles},
+        {"rendererBackend", static_cast<int>(preferences.rendererBackend)},
+        {"activeRenderer", static_cast<int>(activeRenderer)},
+        {"restartRequired", preferences.rendererBackend != activeRenderer}
+    };
+    return payload.dump();
 }
 } // namespace
 
@@ -587,11 +607,17 @@ void PauseMenuState::Render() {
 
 void SettingsState::OnEnter() {
     if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
-    if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->Publish({.route = PlayerUIRoute::Settings, .revision = 1, .title = "SETTINGS", .items = {"Apply", "Back"}});
     if (m_context != nullptr && m_context->preferences != nullptr) m_pending = *m_context->preferences;
     if (m_context != nullptr && m_context->renderer != nullptr) {
         m_activeRenderer = m_context->renderer->GetBackend();
         if (m_pending.rendererBackend == RendererBackend::Automatic) m_pending.rendererBackend = m_activeRenderer;
+    }
+    if (m_context != nullptr && m_context->ui != nullptr) {
+        m_context->ui->Publish({.route = PlayerUIRoute::Settings,
+                                .revision = 1,
+                                .title = "SETTINGS",
+                                .items = {"Apply", "Back"},
+                                .payload = BuildSettingsPayload(m_pending, m_activeRenderer)});
     }
 }
 void SettingsState::Update(double) {}
@@ -663,6 +689,13 @@ void SettingsState::Render() {
         }
         PreferencesManager manager(Paths::UserDataDir() / "settings.json", m_context->platform->GetContext().type);
         manager.Save(m_pending);
+        if (m_context->ui != nullptr) {
+            m_context->ui->Publish({.route = PlayerUIRoute::Settings,
+                                    .revision = 2,
+                                    .title = "SETTINGS",
+                                    .items = {"Apply", "Back"},
+                                    .payload = BuildSettingsPayload(m_pending, m_activeRenderer)});
+        }
     }
     if (ui::MenuButton("Revert")) m_pending = *m_context->preferences;
     if (ui::MenuButton("Back")) m_context->requestPopOverlay();

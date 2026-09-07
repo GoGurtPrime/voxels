@@ -147,7 +147,9 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
         case PlayerUIActionKind::ApplySettings:
             if (activeRoute != PlayerUIRoute::Settings || context.preferences == nullptr) return false;
             try {
-                const nlohmann::json payload = nlohmann::json::parse(action.secondary);
+                nlohmann::json payload = nlohmann::json::object();
+                if (!action.secondary.empty()) payload = nlohmann::json::parse(action.secondary);
+                if (payload.contains("settings") && payload.at("settings").is_object()) payload = payload.at("settings");
                 context.preferences->fieldOfView = std::clamp(payload.value("fov", context.preferences->fieldOfView), 60.0f, 110.0f);
                 context.preferences->renderDistance = std::clamp(payload.value("renderDistance", context.preferences->renderDistance), 2, 16);
                 context.preferences->simulationDistance = std::clamp(payload.value("simulationDistance", context.preferences->simulationDistance), 2, 12);

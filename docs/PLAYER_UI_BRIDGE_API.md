@@ -1,0 +1,163 @@
+# PLAYER_UI_BRIDGE_API.md
+
+## Purpose
+
+This document is the source of truth for the browser-to-engine player UI bridge used by CEF routes.
+
+If you change any bridge message kind, payload field, validation rule, route payload schema, or action mapping, update this file in the same commit.
+
+## Ownership and authority
+
+- Browser UI is presentation and input collection.
+- Native C++ is authoritative for game state, save data, networking, and settings persistence.
+- All bridge messages are asynchronous and versioned.
+
+## Runtime path
+
+1. React UI calls `window.voxelsBridgeSend(encodedEnvelope)`.
+2. CEF render process forwards `voxels-action` process message to browser process.
+3. `WebUIManager::BrowserClient::OnProcessMessageReceived` decodes and validates envelope.
+4. Native maps envelope kind to `PlayerUIActionKind` and queues `PlayerUIAction`.
+5. Main loop drains one action per frame and dispatches via `PlayerUIActionDispatcher`.
+6. App states mutate authoritative engine state.
+7. Native publishes `PlayerUIViewModel` snapshots back to the browser via `ui.model` envelope.
+8. React route receives model and re-renders.
+
+## Envelope contract
+
+All bridge messages use this JSON envelope:
+
+```json
+{
+  "version": 1,
+  "kind": "string",
+  "requestId": 123,
+  "payload": "<JSON string>"
+}
+```
+
+Rules:
+
+- `version` must be `1`.
+- `kind` must be non-empty.
+- `requestId` must be greater than `0`.
+- `payload` must be a string containing JSON for the message kind.
+- Payload size limit is 64 KiB.
+
+## Message kinds
+
+### Browser -> native actions
+
+Use kind prefix `ui.action.`:
+
+- `ui.action.play`
+- `ui.action.create-world`
+- `ui.action.load-world`
+- `ui.action.delete-world`
+- `ui.action.confirm-delete`
+- `ui.action.join`
+- `ui.action.resume`
+- `ui.action.settings`
+- `ui.action.back`
+- `ui.action.quit`
+- `ui.action.apply-settings`
+- `ui.action.dismiss-controls`
+- `ui.action.hotbar`
+- `ui.action.acknowledge-error`
+
+Legacy (non-prefixed) kinds are still accepted for compatibility.
+
+Action payload object:
+
+```json
+{
+  "primary": "optional string",
+  "secondary": "optional string or JSON object",
+  "value": 0.0,
+  "settings": { "optional": "object used by apply-settings" }
+}
+```
+
+Mapping rules:
+
+- If `secondary` is a string, C++ stores it in `PlayerUIAction.secondary`.
+- If `secondary` is an object, C++ stores it as compact JSON text in `PlayerUIAction.secondary`.
+- If `settings` exists and `secondary` is empty, C++ stores `settings` JSON in `PlayerUIAction.secondary`.
+
+### Native -> browser model updates
+
+Kind:
+
+- `ui.model`
+
+Payload string contains a serialized `PlayerUIViewModel` object:
+
+```json
+{
+  "route": 7,
+  "revision": 2,
+  "title": "SETTINGS",
+  "message": "",
+  "items": ["Apply", "Back"],
+  "payload": "{\"fov\":90.0}",
+  "progress": 0.0,
+  "blocking": false
+}
+```
+
+The inner `payload` field is route-specific JSON text.
+
+## Route payload schemas
+
+### Settings route (`route = 7`)
+
+`payload` JSON object:
+
+```json
+{
+  "fov": 90.0,
+  "renderDistance": 8,
+  "simulationDistance": 4,
+  "master": 1.0,
+  "music": 0.7,
+  "effects": 0.8,
+  "sensitivity": 1.0,
+  "invertY": false,
+  "particles": true,
+  "rendererBackend": 0,
+  "activeRenderer": 1,
+  "restartRequired": false
+}
+```
+
+Notes:
+
+- Web UI must hydrate controls from this payload when entering or revising settings.
+- Native side clamps values before applying.
+- Native side persists to settings file and republishes the current settings snapshot after apply.
+
+## JavaScript integration notes
+
+- Preferred send function: `window.voxelsBridgeSend`.
+- Compatibility send function: `window.voxelsAction`.
+- Preferred receive hook: `window.__voxelsReceiveBridgeMessage` receiving an envelope object.
+- Compatibility receive hook: `window.__voxelsReceiveModel` receiving plain model object.
+
+## C++ integration points
+
+- Envelope codec: `engine/src/ui/player_ui.cpp`
+- CEF bridge: `engine/src/ui/web_ui_manager.cpp`
+- Action dispatcher: `engine/src/app/player_ui_dispatcher.cpp`
+- Settings route publishing: `engine/src/app/state_machine_screens.cpp`
+
+## Extending for gameplay and new routes
+
+When adding a gameplay-facing UI action:
+
+1. Add a new `ui.action.<kind>` entry here.
+2. Add native mapping in `ActionKindFromWire`.
+3. Add route validation and state mutation in `PlayerUIActionDispatcher::Dispatch`.
+4. Add route payload schema for the receiving route.
+5. Add tests proving native side effects.
+
+Do not add browser-only optimistic state for authoritative gameplay outcomes.

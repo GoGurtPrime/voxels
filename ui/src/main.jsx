@@ -1,28 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
-
-const Route = {
-  MainMenu: 0,
-  SaveSelection: 1,
-  WorldCreation: 2,
-  Loading: 3,
-  Join: 4,
-  Error: 5,
-  Pause: 6,
-  Settings: 7,
-  ControlsCard: 8
-};
-
-let nextRequestId = 1;
-
-function sendAction(kind, fields = {}) {
-  window.voxelsAction?.(JSON.stringify({ kind, requestId: nextRequestId++, ...fields }));
-}
+import { Route, parseJson, sendUiAction, useVoxelsActionGate, useVoxelsBridgeModel } from "./lib/voxelsBridge";
 
 function ActionButton({ children, kind, fields, className = "", style, ...props }) {
   return (
-    <button className={`action-button ${className}`} type="button" style={style} onClick={() => sendAction(kind, fields)} {...props}>
+    <button className={`action-button ${className}`} type="button" style={style} onClick={() => sendUiAction(kind, fields)} {...props}>
       {children}
     </button>
   );
@@ -166,6 +149,7 @@ function Chip({ checked, onChange, children }) {
 }
 
 function WorldCreation() {
+  const { runGuardedAction, isPending } = useVoxelsActionGate();
   const [name, setName] = useState("New World");
   const [seed, setSeed] = useState("");
   const [options, setOptions] = useState({ sandbox: false, peaceful: false, permadeath: false, sunny: false, public: false, distance: 8 });
@@ -184,12 +168,18 @@ function WorldCreation() {
       wide
       footer={
         <div className="action-stack">
-          <button className="action-button" type="submit" form="world-creation-form">Create World</button>
+          <button className="action-button" type="submit" form="world-creation-form" disabled={isPending("create-world")}>Create World</button>
           <ActionButton className="ghost" kind="back">Back</ActionButton>
         </div>
       }
     >
-      <form id="world-creation-form" onSubmit={(event) => { event.preventDefault(); sendAction("create-world", { primary: name, secondary: JSON.stringify({ seed, ...options }) }); }}>
+      <form id="world-creation-form" onSubmit={(event) => {
+        event.preventDefault();
+        runGuardedAction("create-world", "create-world", {
+          primary: name,
+          secondary: JSON.stringify({ seed, ...options })
+        });
+      }}>
         <p className="section-title">Basics</p>
         <div className="field-grid">
           <label className="field-row">
@@ -221,6 +211,7 @@ function WorldCreation() {
 }
 
 function JoinGame() {
+  const { runGuardedAction, isPending } = useVoxelsActionGate();
   const [host, setHost] = useState("127.0.0.1");
   const [port, setPort] = useState("27015");
   return (
@@ -229,12 +220,15 @@ function JoinGame() {
       subtitle="Enter the host address and UDP port."
       footer={
         <div className="action-stack">
-          <button className="action-button" type="submit" form="join-form">Connect</button>
+          <button className="action-button" type="submit" form="join-form" disabled={isPending("join")}>Connect</button>
           <ActionButton className="ghost" kind="back">Back</ActionButton>
         </div>
       }
     >
-      <form id="join-form" onSubmit={(event) => { event.preventDefault(); sendAction("join", { primary: host, secondary: port }); }}>
+      <form id="join-form" onSubmit={(event) => {
+        event.preventDefault();
+        runGuardedAction("join", "join", { primary: host, secondary: port });
+      }}>
         <div className="field-grid">
           <label className="field-row">
             <span className="field-label">Host address</span>
@@ -306,8 +300,25 @@ function SliderField({ label, value, min, max, step = 1, onChange, format }) {
   );
 }
 
-function Settings() {
-  const [settings, setSettings] = useState({ fov: 80, renderDistance: 8, simulationDistance: 6, master: 1, music: 1, effects: 1, sensitivity: 1, invertY: false, particles: true });
+function Settings({ model }) {
+  const { runGuardedAction, isPending } = useVoxelsActionGate();
+  const [settings, setSettings] = useState({ fov: 90, renderDistance: 8, simulationDistance: 4, master: 1, music: 0.7, effects: 0.8, sensitivity: 1, invertY: false, particles: true });
+  useEffect(() => {
+    const payload = parseJson(model?.payload, null);
+    if (!payload || typeof payload !== "object") return;
+    setSettings((previous) => ({
+      ...previous,
+      fov: typeof payload.fov === "number" ? payload.fov : previous.fov,
+      renderDistance: typeof payload.renderDistance === "number" ? payload.renderDistance : previous.renderDistance,
+      simulationDistance: typeof payload.simulationDistance === "number" ? payload.simulationDistance : previous.simulationDistance,
+      master: typeof payload.master === "number" ? payload.master : previous.master,
+      music: typeof payload.music === "number" ? payload.music : previous.music,
+      effects: typeof payload.effects === "number" ? payload.effects : previous.effects,
+      sensitivity: typeof payload.sensitivity === "number" ? payload.sensitivity : previous.sensitivity,
+      invertY: typeof payload.invertY === "boolean" ? payload.invertY : previous.invertY,
+      particles: typeof payload.particles === "boolean" ? payload.particles : previous.particles
+    }));
+  }, [model?.revision, model?.payload]);
   const update = (key, value) => setSettings({ ...settings, [key]: value });
   const percent = (value) => `${Math.round(value * 100)}%`;
   return (
@@ -316,12 +327,18 @@ function Settings() {
       wide
       footer={
         <div className="action-stack">
-          <button className="action-button" type="submit" form="settings-form">Apply</button>
+          <button className="action-button" type="submit" form="settings-form" disabled={isPending("settings-apply")}>Apply</button>
           <ActionButton className="ghost" kind="back">Back</ActionButton>
         </div>
       }
     >
-      <form id="settings-form" onSubmit={(event) => { event.preventDefault(); sendAction("apply-settings", { secondary: JSON.stringify(settings) }); }}>
+      <form id="settings-form" onSubmit={(event) => {
+        event.preventDefault();
+        runGuardedAction("settings-apply", "apply-settings", {
+          secondary: JSON.stringify(settings),
+          settings
+        });
+      }}>
         <p className="section-title">Video</p>
         <SliderField label="Field of view" value={settings.fov} min={60} max={110} onChange={(value) => update("fov", value)} format={(value) => `${value}°`} />
         <SliderField label="Render distance" value={settings.renderDistance} min={2} max={16} onChange={(value) => update("renderDistance", Math.round(value))} format={(value) => `${value} chunks`} />
@@ -344,12 +361,11 @@ function Settings() {
 }
 
 function App() {
-  const [model, setModel] = useState({ route: Route.MainMenu, revision: 0, progress: 0, items: [] });
-  useEffect(() => {
-    window.__voxelsReceiveModel = setModel;
-    if (window.__voxelsLastModel) setModel(window.__voxelsLastModel);
-    return () => delete window.__voxelsReceiveModel;
-  }, []);
+  const [model] = useVoxelsBridgeModel({ route: Route.MainMenu, revision: 0, progress: 0, items: [] });
+
+  // Example usage for future gameplay overlays:
+  // const { runGuardedAction } = useVoxelsActionGate();
+  // runGuardedAction("pause-resume", "resume", {});
   return (
     <>
       <SceneBackdrop />
@@ -361,7 +377,7 @@ function App() {
           case Route.Loading: return <Loading model={model} />;
           case Route.Join: return <JoinGame />;
           case Route.Error: return <ErrorRoute model={model} />;
-          case Route.Settings: return <Settings />;
+          case Route.Settings: return <Settings model={model} />;
           case Route.ControlsCard: return <Controls />;
           default: return <MainMenu />;
         }

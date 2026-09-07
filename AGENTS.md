@@ -106,6 +106,9 @@ Every new `.hpp`/`.cpp` starts with:
    source of the reference.
 * **Review:** Resolve Doxygen warnings introduced by the change before commit. A new top-level
    source root must be added to `docs/Doxyfile.in` in the same change.
+* **UI bridge contract:** Any change to the JS↔CEF↔C++ player UI message contract (kinds,
+   payload fields, validation rules, route payload schemas, or action mappings) must update
+   `docs/PLAYER_UI_BRIDGE_API.md` in the same commit.
 
 ---
 

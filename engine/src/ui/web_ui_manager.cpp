@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <thread>
 #include <unordered_map>
@@ -46,6 +47,9 @@ constexpr char kUiScheme[] = "voxels-ui";
 constexpr char kUiHost[] = "app";
 constexpr char kUiOriginPrefix[] = "voxels-ui://app/";
 
+constexpr char kBridgeActionPrefix[] = "ui.action.";
+constexpr char kBridgeModelKind[] = "ui.model";
+
 struct VerifiedUiAssets {
     std::unordered_map<std::string, std::filesystem::path> files;
 };
@@ -55,6 +59,82 @@ struct VerifiedUiAssets {
     if (!CefParseURL(url, parts)) return false;
     return CefString(&parts.scheme).ToString() == kUiScheme &&
            CefString(&parts.host).ToString() == kUiHost;
+}
+
+[[nodiscard]] std::optional<PlayerUIActionKind> ActionKindFromWire(std::string_view wireKind) {
+    if (wireKind.starts_with(kBridgeActionPrefix)) wireKind.remove_prefix(std::char_traits<char>::length(kBridgeActionPrefix));
+    if (wireKind == "play") return PlayerUIActionKind::Play;
+    if (wireKind == "create-world" || wireKind == "create_world") return PlayerUIActionKind::CreateWorld;
+    if (wireKind == "load-world" || wireKind == "load_world") return PlayerUIActionKind::LoadWorld;
+    if (wireKind == "delete-world" || wireKind == "delete_world") return PlayerUIActionKind::DeleteWorld;
+    if (wireKind == "confirm-delete" || wireKind == "confirm_delete") return PlayerUIActionKind::ConfirmDelete;
+    if (wireKind == "join") return PlayerUIActionKind::Join;
+    if (wireKind == "resume") return PlayerUIActionKind::Resume;
+    if (wireKind == "quit") return PlayerUIActionKind::Quit;
+    if (wireKind == "settings" || wireKind == "open-settings" || wireKind == "open_settings") return PlayerUIActionKind::OpenSettings;
+    if (wireKind == "back") return PlayerUIActionKind::Back;
+    if (wireKind == "apply-settings" || wireKind == "apply_settings") return PlayerUIActionKind::ApplySettings;
+    if (wireKind == "dismiss-controls" || wireKind == "dismiss_controls") return PlayerUIActionKind::DismissControls;
+    if (wireKind == "hotbar") return PlayerUIActionKind::HudHotbar;
+    if (wireKind == "acknowledge-error" || wireKind == "acknowledge_error") return PlayerUIActionKind::AcknowledgeError;
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<PlayerUIAction> DecodeBridgeActionEnvelope(const PlayerUIProtocolMessage& envelope) {
+    const auto kind = ActionKindFromWire(envelope.kind);
+    if (!kind.has_value()) return std::nullopt;
+    PlayerUIAction action{};
+    action.requestId = envelope.requestId;
+    action.kind = *kind;
+    if (envelope.payload.empty()) return action;
+    try {
+        const nlohmann::json payload = nlohmann::json::parse(envelope.payload);
+        if (payload.is_object()) {
+            if (const auto primary = payload.find("primary"); primary != payload.end() && primary->is_string()) {
+                action.primary = primary->get<std::string>();
+            }
+            if (const auto secondary = payload.find("secondary"); secondary != payload.end()) {
+                if (secondary->is_string()) action.secondary = secondary->get<std::string>();
+                else action.secondary = secondary->dump();
+            }
+            if (const auto value = payload.find("value"); value != payload.end() && value->is_number()) {
+                action.value = value->get<float>();
+            }
+            if (action.secondary.empty()) {
+                if (const auto settings = payload.find("settings"); settings != payload.end()) {
+                    action.secondary = settings->dump();
+                }
+            }
+            return action;
+        }
+        if (payload.is_string()) {
+            action.secondary = payload.get<std::string>();
+            return action;
+        }
+        action.secondary = payload.dump();
+        return action;
+    } catch (const nlohmann::json::exception&) {
+        return std::nullopt;
+    }
+}
+
+[[nodiscard]] std::optional<PlayerUIAction> DecodeLegacyActionJson(std::string_view encoded) {
+    try {
+        const nlohmann::json command = nlohmann::json::parse(encoded);
+        const std::string wireKind = command.value("kind", "");
+        const std::uint32_t requestId = command.value("requestId", 0U);
+        const auto kind = ActionKindFromWire(wireKind);
+        if (!kind.has_value() || requestId == 0) return std::nullopt;
+        PlayerUIAction action{.requestId = requestId, .kind = *kind,
+                              .primary = command.value("primary", ""),
+                              .secondary = command.value("secondary", "")};
+        if (const auto value = command.find("value"); value != command.end() && value->is_number()) {
+            action.value = value->get<float>();
+        }
+        return action;
+    } catch (const nlohmann::json::exception&) {
+        return std::nullopt;
+    }
 }
 
 [[nodiscard]] std::string AssetPathFromUrl(const std::string& url) {
@@ -257,7 +337,9 @@ public:
     CefRefPtr<CefRenderProcessHandler> GetRenderProcessHandler() override { return this; }
     void OnContextCreated(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context) override {
         if (!frame->IsMain()) return;
-        context->GetGlobal()->SetValue("voxelsAction", CefV8Value::CreateFunction("voxelsAction", new ActionV8Handler()), V8_PROPERTY_ATTRIBUTE_NONE);
+        CefRefPtr<CefV8Value> send = CefV8Value::CreateFunction("voxelsAction", new ActionV8Handler());
+        context->GetGlobal()->SetValue("voxelsAction", send, V8_PROPERTY_ATTRIBUTE_NONE);
+        context->GetGlobal()->SetValue("voxelsBridgeSend", send, V8_PROPERTY_ATTRIBUTE_NONE);
     }
 
 private:
@@ -305,27 +387,19 @@ public:
                                   CefRefPtr<CefProcessMessage> message) override {
         if (message->GetName() != "voxels-action") return false;
         const std::string encoded = message->GetArgumentList()->GetString(0);
-        try {
-            const nlohmann::json command = nlohmann::json::parse(encoded);
-            const std::string kind = command.value("kind", "");
-            const std::uint32_t requestId = command.value("requestId", 0U);
-            if (kind.empty() || requestId == 0) return true;
-            PlayerUIAction action{.requestId = requestId, .primary = command.value("primary", ""), .secondary = command.value("secondary", "")};
-            if (kind == "play") action.kind = PlayerUIActionKind::Play;
-            else if (kind == "create-world") action.kind = PlayerUIActionKind::CreateWorld;
-            else if (kind == "load-world") action.kind = PlayerUIActionKind::LoadWorld;
-            else if (kind == "confirm-delete") action.kind = PlayerUIActionKind::ConfirmDelete;
-            else if (kind == "join") action.kind = PlayerUIActionKind::Join;
-            else if (kind == "quit") action.kind = PlayerUIActionKind::Quit;
-            else if (kind == "settings") action.kind = PlayerUIActionKind::OpenSettings;
-            else if (kind == "back") action.kind = PlayerUIActionKind::Back;
-            else if (kind == "apply-settings") action.kind = PlayerUIActionKind::ApplySettings;
-            else if (kind == "dismiss-controls") action.kind = PlayerUIActionKind::DismissControls;
-            else if (kind == "acknowledge-error") action.kind = PlayerUIActionKind::AcknowledgeError;
-            else return true;
-            m_owner.SubmitAction(std::move(action));
-            std::cerr << "Web UI action received: " << kind << '\n';
-        } catch (const nlohmann::json::exception&) {
+        if (const auto envelope = DecodePlayerUIProtocolMessage(encoded); envelope.has_value()) {
+            if (const auto action = DecodeBridgeActionEnvelope(*envelope); action.has_value()) {
+                m_owner.SubmitAction(*action);
+                std::cerr << "Web UI action received: " << envelope->kind << '\n';
+            } else {
+                std::cerr << "Web UI rejected unsupported bridge action kind.\n";
+            }
+            return true;
+        }
+        if (const auto action = DecodeLegacyActionJson(encoded); action.has_value()) {
+            m_owner.SubmitAction(*action);
+            std::cerr << "Web UI action received (legacy envelope).\n";
+        } else {
             std::cerr << "Web UI rejected malformed action payload.\n";
         }
         return true;
@@ -391,9 +465,25 @@ public:
     [[nodiscard]] bool HasBrowser() const noexcept { return static_cast<bool>(m_browser); }
     void Publish(const PlayerUIViewModel& model) {
         if (!m_browser || !m_mainFrameReady) return;
-        const nlohmann::json json{{"route", static_cast<int>(model.route)}, {"revision", model.revision}, {"title", model.title}, {"message", model.message}, {"items", model.items}, {"progress", model.progress}, {"blocking", model.blocking}};
-        const std::string payload = json.dump();
-        const std::string script = "window.__voxelsLastModel=" + payload + ";if(window.__voxelsReceiveModel){window.__voxelsReceiveModel(window.__voxelsLastModel);}";
+        const nlohmann::json modelPayload{{"route", static_cast<int>(model.route)},
+                                          {"revision", model.revision},
+                                          {"title", model.title},
+                                          {"message", model.message},
+                                          {"items", model.items},
+                                          {"payload", model.payload},
+                                          {"progress", model.progress},
+                                          {"blocking", model.blocking}};
+        const PlayerUIProtocolMessage bridgeMessage{
+            .kind = kBridgeModelKind,
+            .requestId = static_cast<std::uint32_t>((model.revision % static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max() - 1U)) + 1U),
+            .payload = modelPayload.dump()};
+        const std::optional<std::string> encoded = EncodePlayerUIProtocolMessage(bridgeMessage);
+        if (!encoded.has_value()) return;
+        const std::string script =
+            "window.__voxelsLastBridgeMessage=" + *encoded + ";"
+            "if(window.__voxelsReceiveBridgeMessage){window.__voxelsReceiveBridgeMessage(window.__voxelsLastBridgeMessage);}" 
+            "window.__voxelsLastModel=" + modelPayload.dump() + ";"
+            "if(window.__voxelsReceiveModel){window.__voxelsReceiveModel(window.__voxelsLastModel);}";
         m_browser->GetMainFrame()->ExecuteJavaScript(script, m_browser->GetMainFrame()->GetURL(), 0);
     }
 

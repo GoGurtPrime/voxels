@@ -373,6 +373,41 @@ policies release it. Alt-Tab must never leave the cursor trapped.
 
 ---
 
+## 9.5 Player UI Bridge (CEF)
+
+```mermaid
+sequenceDiagram
+    participant JS as React Route
+    participant RP as CEF Render Process
+    participant BP as CEF Browser Process
+    participant WU as WebUIManager
+    participant LOOP as main.cpp frame loop
+    participant DIS as PlayerUIActionDispatcher
+    participant APP as AppState/Engine
+
+    JS->>RP: window.voxelsBridgeSend(envelope)
+    RP->>BP: ProcessMessage "voxels-action" (encoded envelope)
+    BP->>WU: OnProcessMessageReceived
+    WU->>WU: DecodePlayerUIProtocolMessage + action kind map
+    WU->>LOOP: queue PlayerUIAction
+    LOOP->>WU: ConsumeAction()
+    LOOP->>DIS: Dispatch(activeRoute, action, appContext)
+    DIS->>APP: validate + mutate authoritative state
+    APP->>WU: Publish(PlayerUIViewModel with route payload)
+    WU->>BP: ExecuteJavaScript(__voxelsReceiveBridgeMessage)
+    BP->>RP: Bridge envelope ui.model
+    RP->>JS: hydrate route state and render
+```
+
+Contract notes:
+
+- Envelope schema is versioned and bounded; native rejects invalid version, empty kind, request id `0`, or oversized payload.
+- Browser routes submit intents only; state authority remains in native C++.
+- Settings route uses `PlayerUIViewModel.payload` to push authoritative values to web controls.
+- Canonical bridge API and payload schemas live in `docs/PLAYER_UI_BRIDGE_API.md` and must stay in sync with code.
+
+---
+
 ## 10. Persistence Flow
 
 ```mermaid

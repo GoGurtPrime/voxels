@@ -29,6 +29,8 @@ struct PlayerUIViewModel {
     std::string title;
     std::string message;
     std::vector<std::string> items;
+    /// Optional JSON object string carrying route-specific state.
+    std::string payload;
     float progress = 0.0f;
     bool blocking = false;
 };

@@ -197,6 +197,12 @@ Authoring (editor) → `.vmdl` models + textures + audio → **bundler** → `.v
 - Joining is world-download, not local generation: the server streams RLE chunk sections nearest-first as MTU-safe fragments, retransmitting until the client acks each chunk (`C2S_ChunkAck`); the client reassembles, rebuilds column skylight, and surfaces whole columns to the renderer. The server also generates terrain columns around remote peers on demand.
 - Movement is client-reported and server-validated (per-tick delta bound with respawn resync); block edits are server-validated for reach before mutation and broadcast. Remote players render as color-hashed body/head boxes with yaw. **Deviation from ADR-007:** full input-intent server physics with client prediction/reconciliation is not yet implemented; the server gates rather than simulates movement.
 
+### 6.8 Player UI Bridge (CEF)
+- Browser routes communicate with native via a versioned JSON envelope (`PlayerUIProtocolMessage`) over the CEF process-message bridge.
+- Native remains authoritative: browser code submits actions, C++ validates and applies them, then republishes immutable route snapshots.
+- `PlayerUIViewModel.payload` carries route-specific JSON state so frontend routes can hydrate from authoritative native values (for example, settings).
+- The canonical contract for message kinds and payload schemas lives in `docs/PLAYER_UI_BRIDGE_API.md` and must be updated in the same change as any bridge contract modification.
+
 ---
 
 ## 7. Threading Model
