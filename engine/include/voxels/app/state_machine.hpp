@@ -137,21 +137,24 @@ public:
 
 private:
     enum class IntroPhase : std::uint8_t {
-        SplashHold,
-        SplashFade,
-        PreviewLoading,
+        PreviewLoadingOpaque,
+        PreviewReveal,
+        LogoFadeIn,
+        LogoHold,
+        LogoFadeOut,
         Ready
     };
 
     void PublishSplash(float fade) const;
-    void PublishPreviewLoading(float progress) const;
+    void PublishPreviewLoading(float progress, float backdropOpacity, bool showStatus) const;
     void PublishReadyMenu() const;
 
-    IntroPhase m_phase = IntroPhase::SplashHold;
+    IntroPhase m_phase = IntroPhase::PreviewLoadingOpaque;
     float m_phaseElapsedSeconds = 0.0f;
     bool m_startedMenuMusic = false;
     bool m_publishedReadyMenu = false;
     bool m_controlsCardQueued = false;
+    bool m_runLogoSequence = true;
 };
 
 /// Save-slot browser: lists saves from the `SaveManager`, loads the selection, and deletes

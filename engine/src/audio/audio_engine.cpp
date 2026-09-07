@@ -158,8 +158,42 @@ std::size_t AudioMixer::ActiveVoiceCount() const noexcept { return static_cast<s
 const PcmBuffer* AudioMixer::GetClip(SoundHandle sound) const noexcept { return !sound.IsValid() || sound.id > m_clips.size() ? nullptr : &m_clips[sound.id - 1U].pcm; }
 SDLAudioDevice::~SDLAudioDevice() { Close(); }
 void SDLAudioDevice::AudioCallback(void* userdata, std::uint8_t* stream, int bytes) { if (userdata != nullptr && stream != nullptr && bytes > 0) static_cast<AudioMixer*>(userdata)->Mix(reinterpret_cast<float*>(stream), static_cast<std::size_t>(bytes) / (sizeof(float) * 2U)); }
-bool SDLAudioDevice::Open(AudioMixer& mixer, std::string& error) { Close(); SDL_AudioSpec requested{}; requested.freq = 44100; requested.format = AUDIO_F32SYS; requested.channels = 2; requested.samples = 1024; requested.callback = AudioCallback; requested.userdata = &mixer; m_deviceId = SDL_OpenAudioDevice(nullptr, 0, &requested, nullptr, 0); if (m_deviceId == 0) { error = SDL_GetError(); return false; } SDL_PauseAudioDevice(m_deviceId, 0); return true; }
-void SDLAudioDevice::Close() noexcept { if (m_deviceId != 0) SDL_CloseAudioDevice(m_deviceId); m_deviceId = 0; }
+bool SDLAudioDevice::Open(AudioMixer& mixer, std::string& error) {
+    Close();
+    if ((SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO) == 0U) {
+        if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+            error = SDL_GetError();
+            return false;
+        }
+        m_initializedAudioSubsystem = true;
+    }
+    SDL_AudioSpec requested{};
+    requested.freq = 44100;
+    requested.format = AUDIO_F32SYS;
+    requested.channels = 2;
+    requested.samples = 1024;
+    requested.callback = AudioCallback;
+    requested.userdata = &mixer;
+    m_deviceId = SDL_OpenAudioDevice(nullptr, 0, &requested, nullptr, 0);
+    if (m_deviceId == 0) {
+        error = SDL_GetError();
+        if (m_initializedAudioSubsystem) {
+            SDL_QuitSubSystem(SDL_INIT_AUDIO);
+            m_initializedAudioSubsystem = false;
+        }
+        return false;
+    }
+    SDL_PauseAudioDevice(m_deviceId, 0);
+    return true;
+}
+void SDLAudioDevice::Close() noexcept {
+    if (m_deviceId != 0) SDL_CloseAudioDevice(m_deviceId);
+    m_deviceId = 0;
+    if (m_initializedAudioSubsystem) {
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        m_initializedAudioSubsystem = false;
+    }
+}
 bool SDLAudioDevice::IsOpen() const noexcept { return m_deviceId != 0; }
 bool AudioEngine::Initialize(std::string& error) { m_audible = m_device.Open(m_mixer, error); return m_audible; }
 SoundHandle AudioEngine::LoadSound(const std::filesystem::path& path, AudioCategory category) { PcmBuffer clip; if (!DecodeWavFile(path, clip)) clip = FallbackFor(path); return m_mixer.AddClip(std::move(clip), category); }

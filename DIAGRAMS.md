@@ -182,14 +182,18 @@ stateDiagram-v2
     ErrorScreen --> MainMenu: "Acknowledge"
 
     note right of MainMenu
-        On first process boot:
-        startup splash (2-3s hold + fade)
-        then "Preparing Main Menu" while
-        a random world preview generates.
+        On entry:
+        "Preparing Main Menu" starts with
+        an opaque layer + generation status,
+        then hides status and fades layer out
+        to reveal the generated world.
+        First process boot then runs a logo
+        preface fade-in/hold/fade-out before
+        menu interactions are enabled.
         Menu routes render over live
         cinematic camera flythrough shots.
         Returning from InGame re-runs the
-        preview loading step (no splash).
+        preview loading/reveal step.
     end note
 
     note right of Loading

@@ -130,7 +130,8 @@ void MainMenuState::OnEnter() {
     m_publishedReadyMenu = false;
     m_controlsCardQueued = false;
     m_phaseElapsedSeconds = 0.0f;
-    m_phase = ConsumeStartupSplashEligibility() ? IntroPhase::SplashHold : IntroPhase::PreviewLoading;
+    m_runLogoSequence = ConsumeStartupSplashEligibility();
+    m_phase = IntroPhase::PreviewLoadingOpaque;
 }
 
 void MainMenuState::Render() {
@@ -140,7 +141,8 @@ void MainMenuState::Render() {
         CenterNextWindow();
         ImGui::SetNextWindowSize({520.0f, 0.0f}, ImGuiCond_Always);
         ImGui::Begin("Startup", nullptr, kMenuWindowFlags);
-        if (m_phase == IntroPhase::SplashHold || m_phase == IntroPhase::SplashFade) {
+        if (m_phase == IntroPhase::LogoFadeIn || m_phase == IntroPhase::LogoHold ||
+            m_phase == IntroPhase::LogoFadeOut) {
             ui::MenuTitle("VOXELS ENGINE");
             ImGui::TextUnformatted("Developer and engine initialization");
             ImGui::Spacing();
@@ -148,7 +150,9 @@ void MainMenuState::Render() {
             ImGui::TextDisabled("Copyright and license details are available from the packaged license files.");
         } else {
             ui::MenuTitle("PREPARING MAIN MENU");
-            ImGui::TextUnformatted("Generating scenic flythrough world...");
+            ImGui::TextUnformatted(m_phase == IntroPhase::PreviewLoadingOpaque
+                                       ? "Generating scenic flythrough world..."
+                                       : "Preparing reveal...");
             const float progress = GetMainMenuBackdropProgress();
             const std::string percent = std::to_string(static_cast<int>(progress * 100.0f)) + "%";
             ui::ProgressBar(progress, percent.c_str());

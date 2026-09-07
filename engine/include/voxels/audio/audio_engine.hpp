@@ -71,6 +71,7 @@ public:
 private:
     static void AudioCallback(void* userdata, std::uint8_t* stream, int byteCount);
     std::uint32_t m_deviceId = 0;
+    bool m_initializedAudioSubsystem = false;
 };
 
 class AudioEngine final {

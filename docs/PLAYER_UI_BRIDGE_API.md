@@ -152,6 +152,23 @@ Notes:
 - Native side clamps values before applying.
 - Native side persists to settings file and republishes the current settings snapshot after apply.
 
+### Loading route (`route = 3`)
+
+`payload` JSON object (optional):
+
+```json
+{
+  "backdropOpacity": 1.0,
+  "showStatus": true
+}
+```
+
+Notes:
+
+- `backdropOpacity` controls an opaque fullscreen overlay used by main-menu startup transitions.
+- `showStatus` toggles loading text/progress visibility while the overlay can still fade.
+- Regular world/join loading screens may omit this payload and use default route UI.
+
 ## JavaScript integration notes
 
 - Preferred send function: `window.voxelsBridgeSend`.

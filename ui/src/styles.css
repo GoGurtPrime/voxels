@@ -84,6 +84,25 @@ body {
   color: #f3ead6;
 }
 
+.menu-atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 85% 52% at 50% 100%, rgba(184, 210, 232, 0.20), transparent 70%),
+    radial-gradient(ellipse 120% 65% at 50% 3%, rgba(120, 160, 195, 0.22), transparent 62%),
+    linear-gradient(180deg, rgba(72, 104, 136, 0.18), rgba(38, 56, 78, 0.26));
+}
+
+.loading-opaque-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(180deg, #111823 0%, #0b1018 100%);
+}
+
 .carved-panel {
   background: linear-gradient(180deg, rgba(35, 40, 56, 0.96) 0%, rgba(17, 20, 27, 0.97) 100%);
   border: 1px solid rgba(0, 0, 0, 0.6);

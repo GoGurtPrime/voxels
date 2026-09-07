@@ -26,6 +26,10 @@ function SplashIntro({ model }) {
   );
 }
 
+function MenuAtmosphere({ opacity = 1 }) {
+  return <div className="menu-atmosphere" style={{ opacity }} aria-hidden="true" />;
+}
+
 /** Shared frame for every route except the main menu's own hero layout. */
 function RouteShell({ title, kicker = "Voxels Engine", subtitle, children, footer, blocking = false, wide = false }) {
   const heading = useRef(null);
@@ -229,12 +233,22 @@ function JoinGame() {
 }
 
 function Loading({ model }) {
+  const payload = parseJson(model?.payload, null);
+  const backdropOpacity = typeof payload?.backdropOpacity === "number"
+    ? Math.max(0, Math.min(1, payload.backdropOpacity))
+    : 0;
+  const showStatus = payload?.showStatus !== false;
   const percent = Math.round((model.progress || 0) * 100);
   return (
-    <RouteShell title={model.title || "Loading"} subtitle={model.message || "Preparing your world..."} blocking>
-      <progress value={model.progress} max="1">{percent}%</progress>
-      <p className="supporting" style={{ marginTop: 10, textAlign: "right" }}>{percent}%</p>
-    </RouteShell>
+    <>
+      <div className="loading-opaque-layer" style={{ opacity: backdropOpacity }} aria-hidden="true" />
+      {showStatus ? (
+        <RouteShell title={model.title || "Loading"} subtitle={model.message || "Preparing your world..."} blocking>
+          <progress value={model.progress} max="1">{percent}%</progress>
+          <p className="supporting" style={{ marginTop: 10, textAlign: "right" }}>{percent}%</p>
+        </RouteShell>
+      ) : null}
+    </>
   );
 }
 
@@ -346,12 +360,14 @@ function Settings({ model }) {
 
 function App() {
   const [model] = useVoxelsBridgeModel({ route: Route.MainMenu, revision: 0, progress: 0, items: [] });
+  const showAtmosphere = model.route !== Route.Hud && model.route !== Route.Pause;
 
   // Example usage for future gameplay overlays:
   // const { runGuardedAction } = useVoxelsActionGate();
   // runGuardedAction("pause-resume", "resume", {});
   return (
     <>
+      {showAtmosphere ? <MenuAtmosphere opacity={model.route === Route.Loading ? 0.9 : 1} /> : null}
       {(() => {
         switch (model.route) {
           case Route.Splash: return <SplashIntro model={model} />;

@@ -492,6 +492,7 @@ int main(int argc, char** argv) {
     auto audio = std::make_unique<voxels::AudioEngine>(*audioDevice);
     std::string audioError;
     if (!audio->Initialize(audioError)) {
+        BootLog().Warn("SDL audio output unavailable: " + audioError + ". Falling back to silent null device.");
         audioDevice = std::make_unique<voxels::NullAudioDevice>();
         audio = std::make_unique<voxels::AudioEngine>(*audioDevice);
         audio->Initialize(audioError);
@@ -500,6 +501,18 @@ int main(int argc, char** argv) {
     const std::filesystem::path audioRoot = voxels::Paths::AssetsDir() / "audio";
     std::unordered_map<std::string, voxels::SoundHandle> soundBank =
         LoadSoundBank(*audio, voxels::Paths::AssetsDir() / "data" / "sounds.json", audioRoot);
+    if (const auto menuMusic = soundBank.find("music/menu_theme"); menuMusic != soundBank.end()) {
+        if (const voxels::PcmBuffer* clip = audio->GetMixer().GetClip(menuMusic->second); clip != nullptr) {
+            const std::size_t frames = clip->channels == 0 ? 0 : clip->samples.size() / clip->channels;
+            const double seconds = clip->sampleRate == 0 ? 0.0
+                                                          : static_cast<double>(frames) / static_cast<double>(clip->sampleRate);
+            BootLog().Info("Menu music loaded (" + std::to_string(seconds) + "s, " +
+                           std::to_string(clip->sampleRate) + " Hz, channels=" +
+                           std::to_string(clip->channels) + ")");
+        }
+    } else {
+        BootLog().Warn("Menu music sound id 'music/menu_theme' is missing from sounds.json.");
+    }
     RemoveUnversionedSaves();
     voxels::SaveManager saveManager(voxels::Paths::SavesDir() / kSaveFormatDirectory);
     bool running = true;
@@ -522,7 +535,7 @@ int main(int argc, char** argv) {
     appContext.requestPopOverlay = [&stateMachine]() { stateMachine.RequestPopOverlay(); };
     appContext.requestQuit = [&running]() { running = false; };
     stateMachine.Start(std::make_unique<voxels::MainMenuState>(&appContext));
-    if (!audio->IsAudible()) uiManager.ShowToast("Audio device unavailable; playing silently.");
+    if (!audio->IsAudible()) playerUi->ShowToast("Audio device unavailable; playing silently.");
 
     std::unique_ptr<voxels::networking::GameServer> localServer;
     voxels::networking::GameClient localClient;
@@ -631,9 +644,14 @@ int main(int argc, char** argv) {
         platformServices->Update();
 
 #ifdef VOXELS_HAS_CEF
-        webUi.BeginFrame();
+    webUi.BeginFrame();
 #endif
-    static_cast<void>(renderer->BeginFrame({0.12f, 0.16f, 0.19f, 1.0f}));
+    std::array<float, 4> clearColor{0.12f, 0.16f, 0.19f, 1.0f};
+    if (voxels::IsMainMenuBackdropActive()) {
+        // Brighter atmospheric clear to avoid a flat dark horizon behind partially-loaded chunks.
+        clearColor = {0.57f, 0.70f, 0.86f, 1.0f};
+    }
+    static_cast<void>(renderer->BeginFrame(clearColor));
         voxels::RenderMainMenuBackdrop();
         uiManager.BeginFrame();
         stateMachine.Render();

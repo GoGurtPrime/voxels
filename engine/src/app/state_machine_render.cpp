@@ -31,11 +31,15 @@ namespace {
 voxels::graphics::IGraphicsRenderer* g_renderer = nullptr;
 bool g_startupSplashShown = false;
 
-constexpr float kStartupSplashHoldSeconds = 2.2f;
-constexpr float kStartupSplashFadeSeconds = 0.7f;
+constexpr float kPreviewRevealSeconds = 1.2f;
+constexpr float kLogoFadeInSeconds = 0.8f;
+constexpr float kLogoHoldSeconds = 10.0f;
+constexpr float kLogoFadeOutSeconds = 0.9f;
 constexpr int kMenuPreviewTerrainSections = 8;
 
 struct CameraShot {
+    enum class Style : std::uint8_t { Curve, PanX, PanZ };
+    Style style = Style::Curve;
     glm::vec3 p0{};
     glm::vec3 p1{};
     glm::vec3 p2{};
@@ -55,7 +59,7 @@ public:
         m_renderer = renderer;
         m_options = WorldOptions{};
         m_options.seed = static_cast<WorldSeed>(seed);
-        m_options.renderDistanceChunks = std::clamp(renderDistanceChunks, 4, 10);
+        m_options.renderDistanceChunks = std::clamp(renderDistanceChunks, 4, 8);
         m_options.simulationDistanceChunks = std::min(m_options.renderDistanceChunks, 6);
         m_options.alwaysSunny = true;
 
@@ -96,7 +100,7 @@ public:
         m_camera.fovY = glm::radians(62.0f);
         m_camera.aspect = 16.0f / 9.0f;
         m_camera.nearPlane = 0.1f;
-        m_camera.farPlane = 320.0f;
+        m_camera.farPlane = 170.0f;
     }
 
     void Stop() noexcept {
@@ -201,32 +205,67 @@ private:
     }
 
     void SelectNextShot() {
-        const glm::vec2 start = RandomPointAround(38.0f, 74.0f);
-        const glm::vec2 end = RandomPointAround(16.0f, 56.0f);
-        const float startY = static_cast<float>(SurfaceYAt(start.x, start.y)) + RandomRange(12.0f, 15.0f);
-        const float endY = static_cast<float>(SurfaceYAt(end.x, end.y)) + RandomRange(9.0f, 12.0f);
+        const float roll = RandomRange(0.0f, 1.0f);
+        m_activeShot.style = roll < 0.5f ? CameraShot::Style::Curve : (roll < 0.75f ? CameraShot::Style::PanX : CameraShot::Style::PanZ);
 
-        m_activeShot.p0 = {start.x, startY, start.y};
-        m_activeShot.p3 = {end.x, endY, end.y};
+        if (m_activeShot.style == CameraShot::Style::Curve) {
+            const glm::vec2 start = RandomPointAround(30.0f, 58.0f);
+            const glm::vec2 end = RandomPointAround(14.0f, 46.0f);
+            const float startY = static_cast<float>(SurfaceYAt(start.x, start.y)) + RandomRange(10.0f, 13.0f);
+            const float endY = static_cast<float>(SurfaceYAt(end.x, end.y)) + RandomRange(8.0f, 11.0f);
 
-        const glm::vec3 span = m_activeShot.p3 - m_activeShot.p0;
-        const glm::vec3 side = glm::normalize(glm::vec3{-span.z, 0.0f, span.x});
-        m_activeShot.p1 = m_activeShot.p0 + span * 0.33f + side * RandomRange(-18.0f, 18.0f);
-        m_activeShot.p2 = m_activeShot.p0 + span * 0.66f - side * RandomRange(-12.0f, 12.0f);
-        m_activeShot.p1.y = std::max(m_activeShot.p1.y, static_cast<float>(SurfaceYAt(m_activeShot.p1.x, m_activeShot.p1.z)) + 11.0f);
-        m_activeShot.p2.y = std::max(m_activeShot.p2.y, static_cast<float>(SurfaceYAt(m_activeShot.p2.x, m_activeShot.p2.z)) + 10.0f);
+            m_activeShot.p0 = {start.x, startY, start.y};
+            m_activeShot.p3 = {end.x, endY, end.y};
 
-        m_activeShot.durationSeconds = RandomRange(5.0f, 10.0f);
+            const glm::vec3 span = m_activeShot.p3 - m_activeShot.p0;
+            glm::vec3 side = glm::vec3{-span.z, 0.0f, span.x};
+            if (glm::dot(side, side) < 0.0001f) side = glm::vec3{1.0f, 0.0f, 0.0f};
+            side = glm::normalize(side);
+            m_activeShot.p1 = m_activeShot.p0 + span * 0.33f + side * RandomRange(-14.0f, 14.0f);
+            m_activeShot.p2 = m_activeShot.p0 + span * 0.66f - side * RandomRange(-10.0f, 10.0f);
+            m_activeShot.p1.y = std::max(m_activeShot.p1.y, static_cast<float>(SurfaceYAt(m_activeShot.p1.x, m_activeShot.p1.z)) + 9.0f);
+            m_activeShot.p2.y = std::max(m_activeShot.p2.y, static_cast<float>(SurfaceYAt(m_activeShot.p2.x, m_activeShot.p2.z)) + 8.0f);
+            m_activeShot.durationSeconds = RandomRange(8.0f, 14.0f);
+        } else if (m_activeShot.style == CameraShot::Style::PanX) {
+            const float z = RandomRange(-46.0f, 46.0f);
+            const float x0 = RandomRange(-58.0f, -20.0f);
+            const float x1 = RandomRange(20.0f, 58.0f);
+            const bool reverse = RandomRange(0.0f, 1.0f) > 0.5f;
+            const glm::vec3 start = {reverse ? x1 : x0, 0.0f, z};
+            const glm::vec3 end = {reverse ? x0 : x1, 0.0f, z};
+            const float startY = static_cast<float>(SurfaceYAt(start.x, start.z)) + RandomRange(8.0f, 11.0f);
+            const float endY = static_cast<float>(SurfaceYAt(end.x, end.z)) + RandomRange(8.0f, 11.0f);
+            m_activeShot.p0 = {start.x, startY, start.z};
+            m_activeShot.p3 = {end.x, endY, end.z};
+            m_activeShot.p1 = m_activeShot.p0 + (m_activeShot.p3 - m_activeShot.p0) * 0.33f;
+            m_activeShot.p2 = m_activeShot.p0 + (m_activeShot.p3 - m_activeShot.p0) * 0.66f;
+            m_activeShot.durationSeconds = RandomRange(10.0f, 16.0f);
+        } else {
+            const float x = RandomRange(-46.0f, 46.0f);
+            const float z0 = RandomRange(-58.0f, -20.0f);
+            const float z1 = RandomRange(20.0f, 58.0f);
+            const bool reverse = RandomRange(0.0f, 1.0f) > 0.5f;
+            const glm::vec3 start = {x, 0.0f, reverse ? z1 : z0};
+            const glm::vec3 end = {x, 0.0f, reverse ? z0 : z1};
+            const float startY = static_cast<float>(SurfaceYAt(start.x, start.z)) + RandomRange(8.0f, 11.0f);
+            const float endY = static_cast<float>(SurfaceYAt(end.x, end.z)) + RandomRange(8.0f, 11.0f);
+            m_activeShot.p0 = {start.x, startY, start.z};
+            m_activeShot.p3 = {end.x, endY, end.z};
+            m_activeShot.p1 = m_activeShot.p0 + (m_activeShot.p3 - m_activeShot.p0) * 0.33f;
+            m_activeShot.p2 = m_activeShot.p0 + (m_activeShot.p3 - m_activeShot.p0) * 0.66f;
+            m_activeShot.durationSeconds = RandomRange(10.0f, 16.0f);
+        }
+
         m_shotElapsedSeconds = 0.0f;
     }
 
     void UpdateCamera(float deltaSeconds) {
         if (!m_ready) {
             m_orbitTime += deltaSeconds;
-            const float radius = 48.0f;
-            const float angle = m_orbitTime * 0.13f;
-            m_camera.position = {std::sin(angle) * radius, 34.0f, std::cos(angle) * radius};
-            const glm::vec3 lookAt{0.0f, 20.0f, 0.0f};
+            const float radius = 42.0f;
+            const float angle = m_orbitTime * 0.09f;
+            m_camera.position = {std::sin(angle) * radius, 27.0f, std::cos(angle) * radius};
+            const glm::vec3 lookAt{0.0f, 18.0f, 0.0f};
             const glm::vec3 dir = glm::normalize(lookAt - m_camera.position);
             m_camera.yaw = std::atan2(-dir.x, -dir.z);
             m_camera.pitch = std::asin(std::clamp(dir.y, -1.0f, 1.0f));
@@ -239,7 +278,7 @@ private:
         }
         const float t = std::clamp(m_shotElapsedSeconds / std::max(0.001f, m_activeShot.durationSeconds), 0.0f, 1.0f);
         glm::vec3 position = BezierPoint(t);
-        const float desiredClearance = 15.0f + (10.0f - 15.0f) * t;
+        const float desiredClearance = 11.0f + (8.0f - 11.0f) * t;
         const float minimumY = static_cast<float>(SurfaceYAt(position.x, position.z)) + desiredClearance;
         if (position.y < minimumY) position.y = minimumY;
         m_camera.position = position;
@@ -347,12 +386,17 @@ void MainMenuState::PublishSplash(float fade) const {
                             .blocking = true});
 }
 
-void MainMenuState::PublishPreviewLoading(float progress) const {
+void MainMenuState::PublishPreviewLoading(float progress, float backdropOpacity, bool showStatus) const {
     if (m_context == nullptr || m_context->ui == nullptr) return;
     m_context->ui->Publish({.route = PlayerUIRoute::Loading,
-                            .revision = static_cast<std::uint64_t>(progress * 1000.0f) + 2000U,
+                            .revision = static_cast<std::uint64_t>(progress * 1000.0f) +
+                                        static_cast<std::uint64_t>(backdropOpacity * 1000.0f) * 10U +
+                                        (showStatus ? 1U : 0U) + 2000U,
                             .title = "PREPARING MAIN MENU",
-                            .message = "Generating a scenic world flythrough...",
+                            .message = showStatus ? "Generating a scenic world flythrough..." : "",
+                            .payload = std::string{"{\"backdropOpacity\":"} +
+                                       std::to_string(std::clamp(backdropOpacity, 0.0f, 1.0f)) +
+                                       ",\"showStatus\":" + (showStatus ? "true" : "false") + "}",
                             .progress = std::clamp(progress, 0.0f, 1.0f),
                             .blocking = true});
 }
@@ -369,40 +413,56 @@ void MainMenuState::PublishReadyMenu() const {
 void MainMenuState::Update(double deltaSeconds) {
     m_phaseElapsedSeconds += static_cast<float>(deltaSeconds);
 
-    if (m_phase == IntroPhase::SplashHold) {
-        PublishSplash(1.0f);
-        if (m_phaseElapsedSeconds >= kStartupSplashHoldSeconds) {
-            m_phase = IntroPhase::SplashFade;
-            m_phaseElapsedSeconds = 0.0f;
+    if (!m_startedMenuMusic && m_context != nullptr && m_context->audio != nullptr) {
+        if (const auto it = m_context->soundBank.find("music/menu_theme"); it != m_context->soundBank.end()) {
+            m_context->audio->PlayMusic({it->second.id}, true);
         }
-        return;
+        m_startedMenuMusic = true;
     }
 
-    if (m_phase == IntroPhase::SplashFade) {
-        const float fade = 1.0f - std::clamp(m_phaseElapsedSeconds / kStartupSplashFadeSeconds, 0.0f, 1.0f);
-        PublishSplash(fade);
-        if (m_phaseElapsedSeconds >= kStartupSplashFadeSeconds) {
-            m_phase = IntroPhase::PreviewLoading;
-            m_phaseElapsedSeconds = 0.0f;
-        }
-        return;
-    }
-
-    if (m_phase == IntroPhase::PreviewLoading) {
-        if (!IsMainMenuBackdropActive()) {
-            m_phase = IntroPhase::Ready;
-            m_phaseElapsedSeconds = 0.0f;
-            return;
-        }
-        if (!m_startedMenuMusic && m_context != nullptr && m_context->audio != nullptr) {
-            if (const auto it = m_context->soundBank.find("music/menu_theme"); it != m_context->soundBank.end()) {
-                m_context->audio->PlayMusic({it->second.id}, true);
-            }
-            m_startedMenuMusic = true;
-        }
+    if (m_phase == IntroPhase::PreviewLoadingOpaque) {
         const float progress = GetMainMenuBackdropProgress();
-        PublishPreviewLoading(progress);
-        if (IsMainMenuBackdropReady()) {
+        PublishPreviewLoading(progress, 1.0f, true);
+        if (IsMainMenuBackdropReady() || !IsMainMenuBackdropActive()) {
+            m_phase = IntroPhase::PreviewReveal;
+            m_phaseElapsedSeconds = 0.0f;
+        }
+        return;
+    }
+
+    if (m_phase == IntroPhase::PreviewReveal) {
+        const float overlay = 1.0f - std::clamp(m_phaseElapsedSeconds / kPreviewRevealSeconds, 0.0f, 1.0f);
+        PublishPreviewLoading(1.0f, overlay, false);
+        if (m_phaseElapsedSeconds >= kPreviewRevealSeconds) {
+            m_phase = m_runLogoSequence ? IntroPhase::LogoFadeIn : IntroPhase::Ready;
+            m_phaseElapsedSeconds = 0.0f;
+        }
+        return;
+    }
+
+    if (m_phase == IntroPhase::LogoFadeIn) {
+        const float fade = std::clamp(m_phaseElapsedSeconds / kLogoFadeInSeconds, 0.0f, 1.0f);
+        PublishSplash(fade);
+        if (m_phaseElapsedSeconds >= kLogoFadeInSeconds) {
+            m_phase = IntroPhase::LogoHold;
+            m_phaseElapsedSeconds = 0.0f;
+        }
+        return;
+    }
+
+    if (m_phase == IntroPhase::LogoHold) {
+        PublishSplash(1.0f);
+        if (m_phaseElapsedSeconds >= kLogoHoldSeconds) {
+            m_phase = IntroPhase::LogoFadeOut;
+            m_phaseElapsedSeconds = 0.0f;
+        }
+        return;
+    }
+
+    if (m_phase == IntroPhase::LogoFadeOut) {
+        const float fade = 1.0f - std::clamp(m_phaseElapsedSeconds / kLogoFadeOutSeconds, 0.0f, 1.0f);
+        PublishSplash(fade);
+        if (m_phaseElapsedSeconds >= kLogoFadeOutSeconds) {
             m_phase = IntroPhase::Ready;
             m_phaseElapsedSeconds = 0.0f;
         }
