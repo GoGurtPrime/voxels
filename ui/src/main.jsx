@@ -305,14 +305,44 @@ function SliderField({ label, value, min, max, step = 1, onChange, format }) {
   );
 }
 
+const WINDOW_MODES = ["Windowed", "Borderless", "Fullscreen"];
+const RESOLUTION_PRESETS = [
+  { width: 1280, height: 720, label: "1280 x 720" },
+  { width: 1366, height: 768, label: "1366 x 768" },
+  { width: 1600, height: 900, label: "1600 x 900" },
+  { width: 1920, height: 1080, label: "1920 x 1080" },
+  { width: 2560, height: 1440, label: "2560 x 1440" },
+  { width: 3840, height: 2160, label: "3840 x 2160" }
+];
+
+function ResolutionKey(width, height) {
+  return `${width}x${height}`;
+}
+
 function Settings({ model }) {
   const { runGuardedAction, isPending } = useVoxelsActionGate();
-  const [settings, setSettings] = useState({ fov: 90, renderDistance: 8, simulationDistance: 4, master: 1, music: 0.7, effects: 0.8, sensitivity: 1, invertY: false, particles: true });
+  const [settings, setSettings] = useState({
+    windowMode: "Windowed",
+    resolutionWidth: 1280,
+    resolutionHeight: 720,
+    fov: 90,
+    renderDistance: 8,
+    simulationDistance: 4,
+    master: 1,
+    music: 0.7,
+    effects: 0.8,
+    sensitivity: 1,
+    invertY: false,
+    particles: true
+  });
   useEffect(() => {
     const payload = parseJson(model?.payload, null);
     if (!payload || typeof payload !== "object") return;
     setSettings((previous) => ({
       ...previous,
+      windowMode: typeof payload.windowMode === "string" ? payload.windowMode : previous.windowMode,
+      resolutionWidth: typeof payload.resolutionWidth === "number" ? payload.resolutionWidth : previous.resolutionWidth,
+      resolutionHeight: typeof payload.resolutionHeight === "number" ? payload.resolutionHeight : previous.resolutionHeight,
       fov: typeof payload.fov === "number" ? payload.fov : previous.fov,
       renderDistance: typeof payload.renderDistance === "number" ? payload.renderDistance : previous.renderDistance,
       simulationDistance: typeof payload.simulationDistance === "number" ? payload.simulationDistance : previous.simulationDistance,
@@ -326,6 +356,7 @@ function Settings({ model }) {
   }, [model?.revision, model?.payload]);
   const update = (key, value) => setSettings({ ...settings, [key]: value });
   const percent = (value) => `${Math.round(value * 100)}%`;
+  const selectedResolution = ResolutionKey(settings.resolutionWidth, settings.resolutionHeight);
   return (
     <RouteShell
       title="Settings"
@@ -345,6 +376,35 @@ function Settings({ model }) {
         });
       }}>
         <p className="section-title">Video</p>
+        <div className="field-row">
+          <label className="field-label" htmlFor="window-mode">Window mode</label>
+          <select
+            id="window-mode"
+            value={settings.windowMode}
+            onChange={(event) => update("windowMode", event.target.value)}
+          >
+            {WINDOW_MODES.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+          </select>
+        </div>
+        <div className="field-row">
+          <label className="field-label" htmlFor="resolution-preset">Resolution</label>
+          <select
+            id="resolution-preset"
+            value={selectedResolution}
+            onChange={(event) => {
+              const [width, height] = event.target.value.split("x").map((value) => Number.parseInt(value, 10));
+              if (Number.isFinite(width) && Number.isFinite(height)) {
+                setSettings({ ...settings, resolutionWidth: width, resolutionHeight: height });
+              }
+            }}
+          >
+            {RESOLUTION_PRESETS.map((resolution) => (
+              <option key={ResolutionKey(resolution.width, resolution.height)} value={ResolutionKey(resolution.width, resolution.height)}>
+                {resolution.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <SliderField label="Field of view" value={settings.fov} min={60} max={110} onChange={(value) => update("fov", value)} format={(value) => `${value}°`} />
         <SliderField label="Render distance" value={settings.renderDistance} min={2} max={16} onChange={(value) => update("renderDistance", Math.round(value))} format={(value) => `${value} chunks`} />
         <SliderField label="Simulation distance" value={settings.simulationDistance} min={2} max={12} onChange={(value) => update("simulationDistance", Math.round(value))} format={(value) => `${value} chunks`} />

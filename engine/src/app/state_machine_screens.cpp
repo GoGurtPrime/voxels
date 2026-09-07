@@ -92,8 +92,43 @@ void ConfigureInGameState(InGameState& state, AppContext* context, const GameSav
     state.SetActiveSave(save);
 }
 
+std::string_view WindowModeToString(WindowMode mode) noexcept {
+    switch (mode) {
+        case WindowMode::Windowed: return "Windowed";
+        case WindowMode::Borderless: return "Borderless";
+        case WindowMode::Fullscreen: return "Fullscreen";
+    }
+    return "Windowed";
+}
+
+void ApplyWindowPreferences(IPlatform& platform, const GamePreferences& preferences) {
+    const int width = std::clamp(preferences.resolution.width, 640, 7680);
+    const int height = std::clamp(preferences.resolution.height, 360, 4320);
+    platform.SetWindowResizable(false);
+    switch (preferences.windowMode) {
+        case WindowMode::Windowed:
+            platform.SetWindowFullscreen(false);
+            platform.SetWindowBorderless(false);
+            platform.SetWindowResolution(width, height);
+            break;
+        case WindowMode::Borderless:
+            platform.SetWindowFullscreen(false);
+            platform.SetWindowBorderless(true);
+            platform.SetWindowResolution(width, height);
+            break;
+        case WindowMode::Fullscreen:
+            platform.SetWindowBorderless(false);
+            platform.SetWindowResolution(width, height);
+            platform.SetWindowFullscreen(true);
+            break;
+    }
+}
+
 std::string BuildSettingsPayload(const GamePreferences& preferences, RendererBackend activeRenderer) {
     const nlohmann::json payload{
+        {"windowMode", WindowModeToString(preferences.windowMode)},
+        {"resolutionWidth", preferences.resolution.width},
+        {"resolutionHeight", preferences.resolution.height},
         {"fov", preferences.fieldOfView},
         {"renderDistance", preferences.renderDistance},
         {"simulationDistance", preferences.simulationDistance},
@@ -669,6 +704,14 @@ void SettingsState::Render() {
     if (ImGui::BeginTabBar("Settings Tabs")) {
         if (ImGui::BeginTabItem("Video")) {
             if (BeginSettingsTable("VideoSettings")) {
+                int windowModeIndex = static_cast<int>(m_pending.windowMode);
+                constexpr const char* windowModes[] = {"Windowed", "Borderless", "Fullscreen"};
+                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Window Mode"); EndSettingsRow();
+                if (ImGui::Combo("##windowMode", &windowModeIndex, windowModes, 3)) {
+                    m_pending.windowMode = static_cast<WindowMode>(std::clamp(windowModeIndex, 0, 2));
+                }
+                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Resolution Width"); EndSettingsRow(); ImGui::SliderInt("##resolutionWidth", &m_pending.resolution.width, 640, 7680);
+                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Resolution Height"); EndSettingsRow(); ImGui::SliderInt("##resolutionHeight", &m_pending.resolution.height, 360, 4320);
                 const PlatformType platformType = m_context->platform != nullptr
                                                       ? m_context->platform->GetContext().type
                                                       : PlatformType::Unknown;
@@ -720,6 +763,9 @@ void SettingsState::Render() {
     }
     if (ui::MenuButton("Apply")) {
         *m_context->preferences = m_pending;
+        if (m_context->platform != nullptr) {
+            ApplyWindowPreferences(*m_context->platform, m_pending);
+        }
         if (m_context->activeGame != nullptr) m_context->activeGame->ApplyPreferences(m_pending);
         if (m_context->audio != nullptr) {
             m_context->audio->ApplyVolumes(m_pending.masterVolume, m_pending.musicVolume,

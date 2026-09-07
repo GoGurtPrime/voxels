@@ -27,7 +27,14 @@ public:
     void PollEvents(IPlatformEventListener* listener) override;
     void SwapBuffers() override;
     void SetWindowFullscreen(bool fullscreen) override;
+    void SetWindowBorderless(bool borderless) override;
+    void SetWindowResizable(bool resizable) override;
     void SetWindowResolution(int width, int height) override;
+    void SetWindowTitle(const std::string& title) override;
+    void SetRelativeMouseMode(bool enabled) override;
+    void SetCursorVisible(bool visible) override;
+    void SetVSync(bool enabled) override;
+    std::pair<int, int> GetDrawableSize() const override;
     double GetHighResTimeSeconds() const override;
 
     static constexpr int kFixedWidth = 640;

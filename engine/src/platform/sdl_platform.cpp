@@ -47,10 +47,13 @@ bool SDLPlatform::Initialize(const WindowConfig& config) {
         SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
     }
 
-    Uint32 flags = SDL_WINDOW_RESIZABLE;
+    Uint32 flags = SDL_WINDOW_ALLOW_HIGHDPI;
+    if (config.resizable) {
+        flags |= SDL_WINDOW_RESIZABLE;
+    }
     if (m_graphicsApi == WindowGraphicsApi::OpenGL) flags |= SDL_WINDOW_OPENGL;
     if (config.fullscreen) {
-        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        flags |= SDL_WINDOW_FULLSCREEN;
     }
 
     m_window = SDL_CreateWindow(config.title.c_str(), SDL_WINDOWPOS_CENTERED,
@@ -79,6 +82,8 @@ bool SDLPlatform::Initialize(const WindowConfig& config) {
     m_width = config.width;
     m_height = config.height;
     m_fullscreen = config.fullscreen;
+    m_borderless = false;
+    m_resizable = config.resizable;
     m_perfFrequency = SDL_GetPerformanceFrequency();
     SetVSync(m_vsync);
     return true;
@@ -236,7 +241,29 @@ void SDLPlatform::SwapBuffers() {
 void SDLPlatform::SetWindowFullscreen(bool fullscreen) {
     m_fullscreen = fullscreen;
     if (m_window != nullptr) {
-        SDL_SetWindowFullscreen(m_window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+        if (fullscreen) {
+            SDL_DisplayMode mode{};
+            mode.w = m_width;
+            mode.h = m_height;
+            mode.refresh_rate = 0;
+            mode.format = 0;
+            SDL_SetWindowDisplayMode(m_window, &mode);
+        }
+        SDL_SetWindowFullscreen(m_window, fullscreen ? SDL_WINDOW_FULLSCREEN : 0);
+    }
+}
+
+void SDLPlatform::SetWindowBorderless(bool borderless) {
+    m_borderless = borderless;
+    if (m_window != nullptr) {
+        SDL_SetWindowBordered(m_window, borderless ? SDL_FALSE : SDL_TRUE);
+    }
+}
+
+void SDLPlatform::SetWindowResizable(bool resizable) {
+    m_resizable = resizable;
+    if (m_window != nullptr) {
+        SDL_SetWindowResizable(m_window, resizable ? SDL_TRUE : SDL_FALSE);
     }
 }
 

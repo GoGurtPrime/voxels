@@ -131,6 +131,9 @@ Notes:
 
 ```json
 {
+  "windowMode": "Windowed",
+  "resolutionWidth": 1280,
+  "resolutionHeight": 720,
   "fov": 90.0,
   "renderDistance": 8,
   "simulationDistance": 4,
@@ -150,7 +153,7 @@ Notes:
 
 - Web UI must hydrate controls from this payload when entering or revising settings.
 - Native side clamps values before applying.
-- Native side persists to settings file and republishes the current settings snapshot after apply.
+- Native side applies window mode and resolution immediately, then persists to settings file and republishes the current settings snapshot after apply.
 
 ### Loading route (`route = 3`)
 

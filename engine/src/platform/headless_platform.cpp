@@ -21,6 +21,8 @@ bool HeadlessPlatform::Initialize(const WindowConfig& config) {
     m_width = config.width;
     m_height = config.height;
     m_fullscreen = config.fullscreen;
+    m_borderless = false;
+    m_resizable = config.resizable;
     m_cursorVisible = true;
     m_relativeMouseMode = false;
     m_eventQueue.clear();
@@ -68,6 +70,14 @@ void HeadlessPlatform::SwapBuffers() {
 void HeadlessPlatform::SetWindowFullscreen(bool fullscreen) {
     m_fullscreen = fullscreen;
     SimulateEvent(PlatformEvent{PlatformEventType::WindowResized, m_width, m_height});
+}
+
+void HeadlessPlatform::SetWindowBorderless(bool borderless) {
+    m_borderless = borderless;
+}
+
+void HeadlessPlatform::SetWindowResizable(bool resizable) {
+    m_resizable = resizable;
 }
 
 void HeadlessPlatform::SetWindowResolution(int width, int height) {

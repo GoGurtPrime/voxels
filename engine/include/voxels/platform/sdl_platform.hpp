@@ -29,6 +29,8 @@ public:
     void PollEvents(IPlatformEventListener* listener) override;
     void SwapBuffers() override;
     void SetWindowFullscreen(bool fullscreen) override;
+    void SetWindowBorderless(bool borderless) override;
+    void SetWindowResizable(bool resizable) override;
     void SetWindowResolution(int width, int height) override;
     void SetWindowTitle(const std::string& title) override;
     void SetRelativeMouseMode(bool enabled) override;
@@ -53,6 +55,8 @@ private:
     int m_width = 1280;
     int m_height = 720;
     bool m_fullscreen = false;
+    bool m_borderless = false;
+    bool m_resizable = true;
     bool m_vsync = true;
     WindowGraphicsApi m_graphicsApi = WindowGraphicsApi::OpenGL;
     std::vector<ListenerEntry> m_listeners;

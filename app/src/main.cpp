@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <array>
+#include <algorithm>
 #include <charconv>
 #include <csignal>
 #include <cmath>
@@ -79,16 +80,17 @@ voxels::Logger& BootLog() {
 
 class WindowEventListener final : public voxels::IPlatformEventListener {
 public:
-    WindowEventListener(bool& runningFlag, voxels::graphics::IGraphicsRenderer& renderer, voxels::InputManager& inputManager,
+    WindowEventListener(bool& runningFlag, voxels::IPlatform& platform, voxels::graphics::IGraphicsRenderer& renderer, voxels::InputManager& inputManager,
                         voxels::IPlayerUI& uiManager)
-        : m_running(runningFlag), m_renderer(renderer), m_inputManager(inputManager), m_uiManager(uiManager) {}
+        : m_running(runningFlag), m_platform(platform), m_renderer(renderer), m_inputManager(inputManager), m_uiManager(uiManager) {}
 
     void OnPlatformEvent(const voxels::PlatformEvent& event) override {
         if (event.type == voxels::PlatformEventType::WindowClosed ||
             event.type == voxels::PlatformEventType::QuitRequested) {
             m_running = false;
         } else if (event.type == voxels::PlatformEventType::WindowResized) {
-            m_renderer.SetViewport(event.width, event.height);
+            const auto [drawableWidth, drawableHeight] = m_platform.GetDrawableSize();
+            m_renderer.SetViewport(drawableWidth, drawableHeight);
         } else if (event.type == voxels::PlatformEventType::KeyDown) {
             if (event.keyCode == 1073741884U) {
                 m_uiManager.ToggleDebugOverlay();
@@ -116,6 +118,7 @@ public:
 
 private:
     bool& m_running;
+    voxels::IPlatform& m_platform;
     voxels::graphics::IGraphicsRenderer& m_renderer;
     voxels::InputManager& m_inputManager;
     voxels::IPlayerUI& m_uiManager;
@@ -167,6 +170,49 @@ constexpr voxels::PlatformType HostPlatformType() noexcept {
 #else
     return voxels::PlatformType::Unknown;
 #endif
+}
+
+voxels::Resolution ResolveWindowResolution(const voxels::GamePreferences& preferences,
+                                           const voxels::AppCommandLineOptions& options) {
+    voxels::Resolution resolved = preferences.resolution;
+    if (options.resolutionOverride) {
+        resolved.width = options.resolutionWidth;
+        resolved.height = options.resolutionHeight;
+    }
+    resolved.width = std::clamp(resolved.width, 640, 7680);
+    resolved.height = std::clamp(resolved.height, 360, 4320);
+    return resolved;
+}
+
+voxels::WindowMode ResolveWindowMode(const voxels::GamePreferences& preferences,
+                                     const voxels::AppCommandLineOptions& options) {
+    if (options.fullscreenOverride) {
+        return options.fullscreenValue ? voxels::WindowMode::Fullscreen : voxels::WindowMode::Windowed;
+    }
+    return preferences.windowMode;
+}
+
+void ApplyWindowPreferences(voxels::IPlatform& platform,
+                            const voxels::WindowMode mode,
+                            const voxels::Resolution& resolution) {
+    platform.SetWindowResizable(false);
+    switch (mode) {
+        case voxels::WindowMode::Windowed:
+            platform.SetWindowFullscreen(false);
+            platform.SetWindowBorderless(false);
+            platform.SetWindowResolution(resolution.width, resolution.height);
+            break;
+        case voxels::WindowMode::Borderless:
+            platform.SetWindowFullscreen(false);
+            platform.SetWindowBorderless(true);
+            platform.SetWindowResolution(resolution.width, resolution.height);
+            break;
+        case voxels::WindowMode::Fullscreen:
+            platform.SetWindowBorderless(false);
+            platform.SetWindowResolution(resolution.width, resolution.height);
+            platform.SetWindowFullscreen(true);
+            break;
+    }
 }
 
 voxels::AudioCategory AudioCategoryFromString(const std::string& category) {
@@ -568,15 +614,17 @@ int main(int argc, char** argv) {
     const bool firstRun = !std::filesystem::exists(settingsPath);
     voxels::PreferencesManager preferencesManager(settingsPath, HostPlatformType());
     voxels::GamePreferences preferences = preferencesManager.Load();
+    const voxels::Resolution runtimeResolution = ResolveWindowResolution(preferences, options);
+    const voxels::WindowMode runtimeWindowMode = ResolveWindowMode(preferences, options);
     const voxels::RendererBackend activeBackend =
         voxels::PreferencesManager::ResolveRendererBackend(preferences.rendererBackend, HostPlatformType());
 
     voxels::WindowConfig windowConfig{};
     windowConfig.title = "Voxels Engine";
-    windowConfig.width = options.resolutionOverride ? options.resolutionWidth : preferences.resolution.width;
-    windowConfig.height = options.resolutionOverride ? options.resolutionHeight : preferences.resolution.height;
-    windowConfig.fullscreen = options.fullscreenOverride ? options.fullscreenValue
-                                                         : preferences.windowMode != voxels::WindowMode::Windowed;
+    windowConfig.width = runtimeResolution.width;
+    windowConfig.height = runtimeResolution.height;
+    windowConfig.fullscreen = false;
+    windowConfig.resizable = false;
     windowConfig.graphicsApi = activeBackend == voxels::RendererBackend::OpenGL
                                    ? voxels::WindowGraphicsApi::OpenGL
                                    : voxels::WindowGraphicsApi::Native;
@@ -593,13 +641,8 @@ int main(int argc, char** argv) {
     const std::string windowTitle = "Voxels Engine v" + std::string(voxels::kEngineVersion) + " (" + voxels::kEngineGitCommit + ")";
     auto* platform = engine.getPlatform();
     if (platform != nullptr) {
-        const int windowWidth = options.resolutionOverride ? options.resolutionWidth : 1280;
-        const int windowHeight = options.resolutionOverride ? options.resolutionHeight : 720;
-        const bool windowFullscreen = options.fullscreenOverride ? options.fullscreenValue : false;
-
         platform->SetWindowTitle(windowTitle);
-        platform->SetWindowResolution(windowWidth, windowHeight);
-        platform->SetWindowFullscreen(windowFullscreen);
+        ApplyWindowPreferences(*platform, runtimeWindowMode, runtimeResolution);
         if (options.vsyncOverride) {
             platform->SetVSync(options.vsyncValue);
         }
@@ -785,7 +828,7 @@ int main(int argc, char** argv) {
             &appContext, joinHost + ":" + std::to_string(joinPort)));
     }
 
-    WindowEventListener windowListener(running, *renderer, inputManager, *playerUi);
+    WindowEventListener windowListener(running, *platform, *renderer, inputManager, *playerUi);
     if (platform != nullptr) {
         platform->RegisterEventListener(&uiManager, 1000);
 #ifdef VOXELS_HAS_CEF

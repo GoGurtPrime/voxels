@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <charconv>
 #include <filesystem>
+#include <string_view>
 #include <nlohmann/json.hpp>
 
 #include "voxels/app/menus.hpp"
@@ -18,6 +19,36 @@
 
 namespace voxels {
 namespace {
+
+WindowMode WindowModeFromSettingsString(std::string_view value, WindowMode fallback) {
+    if (value == "Windowed") return WindowMode::Windowed;
+    if (value == "Borderless") return WindowMode::Borderless;
+    if (value == "Fullscreen") return WindowMode::Fullscreen;
+    return fallback;
+}
+
+void ApplyWindowPreferences(IPlatform& platform, const GamePreferences& preferences) {
+    const int width = std::clamp(preferences.resolution.width, 640, 7680);
+    const int height = std::clamp(preferences.resolution.height, 360, 4320);
+    platform.SetWindowResizable(false);
+    switch (preferences.windowMode) {
+        case WindowMode::Windowed:
+            platform.SetWindowFullscreen(false);
+            platform.SetWindowBorderless(false);
+            platform.SetWindowResolution(width, height);
+            break;
+        case WindowMode::Borderless:
+            platform.SetWindowFullscreen(false);
+            platform.SetWindowBorderless(true);
+            platform.SetWindowResolution(width, height);
+            break;
+        case WindowMode::Fullscreen:
+            platform.SetWindowBorderless(false);
+            platform.SetWindowResolution(width, height);
+            platform.SetWindowFullscreen(true);
+            break;
+    }
+}
 
 void RequestError(AppContext& context, std::string detail) {
     if (context.requestTransition) context.requestTransition(std::make_unique<ErrorState>(&context, "Menu Action Failed", std::move(detail)));
@@ -150,6 +181,22 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
                 nlohmann::json payload = nlohmann::json::object();
                 if (!action.secondary.empty()) payload = nlohmann::json::parse(action.secondary);
                 if (payload.contains("settings") && payload.at("settings").is_object()) payload = payload.at("settings");
+                if (const auto windowMode = payload.find("windowMode");
+                    windowMode != payload.end() && windowMode->is_string()) {
+                    context.preferences->windowMode =
+                        WindowModeFromSettingsString(windowMode->get<std::string>(), context.preferences->windowMode);
+                }
+                if (const auto resolution = payload.find("resolution");
+                    resolution != payload.end() && resolution->is_object()) {
+                    context.preferences->resolution.width =
+                        std::clamp(resolution->value("width", context.preferences->resolution.width), 640, 7680);
+                    context.preferences->resolution.height =
+                        std::clamp(resolution->value("height", context.preferences->resolution.height), 360, 4320);
+                }
+                context.preferences->resolution.width =
+                    std::clamp(payload.value("resolutionWidth", context.preferences->resolution.width), 640, 7680);
+                context.preferences->resolution.height =
+                    std::clamp(payload.value("resolutionHeight", context.preferences->resolution.height), 360, 4320);
                 context.preferences->fieldOfView = std::clamp(payload.value("fov", context.preferences->fieldOfView), 60.0f, 110.0f);
                 context.preferences->renderDistance = std::clamp(payload.value("renderDistance", context.preferences->renderDistance), 2, 16);
                 context.preferences->simulationDistance = std::clamp(payload.value("simulationDistance", context.preferences->simulationDistance), 2, 12);
@@ -162,6 +209,9 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
             } catch (const nlohmann::json::exception&) {
                 RequestError(context, "Settings data was malformed.");
                 return true;
+            }
+            if (context.platform != nullptr) {
+                ApplyWindowPreferences(*context.platform, *context.preferences);
             }
             if (context.activeGame != nullptr) context.activeGame->ApplyPreferences(*context.preferences);
             if (context.audio != nullptr) context.audio->ApplyVolumes(context.preferences->masterVolume, context.preferences->musicVolume, context.preferences->sfxVolume, 0.7f);

@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <charconv>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -418,17 +419,21 @@ public:
         if (url == "about:blank") return false;
         return !IsUiUrl(url);
     }
-    void Resize(int width, int height) {
-        m_width = std::max(width, 1);
-        m_height = std::max(height, 1);
+    void Resize(int windowWidth, int windowHeight, int drawableWidth, int drawableHeight) {
+        const int safeWindowWidth = std::max(windowWidth, 1);
+        const int safeWindowHeight = std::max(windowHeight, 1);
+        m_width = std::max(drawableWidth, 1);
+        m_height = std::max(drawableHeight, 1);
+        m_mouseScaleX = static_cast<float>(m_width) / static_cast<float>(safeWindowWidth);
+        m_mouseScaleY = static_cast<float>(m_height) / static_cast<float>(safeWindowHeight);
         if (m_browser) m_browser->GetHost()->WasResized();
     }
     void ForwardEvent(const PlatformEvent& event) {
         if (!m_browser || m_owner.m_policy == PlayerUIInputPolicy::Gameplay) return;
         CefRefPtr<CefBrowserHost> host = m_browser->GetHost();
         CefMouseEvent mouseEvent{};
-        mouseEvent.x = event.x;
-        mouseEvent.y = event.y;
+        mouseEvent.x = static_cast<int>(std::lround(static_cast<double>(event.x) * m_mouseScaleX));
+        mouseEvent.y = static_cast<int>(std::lround(static_cast<double>(event.y) * m_mouseScaleY));
         switch (event.type) {
             case PlatformEventType::MouseMotion: host->SendMouseMoveEvent(mouseEvent, false); break;
             case PlatformEventType::MouseButtonDown:
@@ -546,6 +551,8 @@ private:
     CefRefPtr<CefBrowser> m_browser;
     int m_width = 1280;
     int m_height = 720;
+    float m_mouseScaleX = 1.0f;
+    float m_mouseScaleY = 1.0f;
     bool m_mainFrameReady = false;
     IMPLEMENT_REFCOUNTING(BrowserClient);
 };
@@ -585,8 +592,10 @@ bool WebUIManager::Initialize(IPlatform* platform, graphics::IGraphicsRenderer*)
         CefShutdown();
         return false;
     }
-    m_platform = platform; const auto [width, height] = platform->GetDrawableSize();
-    m_client = new BrowserClient(*this); m_client->Resize(width, height);
+    m_platform = platform;
+    const auto [width, height] = platform->GetDrawableSize();
+    m_client = new BrowserClient(*this);
+    m_client->Resize(width, height, width, height);
     CefWindowInfo info; info.SetAsWindowless(nullptr);
     const std::string url = std::string(kUiOriginPrefix) + m_entryHtmlPath;
     if (!CefBrowserHost::CreateBrowser(info, m_client.get(), url, CefBrowserSettings{}, nullptr, nullptr)) { Shutdown(); return false; }
@@ -622,7 +631,10 @@ void WebUIManager::BeginFrame() { if (!m_initialized) return; CefDoMessageLoopWo
 void WebUIManager::EndFrame() { if (m_frameActive) static_cast<void>(m_compositor.UploadAndComposite(m_frames)); m_frameActive = false; }
 void WebUIManager::OnPlatformEvent(const PlatformEvent& event) {
     if (!m_client) return;
-    if (event.type == PlatformEventType::WindowResized) m_client->Resize(event.width, event.height);
+    if (event.type == PlatformEventType::WindowResized && m_platform != nullptr) {
+        const auto [drawableWidth, drawableHeight] = m_platform->GetDrawableSize();
+        m_client->Resize(event.width, event.height, drawableWidth, drawableHeight);
+    }
     m_client->ForwardEvent(event);
 }
 void WebUIManager::SetInputPolicy(PlayerUIInputPolicy policy) { m_discardNextMouseDelta = policy == PlayerUIInputPolicy::Gameplay && m_policy != policy; m_policy = policy; if (m_platform) { const bool gameplay = policy == PlayerUIInputPolicy::Gameplay; m_platform->SetRelativeMouseMode(gameplay); m_platform->SetCursorVisible(!gameplay); } }

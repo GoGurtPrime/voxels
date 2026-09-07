@@ -106,6 +106,8 @@ TEST_CASE("PlayerUI.DispatcherCreatesWorldSaveBeforeLoading", "[player-ui]") {
 
 TEST_CASE("PlayerUI.DispatcherAppliesSettingsFromStructuredPayload", "[player-ui]") {
     voxels::GamePreferences preferences{};
+    preferences.windowMode = voxels::WindowMode::Windowed;
+    preferences.resolution = {1280, 720, 60};
     preferences.fieldOfView = 90.0f;
     preferences.renderDistance = 8;
     preferences.simulationDistance = 4;
@@ -122,9 +124,12 @@ TEST_CASE("PlayerUI.DispatcherAppliesSettingsFromStructuredPayload", "[player-ui
     const voxels::PlayerUIAction action{
         .requestId = 77,
         .kind = voxels::PlayerUIActionKind::ApplySettings,
-        .secondary = R"({"settings":{"fov":72.0,"renderDistance":16,"simulationDistance":12,"master":0.4,"music":0.5,"effects":0.6,"sensitivity":2.3,"invertY":true,"particles":false}})"};
+        .secondary = R"({"settings":{"windowMode":"Fullscreen","resolutionWidth":1920,"resolutionHeight":1080,"fov":72.0,"renderDistance":16,"simulationDistance":12,"master":0.4,"music":0.5,"effects":0.6,"sensitivity":2.3,"invertY":true,"particles":false}})"};
 
     REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Settings, action, context));
+    REQUIRE(preferences.windowMode == voxels::WindowMode::Fullscreen);
+    REQUIRE(preferences.resolution.width == 1920);
+    REQUIRE(preferences.resolution.height == 1080);
     REQUIRE(preferences.fieldOfView == Catch::Approx(72.0f));
     REQUIRE(preferences.renderDistance == 16);
     REQUIRE(preferences.simulationDistance == 12);

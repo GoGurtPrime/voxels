@@ -40,8 +40,36 @@ void DreamcastPlatform::SetWindowFullscreen(bool /*fullscreen*/) {
     // No-op: the Dreamcast has no windowed display mode.
 }
 
+void DreamcastPlatform::SetWindowBorderless(bool /*borderless*/) {
+    // No-op: no window decorations exist on fixed-function hardware output.
+}
+
+void DreamcastPlatform::SetWindowResizable(bool /*resizable*/) {
+    // No-op: hardware output size is fixed.
+}
+
 void DreamcastPlatform::SetWindowResolution(int /*width*/, int /*height*/) {
     // No-op: resolution is fixed at 640x480.
+}
+
+void DreamcastPlatform::SetWindowTitle(const std::string& /*title*/) {
+    // No-op: no native title bar exists on the target hardware.
+}
+
+void DreamcastPlatform::SetRelativeMouseMode(bool /*enabled*/) {
+    // No-op: relative mouse mode is not available on Dreamcast input devices.
+}
+
+void DreamcastPlatform::SetCursorVisible(bool /*visible*/) {
+    // No-op: there is no desktop cursor.
+}
+
+void DreamcastPlatform::SetVSync(bool /*enabled*/) {
+    // No-op: presentation cadence is managed by the platform video output.
+}
+
+std::pair<int, int> DreamcastPlatform::GetDrawableSize() const {
+    return {kFixedWidth, kFixedHeight};
 }
 
 double DreamcastPlatform::GetHighResTimeSeconds() const {

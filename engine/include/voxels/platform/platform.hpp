@@ -125,6 +125,8 @@ public:
     virtual void SwapBuffers() = 0;
 
     virtual void SetWindowFullscreen(bool fullscreen) = 0;
+    virtual void SetWindowBorderless(bool borderless) = 0;
+    virtual void SetWindowResizable(bool resizable) = 0;
     virtual void SetWindowResolution(int width, int height) = 0;
     virtual void SetWindowTitle(const std::string& title) = 0;
 
