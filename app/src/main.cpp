@@ -53,6 +53,9 @@
 #include "voxels/render/texture_atlas.hpp"
 #include "voxels/render/texture_forge.hpp"
 #include "voxels/ui/imgui_ui_manager.hpp"
+#ifdef VOXELS_HAS_CEF
+#include "voxels/ui/web_ui_manager.hpp"
+#endif
 #include "voxels/world/block.hpp"
 #include "voxels/world/generation_pipeline.hpp"
 #include "voxels/world/spawn_calculator.hpp"
@@ -250,6 +253,14 @@ bool WriteGenerationPreview(std::uint64_t seed, const std::filesystem::path& out
 } // namespace
 
 int main(int argc, char** argv) {
+#ifdef VOXELS_HAS_CEF
+    // CEF forks this same executable for its renderer/GPU/utility subprocesses. Every one of
+    // them must return here before any window/engine setup runs; the browser process falls
+    // through with a negative result and continues into the normal desktop bootstrap below.
+    if (const int subprocessExitCode = voxels::WebUIManager::ExecuteSubprocess(argc, argv); subprocessExitCode >= 0) {
+        return subprocessExitCode;
+    }
+#endif
     const std::vector<std::string> args(argv + 1, argv + argc);
     const voxels::CliParser cliParser;
     const voxels::AppCommandLineOptions options = cliParser.Parse(args);
@@ -455,6 +466,24 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // ImGui remains the sole route/HUD/input-capture authority this milestone (ADR-015): it
+    // stays bound to `appContext.ui` unchanged, so every existing menu keeps rendering. When
+    // compiled with CEF, `webUiOverlay` is a second, independent IPlayerUI instance used only
+    // as a transparent diagnostic pass composited above it — never registered as `appContext.ui`,
+    // never granted input capture, and never fed into the player-UI action dispatcher.
+#ifdef VOXELS_HAS_CEF
+    voxels::WebUIManager webUiOverlay;
+    if (!webUiOverlay.Initialize(platform, renderer.get())) {
+        std::cerr << "Voxels web UI diagnostic overlay failed to initialize." << std::endl;
+        uiManager.Shutdown();
+        renderer->Shutdown();
+        engine.shutdown();
+        return 1;
+    }
+    webUiOverlay.Publish({.route = voxels::PlayerUIRoute::Hud, .revision = 1,
+                          .title = "Voxels Diagnostics", .message = "Web UI compositor active."});
+#endif
+
     voxels::SetGlobalRenderer(renderer.get());
 
     voxels::InputManager inputManager;
@@ -514,6 +543,9 @@ int main(int argc, char** argv) {
         uiManager.ShowToast("Local server could not bind a UDP port.");
         stateMachine.Shutdown();
         uiManager.Shutdown();
+#ifdef VOXELS_HAS_CEF
+        webUiOverlay.Shutdown();
+#endif
         renderer->Shutdown();
         engine.shutdown();
         return 1;
@@ -531,6 +563,9 @@ int main(int argc, char** argv) {
             uiManager.ShowToast("Join address must use HOST:PORT.");
             stateMachine.Shutdown();
             uiManager.Shutdown();
+#ifdef VOXELS_HAS_CEF
+            webUiOverlay.Shutdown();
+#endif
             renderer->Shutdown();
             engine.shutdown();
             return 1;
@@ -563,6 +598,9 @@ int main(int argc, char** argv) {
     WindowEventListener windowListener(running, *renderer, inputManager, uiManager);
     if (platform != nullptr) {
         platform->RegisterEventListener(&uiManager, 1000);
+#ifdef VOXELS_HAS_CEF
+        platform->RegisterEventListener(&webUiOverlay, 900);
+#endif
         platform->RegisterEventListener(&windowListener, 100);
         const auto [drawableW, drawableH] = platform->GetDrawableSize();
         renderer->SetViewport(drawableW, drawableH);
@@ -596,6 +634,9 @@ int main(int argc, char** argv) {
 
         platformServices->Update();
 
+#ifdef VOXELS_HAS_CEF
+        webUiOverlay.BeginFrame();
+#endif
         uiManager.BeginFrame();
         stateMachine.Render();
         voxels::UIDebugMetrics debugMetrics{};
@@ -630,6 +671,11 @@ int main(int argc, char** argv) {
         }
         uiManager.SetDebugMetrics(std::move(debugMetrics));
         uiManager.EndFrame();
+#ifdef VOXELS_HAS_CEF
+        // Composited last so the transparent diagnostic route sits above the world, HUD, and
+        // the ImGui F3 overlay, per the WI-03.02 z-order contract.
+        webUiOverlay.EndFrame();
+#endif
         static_cast<void>(renderer->EndFrame());
         static_cast<void>(renderer->Present());
 
@@ -646,8 +692,17 @@ int main(int argc, char** argv) {
     stateMachine.Shutdown();
     if (platform != nullptr) {
         platform->UnregisterEventListener(&uiManager);
+        platform->UnregisterEventListener(&windowListener);
+#ifdef VOXELS_HAS_CEF
+        platform->UnregisterEventListener(&webUiOverlay);
+#endif
     }
     uiManager.Shutdown();
+#ifdef VOXELS_HAS_CEF
+    // Release CEF's browser/renderer processes before the GL context and platform are torn
+    // down below; releasing it after renderer->Shutdown() hangs or crashes on exit.
+    webUiOverlay.Shutdown();
+#endif
     audio->Shutdown();
     platformServices->Shutdown();
     voxels::SetGlobalRenderer(nullptr);
