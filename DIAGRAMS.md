@@ -104,7 +104,7 @@ sequenceDiagram
 
     OS->>Main: argc / argv
     opt VOXELS_HAS_CEF
-        Main->>Main: WebUIManager.ExecuteSubprocess(argc, argv)<br/>CEF renderer/GPU/utility subprocesses return here and exit;<br/>only the browser process falls through
+        Main->>Main: WebUIManager.ExecuteSubprocess(argc, argv)<br/>CEF renderer/GPU/utility subprocesses return here and exit,<br/>only the browser process falls through
     end
     Main->>Main: CliParser.Parse
     Main->>Paths: Resolve user data dir + assets dir
@@ -118,7 +118,7 @@ sequenceDiagram
     Main->>Assets: Mount assets/ then packs/*.vpk
     Main->>Rend: Build texture atlas from block definitions
     Main->>UI: Initialize with platform + renderer
-    Main->>Main: Construct WebUIManager as appContext.ui for<br/>menu/world-management routes; ImGui stays initialized for HUD,<br/>debug, and pause presentation only
+    Main->>Main: Construct WebUIManager as appContext.ui for<br/>menu/world-management routes, ImGui stays initialized for HUD,<br/>debug, and pause presentation only
     Main->>Aud: Open audio device, start mixer
     Main->>Main: Start JobSystem worker pool
     Main->>SM: Start BootState → transition MainMenuState
@@ -131,7 +131,7 @@ sequenceDiagram
     Main->>SM: Shutdown active state (autosave if in-game)
     Main->>Aud: Stop and close device
     Main->>UI: Shutdown
-    Main->>Main: WebUIManager.Shutdown()<br/>close browser, pump loop to completion, THEN CefShutdown()<br/>— before Rend teardown, or the process crashes on exit
+    Main->>Main: WebUIManager.Shutdown()<br/>close browser, pump loop to completion, THEN CefShutdown()<br/>before Rend teardown, or the process crashes on exit
     Main->>Rend: Release GPU resources, shutdown
     Main->>Plat: Destroy context + window
     Main->>OS: exit(0)
@@ -274,7 +274,7 @@ sequenceDiagram
     Srv->>Phy: apply intent → velocity
     Phy->>Phy: gravity, drag, jump impulse
     Phy->>W: query solid AABBs in swept region
-    Phy->>Phy: resolve per axis X, Z, Y; set onGround
+    Phy->>Phy: resolve per axis X, Z, Y, set onGround
     Srv->>BI: if break/place requested
     BI->>W: DDA raycast from eye, max 5 blocks
     alt hit and cooldown elapsed
@@ -404,7 +404,7 @@ sequenceDiagram
     participant RP as CEF Render Process
     participant BP as CEF Browser Process
     participant WU as WebUIManager
-    participant LOOP as main.cpp frame loop
+    participant FRAME as main.cpp frame loop
     participant DIS as PlayerUIActionDispatcher
     participant APP as AppState/Engine
 
@@ -412,16 +412,16 @@ sequenceDiagram
     RP->>BP: ProcessMessage "voxels-action" (encoded envelope)
     BP->>WU: OnProcessMessageReceived
     WU->>WU: DecodePlayerUIProtocolMessage + action kind map
-    WU->>LOOP: queue PlayerUIAction
-    LOOP->>WU: ConsumeAction()
-    LOOP->>DIS: Dispatch(activeRoute, action, appContext)
+    WU->>FRAME: queue PlayerUIAction
+    FRAME->>WU: ConsumeAction()
+    FRAME->>DIS: Dispatch(activeRoute, action, appContext)
     DIS->>APP: validate + mutate authoritative state
     APP->>WU: Publish(PlayerUIViewModel with route payload)
     WU->>BP: ExecuteJavaScript(__voxelsReceiveBridgeMessage)
     BP->>RP: Bridge envelope ui.model
     RP->>JS: hydrate route state and render
-    LOOP->>WU: BeginFrame queries atomic SDL window metrics
-    WU->>WU: CEF view/input use logical pixels;<br/>device scale produces drawable-pixel paint
+    FRAME->>WU: BeginFrame queries atomic SDL window metrics
+    WU->>WU: CEF view/input use logical pixels,<br/>device scale produces drawable-pixel paint
 ```
 
 Contract notes:
