@@ -35,6 +35,8 @@ constexpr float kPreviewRevealSeconds = 2.2f;
 constexpr float kLogoFadeInSeconds = 0.8f;
 constexpr float kLogoHoldSeconds = 10.0f;
 constexpr float kLogoFadeOutSeconds = 0.9f;
+constexpr float kPostLogoHoldSeconds = 1.0f;
+constexpr float kMenuTitleFadeInSeconds = 2.0f;
 constexpr int kMenuPreviewTerrainSections = 8;
 
 struct CameraShot {
@@ -436,13 +438,17 @@ void MainMenuState::PublishPreviewLoading(float progress, float backdropOpacity,
                             .blocking = true});
 }
 
-void MainMenuState::PublishReadyMenu() const {
+void MainMenuState::PublishReadyMenu(float titleOpacity, bool showMenuButtons) const {
     if (m_context == nullptr || m_context->ui == nullptr) return;
     m_context->ui->Publish({.route = PlayerUIRoute::MainMenu,
-                            .revision = 1,
+                            .revision = static_cast<std::uint64_t>(std::clamp(titleOpacity, 0.0f, 1.0f) * 1000.0f) * 10U +
+                                        (showMenuButtons ? 1U : 0U) + 5000U,
                             .title = "VOXELS ENGINE",
                             .message = "A block-based world is waiting.",
-                            .items = {"Play", "Join Game", "Settings", "Quit"}});
+                            .items = {"Play", "Join Game", "Settings", "Quit"},
+                            .payload = std::string{"{\"titleOpacity\":"} +
+                                       std::to_string(std::clamp(titleOpacity, 0.0f, 1.0f)) +
+                                       ",\"showMenuButtons\":" + (showMenuButtons ? "true" : "false") + "}"});
 }
 
 void MainMenuState::Update(double deltaSeconds) {
@@ -491,6 +497,26 @@ void MainMenuState::Update(double deltaSeconds) {
         const float fade = 1.0f - std::clamp(m_phaseElapsedSeconds / kLogoFadeOutSeconds, 0.0f, 1.0f);
         PublishSplash(fade);
         if (m_phaseElapsedSeconds >= kLogoFadeOutSeconds) {
+            m_phase = IntroPhase::LogoPostFadeHold;
+            m_phaseElapsedSeconds = 0.0f;
+        }
+        return;
+    }
+
+    if (m_phase == IntroPhase::LogoPostFadeHold) {
+        // Hold one extra beat after the splash fully fades so music and title reveal line up.
+        PublishPreviewLoading(1.0f, 0.0f, false);
+        if (m_phaseElapsedSeconds >= kPostLogoHoldSeconds) {
+            m_phase = IntroPhase::MenuTitleFadeIn;
+            m_phaseElapsedSeconds = 0.0f;
+        }
+        return;
+    }
+
+    if (m_phase == IntroPhase::MenuTitleFadeIn) {
+        const float titleOpacity = std::clamp(m_phaseElapsedSeconds / kMenuTitleFadeInSeconds, 0.0f, 1.0f);
+        PublishReadyMenu(titleOpacity, false);
+        if (m_phaseElapsedSeconds >= kMenuTitleFadeInSeconds) {
             m_phase = IntroPhase::Ready;
             m_phaseElapsedSeconds = 0.0f;
         }
@@ -498,7 +524,7 @@ void MainMenuState::Update(double deltaSeconds) {
     }
 
     if (!m_publishedReadyMenu) {
-        PublishReadyMenu();
+        PublishReadyMenu(1.0f, true);
         m_publishedReadyMenu = true;
     }
     if (!m_controlsCardQueued && m_context != nullptr && m_context->firstRun &&

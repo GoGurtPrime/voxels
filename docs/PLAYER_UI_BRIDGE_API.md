@@ -129,6 +129,23 @@ Notes:
 
 ## Route payload schemas
 
+### Main menu route (`route = 0`)
+
+`payload` JSON object (optional):
+
+```json
+{
+  "titleOpacity": 1.0,
+  "showMenuButtons": true
+}
+```
+
+Notes:
+
+- `titleOpacity` is clamped to `0..1` and fades in the title block during startup intro.
+- `showMenuButtons` keeps menu actions hidden until the startup title fade reaches full opacity.
+- Non-startup transitions back to main menu publish full-opacity title and visible buttons immediately.
+
 ### World selection route (`route = 1`)
 
 `payload` contains a `worlds` array. Each entry has `slot`, `name`, `seed`, `createdUtc`,

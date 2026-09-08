@@ -170,6 +170,14 @@ void MainMenuState::OnEnter() {
     m_controlsCardQueued = false;
     m_phaseElapsedSeconds = 0.0f;
     m_runLogoSequence = ConsumeStartupSplashEligibility();
+
+    if (!m_runLogoSequence) {
+        m_phase = IntroPhase::Ready;
+        m_publishedReadyMenu = true;
+        PublishReadyMenu(1.0f, true);
+        return;
+    }
+
     m_phase = IntroPhase::PreviewLoadingOpaque;
     PublishPreviewLoading(0.0f, 1.0f, true);
 }
@@ -177,7 +185,7 @@ void MainMenuState::OnEnter() {
 void MainMenuState::Render() {
     if (!BeginMenuFrame(m_context, PlayerUIRoute::MainMenu)) return;
 
-    if (m_phase != IntroPhase::Ready) {
+    if (m_phase != IntroPhase::Ready && m_phase != IntroPhase::MenuTitleFadeIn) {
         CenterNextWindow();
         ImGui::SetNextWindowSize({520.0f, 0.0f}, ImGuiCond_Always);
         ImGui::Begin("Startup", nullptr, kMenuWindowFlags);
@@ -202,21 +210,29 @@ void MainMenuState::Render() {
     CenterNextWindow();
     ImGui::SetNextWindowSize({390.0f, 0.0f}, ImGuiCond_Always);
     ImGui::Begin("Voxel World", nullptr, kMenuWindowFlags);
+    const float titleOpacity = (m_phase == IntroPhase::MenuTitleFadeIn)
+                                   ? std::clamp(m_phaseElapsedSeconds / 2.0f, 0.0f, 1.0f)
+                                   : 1.0f;
+    const bool showMenuButtons = m_phase == IntroPhase::Ready;
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, titleOpacity);
     ui::MenuTitle("VOXELS ENGINE");
     ImGui::TextUnformatted("A block-based world is waiting.");
+    ImGui::PopStyleVar();
     ImGui::Spacing();
-    if (ui::MenuButton("Play")) {
+    if (showMenuButtons && ui::MenuButton("Play")) {
         if (m_context->saveManager != nullptr && m_context->saveManager->ListSaves().empty()) {
             m_context->requestTransition(std::make_unique<WorldCreationState>(m_context));
         } else {
             m_context->requestTransition(std::make_unique<WorldSelectState>(m_context));
         }
     }
-    if (ui::MenuButton("Join Game")) m_context->requestTransition(std::make_unique<JoinGameState>(m_context));
-    if (ui::MenuButton("Settings")) m_context->requestPushOverlay(std::make_unique<SettingsState>(m_context));
-    if (ui::MenuButton("Quit")) m_context->requestQuit();
-    ImGui::Separator();
-    ImGui::TextDisabled("VoxelsEngine v%s (%s)", kEngineVersion, kEngineGitCommit);
+    if (showMenuButtons && ui::MenuButton("Join Game")) m_context->requestTransition(std::make_unique<JoinGameState>(m_context));
+    if (showMenuButtons && ui::MenuButton("Settings")) m_context->requestPushOverlay(std::make_unique<SettingsState>(m_context));
+    if (showMenuButtons && ui::MenuButton("Quit")) m_context->requestQuit();
+    if (showMenuButtons) {
+        ImGui::Separator();
+        ImGui::TextDisabled("VoxelsEngine v%s (%s)", kEngineVersion, kEngineGitCommit);
+    }
     ImGui::End();
 }
 

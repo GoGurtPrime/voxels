@@ -191,12 +191,17 @@ stateDiagram-v2
         then hides status and fades layer out
         to reveal the generated world.
         First process boot then runs a logo
-        preface fade-in/hold/fade-out before
-        menu interactions are enabled.
+        preface fade-in/hold/fade-out,
+        waits one extra second, and fades
+        the title block in over two seconds
+        before menu interactions are enabled.
+        Later transitions back to MainMenu
+        skip this startup-only intro.
         Menu routes render over live
         cinematic camera flythrough shots.
-        Returning from InGame re-runs the
-        preview loading/reveal step.
+        Returning from InGame regenerates
+        the backdrop scene without replaying
+        the startup title/button reveal.
     end note
 
     note right of Loading

@@ -142,12 +142,14 @@ private:
         LogoFadeIn,
         LogoHold,
         LogoFadeOut,
+        LogoPostFadeHold,
+        MenuTitleFadeIn,
         Ready
     };
 
     void PublishSplash(float fade) const;
     void PublishPreviewLoading(float progress, float backdropOpacity, bool showStatus) const;
-    void PublishReadyMenu() const;
+    void PublishReadyMenu(float titleOpacity = 1.0f, bool showMenuButtons = true) const;
 
     IntroPhase m_phase = IntroPhase::PreviewLoadingOpaque;
     float m_phaseElapsedSeconds = 0.0f;

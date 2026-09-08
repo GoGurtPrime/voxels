@@ -82,7 +82,12 @@ function RouteShell({ title, kicker = "Voxels Engine", subtitle, children, foote
   );
 }
 
-function MainMenu() {
+function MainMenu({ model }) {
+  const payload = parseJson(model?.payload, {});
+  const titleOpacity = typeof payload?.titleOpacity === "number"
+    ? Math.max(0, Math.min(1, payload.titleOpacity))
+    : 1;
+  const showMenuButtons = payload?.showMenuButtons !== false;
   const items = [
     { kind: "play", label: "Play", className: "" },
     { kind: "join", label: "Join Game", className: "quiet" },
@@ -92,24 +97,28 @@ function MainMenu() {
   return (
     <main className="player-ui">
       <div className="hero-shell">
-        <div className="hero-title-block anim-rise">
+        <div className="hero-title-block" style={{ opacity: titleOpacity }}>
           <p className="kicker">Voxels Engine</p>
           <h1 className="hero-title anim-glow">Voxels</h1>
           <p className="hero-subtitle">A block-based world is waiting.</p>
         </div>
-        <nav aria-label="Main menu" className="hero-nav">
-          {items.map((item, index) => (
-            <ActionButton
-              key={item.kind}
-              kind={item.kind}
-              className={`${item.className} anim-rise`}
-              style={{ animationDelay: `${120 + index * 70}ms` }}
-            >
-              {item.label}
-            </ActionButton>
-          ))}
-        </nav>
-        <p className="version-tag anim-rise" style={{ animationDelay: "460ms" }}>VoxelsEngine</p>
+        {showMenuButtons ? (
+          <>
+            <nav aria-label="Main menu" className="hero-nav">
+              {items.map((item, index) => (
+                <ActionButton
+                  key={item.kind}
+                  kind={item.kind}
+                  className={`${item.className} anim-rise`}
+                  style={{ animationDelay: `${120 + index * 70}ms` }}
+                >
+                  {item.label}
+                </ActionButton>
+              ))}
+            </nav>
+            <p className="version-tag anim-rise" style={{ animationDelay: "460ms" }}>VoxelsEngine</p>
+          </>
+        ) : null}
       </div>
     </main>
   );
@@ -604,7 +613,7 @@ function App() {
       {(() => {
         switch (model.route) {
           case Route.Splash: return <SplashIntro model={model} />;
-          case Route.MainMenu: return <MainMenu />;
+          case Route.MainMenu: return <MainMenu model={model} />;
           case Route.SaveSelection: return <WorldSelect model={model} />;
           case Route.WorldCreation: return <WorldCreation />;
           case Route.Loading: return <Loading model={model} />;
