@@ -74,6 +74,7 @@ Use kind prefix `ui.action.`:
 - `ui.action.close-crafting`
 - `ui.action.craft-recipe`
 - `ui.action.drop-item`
+- `ui.action.move-item`
 - `ui.action.acknowledge-error`
 
 Legacy (non-prefixed) kinds are still accepted for compatibility.
@@ -96,6 +97,10 @@ Mapping rules:
 - If `settings` exists and `secondary` is empty, C++ stores `settings` JSON in `PlayerUIAction.secondary`.
 - `drop-item` sends the inventory slot index (0-35) as action `value` and drops the slot's
   entire stack as a ground item tossed in front of the player.
+- `move-item` sends the source slot index as action `value` and the destination slot index as
+  action `primary` (stringified integer); native swaps the two slots, or merges stacks up to
+  the stack limit when both slots hold the same item. Used by the HUD's drag-and-drop inventory
+  rearrangement.
 
 ### Native -> browser model updates
 
@@ -223,6 +228,8 @@ Notes:
   "hotbar": [
     { "slot": 0, "selected": true, "blockId": 1, "count": 32, "name": "Stone" }
   ],
+  "selectedSlot": 0,
+  "inputMethod": "keyboard",
   "inventory": {
     "slots": [
       { "slot": 0, "hotbar": true, "selected": true, "blockId": 1, "count": 32, "name": "Stone" },
@@ -256,6 +263,9 @@ Notes:
 Notes:
 
 - Native publishes at up to 30 Hz plus immediate event-driven revisions for selection, break progress, and notifications.
+- `inputMethod` is `"keyboard"` or `"gamepad"`, reflecting the InputManager's last-active device
+  (any keyboard/mouse event, or a gamepad button/analog stick past a small deadzone). The HUD
+  uses this to switch its control-hint bar between keyboard glyphs and controller button glyphs.
 - `inventory.slots` is authoritative full inventory state (9 hotbar + 27 main slots) for centered inventory/crafting layouts.
 - Browser HUD is presentation-only; native C++ remains authoritative for inventory changes, crafting, and gameplay state.
 

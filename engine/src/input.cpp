@@ -10,6 +10,7 @@
 #include "voxels/input/input_manager.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 
 namespace voxels {
@@ -76,11 +77,28 @@ void InputManager::InjectKeyEvent(int code, bool pressed, int player) {
         } else if (code >= 'A' && code <= 'Z') {
             channel->keys[code + ('a' - 'A')] = pressed;
         }
+        if (pressed) m_lastActiveDevice = InputDeviceType::Keyboard;
     }
 }
-void InputManager::InjectMouseDelta(float x, float y, int player) { if (auto* channel = Channel(player)) { channel->mouseX += x; channel->mouseY += y; } }
-void InputManager::InjectMouseButtonEvent(int button, bool pressed, int player) { if (auto* channel = Channel(player)) channel->mouseButtons[button] = pressed; }
-void InputManager::InjectMouseWheel(int deltaY, int player) { if (auto* channel = Channel(player)) channel->mouseWheelY += deltaY; }
+void InputManager::InjectMouseDelta(float x, float y, int player) {
+    if (auto* channel = Channel(player)) {
+        channel->mouseX += x;
+        channel->mouseY += y;
+        if (x != 0.0f || y != 0.0f) m_lastActiveDevice = InputDeviceType::Mouse;
+    }
+}
+void InputManager::InjectMouseButtonEvent(int button, bool pressed, int player) {
+    if (auto* channel = Channel(player)) {
+        channel->mouseButtons[button] = pressed;
+        if (pressed) m_lastActiveDevice = InputDeviceType::Mouse;
+    }
+}
+void InputManager::InjectMouseWheel(int deltaY, int player) {
+    if (auto* channel = Channel(player)) {
+        channel->mouseWheelY += deltaY;
+        if (deltaY != 0) m_lastActiveDevice = InputDeviceType::Mouse;
+    }
+}
 void InputManager::ClearGameplayInput(int player) {
     if (auto* channel = Channel(player)) {
         channel->keys.clear();
@@ -90,12 +108,18 @@ void InputManager::ClearGameplayInput(int player) {
         channel->mouseWheelY = 0;
     }
 }
-void InputManager::InjectAxisEvent(InputAxis axis, float value, int player) { if (auto* channel = Channel(player)) channel->axes[axis] = ApplyAxisSettings(value, channel->axisSettings[axis]); }
+void InputManager::InjectAxisEvent(InputAxis axis, float value, int player) {
+    if (auto* channel = Channel(player)) {
+        channel->axes[axis] = ApplyAxisSettings(value, channel->axisSettings[axis]);
+        if (std::abs(value) > 0.35f) m_lastActiveDevice = InputDeviceType::Gamepad;
+    }
+}
 void InputManager::InjectControllerConnection(int player, bool connected) { if (auto* channel = Channel(player)) channel->state = connected ? PlayerSlotState::Connected : PlayerSlotState::Disconnected; }
 
 void InputManager::InjectGamepadButton(int player, int code, bool pressed) {
     if (auto* channel = Channel(player)) {
         channel->buttons[code] = pressed;
+        if (pressed) m_lastActiveDevice = InputDeviceType::Gamepad;
         if (player > 0 && channel->state == PlayerSlotState::Connected && code == StartButton && pressed) channel->state = PlayerSlotState::Active;
     }
 }

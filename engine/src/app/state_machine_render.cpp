@@ -931,6 +931,30 @@ bool InGameState::DropSlot(int slot) {
     return true;
 }
 
+bool InGameState::MoveInventoryItem(int from, int to) {
+    if (from < 0 || to < 0 || from == to) return false;
+    if (static_cast<std::size_t>(from) >= gameplay::Inventory::kSlotCount ||
+        static_cast<std::size_t>(to) >= gameplay::Inventory::kSlotCount) {
+        return false;
+    }
+    gameplay::Inventory& inventory = m_session.GetPlayer().state.inventory;
+    gameplay::ItemStack& source = inventory.GetSlot(static_cast<std::size_t>(from));
+    gameplay::ItemStack& destination = inventory.GetSlot(static_cast<std::size_t>(to));
+    if (source.IsEmpty()) return false;
+
+    if (!destination.IsEmpty() && destination.blockId == source.blockId) {
+        const int capacity = gameplay::Inventory::kStackLimit - destination.count;
+        const int moved = std::min(capacity, source.count);
+        destination.count += moved;
+        source.count -= moved;
+        if (source.count <= 0) source = {};
+    } else {
+        std::swap(source, destination);
+    }
+    PublishHudModel(true);
+    return true;
+}
+
 void InGameState::RequestSaveAndReturnToMenu() noexcept {
     if (!m_remoteSession) m_previewCaptureAction = PreviewCaptureAction::ReturnToMainMenu;
 }
@@ -1273,9 +1297,19 @@ void InGameState::PublishHudModel(bool forcePublish) {
     const GamePreferences& preferences = m_session.GetPreferences();
     const BlockId targetBlockId = target.hit ? m_session.GetWorld().GetBlock(target.blockPosition)
                                              : static_cast<BlockId>(BlockType::Air);
+    const char* inputMethod = "keyboard";
+    if (m_inputManager != nullptr) {
+        switch (m_inputManager->GetLastActiveDeviceType()) {
+            case InputDeviceType::Gamepad: inputMethod = "gamepad"; break;
+            case InputDeviceType::Mouse: inputMethod = "keyboard"; break;
+            case InputDeviceType::Keyboard: inputMethod = "keyboard"; break;
+            default: inputMethod = "keyboard"; break;
+        }
+    }
     const nlohmann::json payload{
         {"hotbar", std::move(hotbar)},
         {"selectedSlot", inventory.GetSelectedSlot()},
+        {"inputMethod", inputMethod},
         {"heldItem", {
             {"empty", held.IsEmpty()},
             {"name", held.IsEmpty() ? std::string{} : DisplayNameForBlock(m_registry, held.blockId)},

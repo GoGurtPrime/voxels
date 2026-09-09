@@ -314,6 +314,7 @@ class InGameState final : public IAppState {public:
 
     [[nodiscard]] const World& GetWorld() const noexcept { return m_session.GetWorld(); }
     [[nodiscard]] const Player& GetPlayer() const noexcept { return m_session.GetPlayer(); }
+    [[nodiscard]] Player& GetPlayer() noexcept { return m_session.GetPlayer(); }
     [[nodiscard]] graphics::ChunkRenderer* GetChunkRenderer() const noexcept { return m_chunkRenderer.get(); }
     [[nodiscard]] bool IsRemoteSession() const noexcept { return m_remoteSession; }
     [[nodiscard]] const GameSave& GetActiveSave() const noexcept { return m_activeSave; }
@@ -330,6 +331,10 @@ class InGameState final : public IAppState {public:
     /// front of the player. Used by the HUD's per-slot drop control. Returns false when the
     /// slot is empty or out of range.
     bool DropSlot(int slot);
+    /// Swaps (or stack-merges, when the two slots hold the same item) inventory slots `from`
+    /// and `to`. Used by the HUD's drag-and-drop inventory rearrangement. Returns false when
+    /// either index is out of range or equal.
+    bool MoveInventoryItem(int from, int to);
     /// Captures a raw world preview on the next rendered frame, then returns to the main menu.
     void RequestSaveAndReturnToMenu() noexcept;
     /// Captures a raw world preview on the next rendered frame, then requests process exit.

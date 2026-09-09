@@ -310,6 +310,13 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
         case PlayerUIActionKind::HudDropItem:
             if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
             return context.activeGame->DropSlot(static_cast<int>(std::round(action.value)));
+        case PlayerUIActionKind::HudMoveItem: {
+            if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
+            int destination = 0;
+            const auto parsed = std::from_chars(action.primary.data(), action.primary.data() + action.primary.size(), destination);
+            if (parsed.ec != std::errc{}) return false;
+            return context.activeGame->MoveInventoryItem(static_cast<int>(std::round(action.value)), destination);
+        }
         default: return false;
     }
 }

@@ -79,6 +79,10 @@ public:
     [[nodiscard]] float GetAxis(InputAxis axis, int player = 0) const;
     void SetAxisSettings(InputAxis axis, AxisSettings settings, int player = 0);
     [[nodiscard]] PlayerSlotState GetPlayerSlotState(int player) const;
+    /// Best-effort "what did the player touch last" signal, updated by every Inject* call; the
+    /// HUD uses this to switch between keyboard/mouse and gamepad button prompts. Defaults to
+    /// Unknown until the first real input event arrives.
+    [[nodiscard]] InputDeviceType GetLastActiveDeviceType() const noexcept { return m_lastActiveDevice; }
     void LoadBindings(const GamePreferences& preferences);
     void SaveBindings(GamePreferences& preferences) const;
 
@@ -98,6 +102,7 @@ private:
     [[nodiscard]] PlayerChannel* Channel(int player);
     [[nodiscard]] const PlayerChannel* Channel(int player) const;
     std::array<PlayerChannel, MaxPlayers> m_players{};
+    InputDeviceType m_lastActiveDevice = InputDeviceType::Unknown;
     std::vector<InputBinding> m_bindings;
 };
 

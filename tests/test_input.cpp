@@ -60,3 +60,24 @@ TEST_CASE("Input.DeviceHandlers", "[input]") {
     REQUIRE(gamepad.IsConnected());
     REQUIRE(gamepad.IsButtonPressed(1));
 }
+
+TEST_CASE("Input.TracksLastActiveDeviceForHudControlHints", "[input]") {
+    voxels::InputManager input;
+    REQUIRE(input.GetLastActiveDeviceType() == voxels::InputDeviceType::Unknown);
+
+    input.InjectKeyEvent(static_cast<int>('w'), true);
+    REQUIRE(input.GetLastActiveDeviceType() == voxels::InputDeviceType::Keyboard);
+
+    input.InjectGamepadButton(0, 1, true);
+    REQUIRE(input.GetLastActiveDeviceType() == voxels::InputDeviceType::Gamepad);
+
+    input.InjectMouseButtonEvent(1, true);
+    REQUIRE(input.GetLastActiveDeviceType() == voxels::InputDeviceType::Mouse);
+
+    // Releasing a button is not itself "activity"; the device stays whatever last pressed.
+    input.InjectKeyEvent(static_cast<int>('w'), false);
+    REQUIRE(input.GetLastActiveDeviceType() == voxels::InputDeviceType::Mouse);
+
+    input.InjectAxisEvent(voxels::InputAxis::MoveX, 0.9f);
+    REQUIRE(input.GetLastActiveDeviceType() == voxels::InputDeviceType::Gamepad);
+}

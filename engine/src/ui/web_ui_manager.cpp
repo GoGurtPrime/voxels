@@ -140,6 +140,7 @@ struct VerifiedUiAssets {
     if (wireKind == "close-crafting") return PlayerUIActionKind::HudCloseCrafting;
     if (wireKind == "craft-recipe") return PlayerUIActionKind::HudCraftRecipe;
     if (wireKind == "drop-item") return PlayerUIActionKind::HudDropItem;
+    if (wireKind == "move-item") return PlayerUIActionKind::HudMoveItem;
     if (wireKind == "acknowledge-error" || wireKind == "acknowledge_error") return PlayerUIActionKind::AcknowledgeError;
     return std::nullopt;
 }
@@ -687,6 +688,7 @@ private:
         else if (kind == "close-crafting") action.kind = PlayerUIActionKind::HudCloseCrafting;
         else if (kind == "craft-recipe") action.kind = PlayerUIActionKind::HudCraftRecipe;
         else if (kind == "drop-item") action.kind = PlayerUIActionKind::HudDropItem;
+        else if (kind == "move-item") action.kind = PlayerUIActionKind::HudMoveItem;
         else if (kind == "acknowledge-error") action.kind = PlayerUIActionKind::AcknowledgeError;
         else return std::nullopt;
         const std::string requestId = QueryValue(url, "requestId");

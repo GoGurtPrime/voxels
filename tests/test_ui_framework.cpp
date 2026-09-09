@@ -508,6 +508,18 @@ TEST_CASE("PlayerUI.HudActionsDriveGameplayState", "[player-ui][hud]") {
 
     REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Hud,
                                 {.requestId = 605, .kind = voxels::PlayerUIActionKind::HudSendChat, .primary = "hello"}, context));
+
+    game.GetPlayer().state.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 3};
+    game.GetPlayer().state.inventory.GetSlot(1) = {static_cast<voxels::BlockId>(voxels::BlockType::Stone), 2};
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Hud,
+                                {.requestId = 606, .kind = voxels::PlayerUIActionKind::HudMoveItem, .primary = "1", .value = 0.0f},
+                                context));
+    REQUIRE(game.GetPlayer().state.inventory.GetSlot(0).blockId == static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+    REQUIRE(game.GetPlayer().state.inventory.GetSlot(1).blockId == static_cast<voxels::BlockId>(voxels::BlockType::Dirt));
+
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Hud,
+                                {.requestId = 607, .kind = voxels::PlayerUIActionKind::HudDropItem, .value = 1.0f}, context));
+    REQUIRE(game.GetPlayer().state.inventory.GetSlot(1).IsEmpty());
 }
 
 TEST_CASE("PlayerUI.DispatcherIgnoresPayloadlessApplySettingsForDisplayMode", "[player-ui]") {

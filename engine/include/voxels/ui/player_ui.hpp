@@ -60,6 +60,7 @@ enum class PlayerUIActionKind : std::uint8_t {
     HudCloseCrafting,
     HudCraftRecipe,
     HudDropItem,
+    HudMoveItem,
     AcknowledgeError
 };
 
