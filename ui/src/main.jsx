@@ -619,14 +619,99 @@ const RECIPE_ICONS = {
   stick: iconStick
 };
 
+/** One inventory/hotbar cell: drag-and-drop reorder, click-to-select (hotbar only), and a
+ * hover/focus-revealed drop control. Square at every viewport size instead of a squished bar. */
+function InventorySlot({ slot, selectable, dragSlot, setDragSlot }) {
+  const hasItem = Number(slot.count) > 0;
+  const index = Number(slot.slot);
+  const isDragTarget = dragSlot !== null && dragSlot !== index;
+  return (
+    <button
+      type="button"
+      className={`hud-slot ${slot.selected ? "selected" : ""} ${hasItem ? "" : "empty"}`}
+      aria-pressed={selectable ? Boolean(slot.selected) : undefined}
+      aria-label={hasItem ? `${slot.name}, ${slot.count}${selectable ? ", press to select" : ""}` : "Empty slot"}
+      draggable={hasItem}
+      onDragStart={(event) => {
+        if (!hasItem) { event.preventDefault(); return; }
+        event.dataTransfer.setData("text/plain", String(index));
+        event.dataTransfer.effectAllowed = "move";
+        setDragSlot(index);
+      }}
+      onDragEnd={() => setDragSlot(null)}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        const from = Number(event.dataTransfer.getData("text/plain"));
+        setDragSlot(null);
+        if (!Number.isFinite(from) || from === index) return;
+        sendUiAction("move-item", { value: from, primary: String(index) });
+      }}
+      onClick={() => { if (selectable) sendUiAction("hotbar", { value: index }); }}
+    >
+      {selectable ? <span className="hud-slot-number">{index + 1}</span> : null}
+      <span className="hud-slot-name">{slot.name || ""}</span>
+      {hasItem ? <span className="hud-slot-count">{slot.count}</span> : null}
+      {hasItem ? (
+        <span
+          role="button"
+          tabIndex={-1}
+          className="hud-slot-drop"
+          title="Drop"
+          aria-hidden="true"
+          onClick={(event) => {
+            event.stopPropagation();
+            sendUiAction("drop-item", { value: index });
+          }}
+        >
+          ×
+        </span>
+      ) : null}
+      {isDragTarget ? <span className="hud-slot-drag-hint" aria-hidden="true" /> : null}
+    </button>
+  );
+}
+
+/** Keyboard vs controller button-prompt bar; swaps glyph style from InputManager's
+ * last-active-device signal (payload.inputMethod) so prompts always match what the player is
+ * actually holding, ready for a future auto-detected-controller pass. */
+function ControlHints({ inputMethod, craftingOpen }) {
+  const hints = craftingOpen
+    ? [
+        [inputMethod === "gamepad" ? "LS" : "Drag", "Move item"],
+        [inputMethod === "gamepad" ? "X" : "Click ×", "Drop item"],
+        [inputMethod === "gamepad" ? "B" : "Esc", "Close"]
+      ]
+    : [
+        [inputMethod === "gamepad" ? "LS" : "WASD", "Move"],
+        [inputMethod === "gamepad" ? "A" : "Space", "Jump"],
+        [inputMethod === "gamepad" ? "RT" : "LMB", "Break"],
+        [inputMethod === "gamepad" ? "LT" : "RMB", "Place"],
+        [inputMethod === "gamepad" ? "Y" : "E", "Inventory"],
+        [inputMethod === "gamepad" ? "RB/LB" : "G", "Drop"]
+      ];
+  return (
+    <div className={`hud-control-hints ${inputMethod === "gamepad" ? "gamepad" : "keyboard"}`} aria-hidden="true">
+      {hints.map(([glyph, label]) => (
+        <span className="hud-control-hint" key={label}>
+          <span className="hud-control-glyph">{glyph}</span>
+          <span className="hud-control-label">{label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function HudRoute({ model }) {
   const payload = parseJson(model?.payload, {}) || {};
   const hotbar = Array.isArray(payload.hotbar) ? payload.hotbar : [];
   const inventorySlots = Array.isArray(payload?.inventory?.slots) ? payload.inventory.slots : [];
   const notifications = Array.isArray(payload.notifications) ? payload.notifications : [];
   const recipes = Array.isArray(payload?.crafting?.recipes) ? payload.crafting.recipes : [];
+  const inputMethod = payload.inputMethod === "gamepad" ? "gamepad" : "keyboard";
   const [chatDraft, setChatDraft] = useState("");
   const [recipeTab, setRecipeTab] = useState("all");
+  const [dragSlot, setDragSlot] = useState(null);
   const chatOpen = Boolean(payload?.chat?.open);
   const craftingOpen = Boolean(payload?.crafting?.open);
   const crosshairSize = Math.max(0.5, Math.min(2, Number(payload?.crosshair?.size || 1)));
@@ -776,28 +861,16 @@ function HudRoute({ model }) {
               <p className="section-title">Backpack</p>
               <div className="hud-inventory-grid">
                 {mainSlots.map((slot) => (
-                  <div key={slot.slot} className="hud-bag-slot" role="group" aria-label={`Inventory slot ${Number(slot.slot) + 1}`}>
-                    <span className="hud-slot-name">{slot.name || "Empty"}</span>
-                    <span className="hud-slot-count">{slot.count > 0 ? slot.count : ""}</span>
-                  </div>
+                  <InventorySlot key={slot.slot} slot={slot} selectable={false} dragSlot={dragSlot} setDragSlot={setDragSlot} />
                 ))}
               </div>
               <p className="section-title">Hotbar</p>
               <nav className="hud-hotbar-overlay" aria-label="Hotbar">
                 {displayHotbar.map((slot) => (
-                  <button
-                    key={slot.slot}
-                    type="button"
-                    className={`hud-slot ${slot.selected ? "selected" : ""}`}
-                    aria-pressed={Boolean(slot.selected)}
-                    onClick={() => sendUiAction("hotbar", { value: slot.slot })}
-                  >
-                    <span className="hud-slot-number">{Number(slot.slot) + 1}</span>
-                    <span className="hud-slot-name">{slot.name || "Empty"}</span>
-                    <span className="hud-slot-count">{slot.count > 0 ? slot.count : ""}</span>
-                  </button>
+                  <InventorySlot key={slot.slot} slot={slot} selectable dragSlot={dragSlot} setDragSlot={setDragSlot} />
                 ))}
               </nav>
+              <ControlHints inputMethod={inputMethod} craftingOpen />
             </section>
           </div>
         </section>
@@ -806,20 +879,11 @@ function HudRoute({ model }) {
       {!overlayOpen ? (
         <nav className="hud-hotbar" aria-label="Hotbar">
           {displayHotbar.map((slot) => (
-            <button
-              key={slot.slot}
-              type="button"
-              className={`hud-slot ${slot.selected ? "selected" : ""}`}
-              aria-pressed={Boolean(slot.selected)}
-              onClick={() => sendUiAction("hotbar", { value: slot.slot })}
-            >
-              <span className="hud-slot-number">{Number(slot.slot) + 1}</span>
-              <span className="hud-slot-name">{slot.name || "Empty"}</span>
-              <span className="hud-slot-count">{slot.count > 0 ? slot.count : ""}</span>
-            </button>
+            <InventorySlot key={slot.slot} slot={slot} selectable dragSlot={dragSlot} setDragSlot={setDragSlot} />
           ))}
         </nav>
       ) : null}
+      {!overlayOpen ? <ControlHints inputMethod={inputMethod} craftingOpen={false} /> : null}
     </main>
   );
 }
