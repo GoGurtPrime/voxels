@@ -307,6 +307,9 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
         case PlayerUIActionKind::HudCraftRecipe:
             if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
             return context.activeGame->CraftRecipe(action.primary);
+        case PlayerUIActionKind::HudDropItem:
+            if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
+            return context.activeGame->DropSlot(static_cast<int>(std::round(action.value)));
         default: return false;
     }
 }

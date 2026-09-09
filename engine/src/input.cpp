@@ -49,6 +49,7 @@ InputState InputManager::GetInputState() const {
     state.pause = IsActionActive("Pause");
     state.destroyBlock = IsActionActive("DestroyBlock");
     state.placeBlock = IsActionActive("PlaceBlock");
+    state.dropItem = IsActionActive("DropItem");
     for (int slot = 0; slot < 9; ++slot) {
         if (IsActionActive("Hotbar" + std::to_string(slot + 1))) {
             state.hotbarSlot = slot;

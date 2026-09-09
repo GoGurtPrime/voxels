@@ -36,9 +36,10 @@ public:
     /// and on negative-hardness (unbreakable) blocks. Drops/inventory are the caller's job.
     [[nodiscard]] InteractionResult BreakBlock(World& world, const RaycastHit& target, const BlockRegistry& registry) const;
     /// Places the player's selected hotbar block into the cell adjacent to the hit face. Fails
-    /// when holding nothing, the cell is occupied, or it would overlap the player AABB.
-    /// The held stack is not decremented here.
-    [[nodiscard]] InteractionResult PlaceBlock(World& world, const Player& player, const RaycastHit& target) const;
+    /// when holding nothing, the held item is not placeable, the cell is occupied, or it would
+    /// overlap the player AABB. The held stack is not decremented here.
+    [[nodiscard]] InteractionResult PlaceBlock(World& world, const Player& player, const RaycastHit& target,
+                                               const BlockRegistry& registry) const;
 
 private:
     float m_reachDistance;

@@ -132,6 +132,7 @@ struct BlockDefinition {
     bool isTransparent = false;
     bool isOpaque = true; ///< Fully occludes adjacent faces; false routes the block to the transparent draw pass.
     bool isLiquid = false;
+    bool isPlaceable = true; ///< False for inventory-only items (ingredients, tools) that cannot be placed as world blocks.
     float hardness = 1.0f; ///< Break time in seconds of held mining; negative marks the block unbreakable.
     std::uint8_t lightEmission = 0; ///< Emitted block light, 0-15.
     std::string renderType = "cube"; // "cube" | "cross" | "liquid" | "model"

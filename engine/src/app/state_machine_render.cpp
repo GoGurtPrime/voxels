@@ -399,6 +399,12 @@ std::string DisplayNameForBlock(const BlockRegistry* registry, BlockId blockId) 
     return definition == nullptr ? "Item" : definition->displayName;
 }
 
+std::string DisplayNameForItem(const BlockRegistry* registry, std::string_view itemName) {
+    if (registry == nullptr) return std::string(itemName);
+    const BlockDefinition* definition = registry->GetDefinition(std::string(itemName));
+    return definition == nullptr ? std::string(itemName) : definition->displayName;
+}
+
 bool ConsumeInventoryItem(gameplay::Inventory& inventory, BlockId blockId, int count) {
     int remaining = std::max(0, count);
     for (std::size_t slot = 0; slot < gameplay::Inventory::kSlotCount && remaining > 0; ++slot) {
@@ -419,6 +425,34 @@ int CountInventoryItem(const gameplay::Inventory& inventory, BlockId blockId) {
         if (!stack.IsEmpty() && stack.blockId == blockId) total += stack.count;
     }
     return total;
+}
+
+/// One row of the crafting catalogue: ingredient/output item names resolve against the live
+/// BlockRegistry at craft time, so adding a recipe never requires touching lookup logic.
+struct RecipeIngredient {
+    std::string_view itemName;
+    int count;
+};
+
+struct RecipeDefinition {
+    std::string_view id;
+    std::string_view icon;
+    std::string_view category;
+    std::vector<RecipeIngredient> ingredients;
+    std::string_view outputItemName;
+    int outputCount;
+};
+
+/// The single source of truth for craftable recipes; both `CraftRecipe` (server-side effect)
+/// and `PublishHudModel` (browser display) read from this table.
+const std::array<RecipeDefinition, 4>& RecipeCatalogue() {
+    static const std::array<RecipeDefinition, 4> kCatalogue{{
+        {"recipe_planks", "planks", "construction", {{"wood_log", 1}}, "planks", 4},
+        {"recipe_stick", "stick", "construction", {{"planks", 1}}, "stick", 4},
+        {"recipe_garden_mix", "garden_mix", "food", {{"dirt", 1}, {"stone", 1}}, "garden_mix", 2},
+        {"recipe_stone_axe", "stone_axe", "tools", {{"planks", 1}, {"stick", 2}, {"stone", 3}}, "stone_axe", 1},
+    }};
+    return kCatalogue;
 }
 } // namespace
 
@@ -666,6 +700,7 @@ void InGameState::OnEnter() {
         m_inputManager->BindAction("Screenshot", InputBinding{"Screenshot", 1073741883, 0, InputDeviceType::Keyboard});
         m_inputManager->BindAction("DestroyBlock", InputBinding{"DestroyBlock", 1, 0, InputDeviceType::Mouse});
         m_inputManager->BindAction("PlaceBlock", InputBinding{"PlaceBlock", 3, 0, InputDeviceType::Mouse});
+        m_inputManager->BindAction("DropItem", InputBinding{"DropItem", static_cast<int>('g'), static_cast<int>('G'), InputDeviceType::Keyboard});
         for (int slot = 0; slot < 9; ++slot) {
             m_inputManager->BindAction("Hotbar" + std::to_string(slot + 1), InputBinding{"", static_cast<int>('1') + slot, 0, InputDeviceType::Keyboard});
         }
@@ -838,40 +873,60 @@ bool InGameState::SubmitChatMessage(const std::string& message) {
 }
 
 bool InGameState::CraftRecipe(const std::string& recipeId) {
+    if (m_registry == nullptr) return false;
     gameplay::Inventory& inventory = m_session.GetPlayer().state.inventory;
-    struct RecipeRule {
-        std::string_view id;
-        std::vector<std::pair<BlockId, int>> inputs;
-        BlockId output;
-        int outputCount;
-        std::string_view outputName;
-    };
 
-    static const std::array<RecipeRule, 3> kRecipes{{
-        {"recipe_planks", {{static_cast<BlockId>(BlockType::TreeTrunk), 1}}, static_cast<BlockId>(BlockType::Planks), 4, "Planks"},
-        {"recipe_garden_mix", {{static_cast<BlockId>(BlockType::Dirt), 1}, {static_cast<BlockId>(BlockType::Stone), 1}}, static_cast<BlockId>(BlockType::Grass), 2, "Garden Mix"},
-        {"recipe_stone_axe", {{static_cast<BlockId>(BlockType::Planks), 1}, {static_cast<BlockId>(BlockType::Stone), 3}}, static_cast<BlockId>(BlockType::IronOre), 1, "Stone Axe"},
-    }};
-
-    const auto recipeIt = std::find_if(kRecipes.begin(), kRecipes.end(), [&recipeId](const RecipeRule& recipe) {
+    const auto& catalogue = RecipeCatalogue();
+    const auto recipeIt = std::find_if(catalogue.begin(), catalogue.end(), [&recipeId](const RecipeDefinition& recipe) {
         return recipe.id == recipeId;
     });
-    if (recipeIt == kRecipes.end()) return false;
+    if (recipeIt == catalogue.end()) return false;
 
-    for (const auto& [blockId, count] : recipeIt->inputs) {
+    const BlockDefinition* outputDefinition = m_registry->GetDefinition(std::string(recipeIt->outputItemName));
+    if (outputDefinition == nullptr) {
+        RenderStateLog().Warn("Recipe '" + std::string(recipeId) + "' references unregistered output item '" +
+                              std::string(recipeIt->outputItemName) + "'.");
+        return false;
+    }
+
+    std::vector<std::pair<BlockId, int>> resolvedInputs;
+    resolvedInputs.reserve(recipeIt->ingredients.size());
+    for (const auto& ingredient : recipeIt->ingredients) {
+        const BlockDefinition* inputDefinition = m_registry->GetDefinition(std::string(ingredient.itemName));
+        if (inputDefinition == nullptr) {
+            RenderStateLog().Warn("Recipe '" + std::string(recipeId) + "' references unregistered ingredient '" +
+                                  std::string(ingredient.itemName) + "'.");
+            return false;
+        }
+        resolvedInputs.emplace_back(inputDefinition->id, ingredient.count);
+    }
+
+    for (const auto& [blockId, count] : resolvedInputs) {
         if (CountInventoryItem(inventory, blockId) < count) {
-            PushHudNotification("Missing ingredients for " + std::string(recipeIt->outputName) + ".");
+            PushHudNotification("Missing ingredients for " + outputDefinition->displayName + ".");
             PublishHudModel(true);
             return false;
         }
     }
 
-    for (const auto& [blockId, count] : recipeIt->inputs) {
+    for (const auto& [blockId, count] : resolvedInputs) {
         if (!ConsumeInventoryItem(inventory, blockId, count)) return false;
     }
-    (void)inventory.AddItem(recipeIt->output, recipeIt->outputCount);
+    (void)inventory.AddItem(outputDefinition->id, recipeIt->outputCount);
     PushHudNotification("Crafted " + std::to_string(recipeIt->outputCount) + "x " +
-                        std::string(recipeIt->outputName) + ".");
+                        outputDefinition->displayName + ".");
+    PublishHudModel(true);
+    return true;
+}
+
+bool InGameState::DropSlot(int slot) {
+    if (slot < 0 || static_cast<std::size_t>(slot) >= gameplay::Inventory::kSlotCount) return false;
+    const gameplay::ItemStack& stack = m_session.GetPlayer().state.inventory.GetSlot(static_cast<std::size_t>(slot));
+    if (stack.IsEmpty()) return false;
+    const std::string label = DisplayNameForBlock(m_registry, stack.blockId);
+    const int dropped = m_session.DropInventorySlot(static_cast<std::size_t>(slot), stack.count);
+    if (dropped <= 0) return false;
+    PushHudNotification("Dropped " + std::to_string(dropped) + "x " + label + ".");
     PublishHudModel(true);
     return true;
 }
@@ -1195,14 +1250,23 @@ void InGameState::PublishHudModel(bool forcePublish) {
         });
     }
 
-    static const nlohmann::json kRecipes = nlohmann::json::array({
-        {{"id", "recipe_planks"}, {"name", "Planks"}, {"icon", "planks"}, {"category", "construction"}, {"sort", "Planks"},
-         {"ingredients", nlohmann::json::array({{{"name", "Tree Trunk"}, {"count", 1}}})}, {"output", {{"name", "Planks"}, {"count", 4}}}},
-        {{"id", "recipe_garden_mix"}, {"name", "Garden Mix"}, {"icon", "garden_mix"}, {"category", "food"}, {"sort", "Garden Mix"},
-         {"ingredients", nlohmann::json::array({{{"name", "Dirt"}, {"count", 1}}, {{"name", "Stone"}, {"count", 1}}})}, {"output", {{"name", "Garden Mix"}, {"count", 2}}}},
-        {{"id", "recipe_stone_axe"}, {"name", "Stone Axe"}, {"icon", "stone_axe"}, {"category", "tools"}, {"sort", "Stone Axe"},
-         {"ingredients", nlohmann::json::array({{{"name", "Planks"}, {"count", 1}}, {{"name", "Stone"}, {"count", 3}}})}, {"output", {{"name", "Stone Axe"}, {"count", 1}}}}
-    });
+    nlohmann::json kRecipes = nlohmann::json::array();
+    for (const RecipeDefinition& recipe : RecipeCatalogue()) {
+        nlohmann::json ingredients = nlohmann::json::array();
+        for (const RecipeIngredient& ingredient : recipe.ingredients) {
+            ingredients.push_back({{"name", DisplayNameForItem(m_registry, ingredient.itemName)}, {"count", ingredient.count}});
+        }
+        const std::string outputName = DisplayNameForItem(m_registry, recipe.outputItemName);
+        kRecipes.push_back({
+            {"id", std::string(recipe.id)},
+            {"name", outputName},
+            {"icon", std::string(recipe.icon)},
+            {"category", std::string(recipe.category)},
+            {"sort", outputName},
+            {"ingredients", ingredients},
+            {"output", {{"name", outputName}, {"count", recipe.outputCount}}}
+        });
+    }
 
     const RaycastHit& target = m_session.GetTarget();
     const gameplay::ItemStack& held = inventory.GetSelectedStack();
@@ -1287,7 +1351,7 @@ void InGameState::Render() {
             m_context->ui->UsesNativeRoutePresentation(PlayerUIRoute::Hud);
         m_hudRenderer->Render(camera, m_session.GetTarget(), m_session.GetBreakProgress(), m_session.GetPlayer().state.inventory,
                               m_session.GetSelectedItemLabel(), m_session.GetSelectedItemLabelAge(),
-                              m_session.GetParticleBursts(), drawNativeScreenHud);
+                              m_session.GetParticleBursts(), m_session.GetItemDrops(), drawNativeScreenHud);
         m_session.ClearParticleBursts();
     }
 }

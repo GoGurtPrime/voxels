@@ -5,6 +5,7 @@ import { Route, parseJson, sendUiAction, useVoxelsActionGate, useVoxelsBridgeMod
 import iconPlanks from "./assets/recipes/planks.svg";
 import iconGardenMix from "./assets/recipes/garden_mix.svg";
 import iconStoneAxe from "./assets/recipes/stone_axe.svg";
+import iconStick from "./assets/recipes/stick.svg";
 
 const splashLogo = "/assets/studio-logo.png";
 
@@ -614,7 +615,8 @@ function Settings({ model }) {
 const RECIPE_ICONS = {
   planks: iconPlanks,
   garden_mix: iconGardenMix,
-  stone_axe: iconStoneAxe
+  stone_axe: iconStoneAxe,
+  stick: iconStick
 };
 
 function HudRoute({ model }) {

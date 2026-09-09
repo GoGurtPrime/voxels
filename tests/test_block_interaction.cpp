@@ -70,7 +70,7 @@ TEST_CASE("BlockInteraction.BreakAndPlaceMutateWorld", "[interaction][break][pla
     const auto broken = interaction.BreakBlock(world, interaction.Target(world, player, registry), registry);
     REQUIRE(broken.success);
     REQUIRE(world.GetBlock(broken.targetPosition) == static_cast<voxels::BlockId>(voxels::BlockType::Air));
-    const auto placed = interaction.PlaceBlock(world, player, interaction.Target(world, player, registry));
+    const auto placed = interaction.PlaceBlock(world, player, interaction.Target(world, player, registry), registry);
     REQUIRE(placed.success);
     REQUIRE(world.GetBlock(placed.adjacentPosition) == static_cast<voxels::BlockId>(voxels::BlockType::Dirt));
 }

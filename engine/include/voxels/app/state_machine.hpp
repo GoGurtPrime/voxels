@@ -326,6 +326,10 @@ class InGameState final : public IAppState {public:
     void SetCraftingOpen(bool open);
     bool SubmitChatMessage(const std::string& message);
     bool CraftRecipe(const std::string& recipeId);
+    /// Drops the entire stack in inventory `slot` (hotbar or backpack) as a ground item in
+    /// front of the player. Used by the HUD's per-slot drop control. Returns false when the
+    /// slot is empty or out of range.
+    bool DropSlot(int slot);
     /// Captures a raw world preview on the next rendered frame, then returns to the main menu.
     void RequestSaveAndReturnToMenu() noexcept;
     /// Captures a raw world preview on the next rendered frame, then requests process exit.

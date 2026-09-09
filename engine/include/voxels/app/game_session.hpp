@@ -21,6 +21,7 @@
 #include "voxels/core/game_types.hpp"
 #include "voxels/gameplay/camera_controller.hpp"
 #include "voxels/gameplay/block_interaction.hpp"
+#include "voxels/gameplay/item_drop.hpp"
 #include "voxels/gameplay/physics.hpp"
 #include "voxels/gameplay/player.hpp"
 #include "voxels/input/input_manager.hpp"
@@ -113,6 +114,13 @@ public:
     /// Returns and clears the chunks evicted by streaming since the last call.
     [[nodiscard]] std::vector<ChunkCoordinate> ConsumeRemovedChunks();
     void SetPreferences(const GamePreferences& preferences) noexcept { m_preferences = preferences; }
+    /// Ground item entities (spawned by block breaks or manual drops); the render layer draws
+    /// these as small bobbing cubes and the HUD does not otherwise track them.
+    [[nodiscard]] const std::vector<gameplay::ItemDrop>& GetItemDrops() const noexcept { return m_itemDrops.Drops(); }
+    /// Removes up to `count` items from inventory `slot` and spawns them as a ground item drop
+    /// tossed a short distance in front of the player. Returns the count actually dropped (0 when
+    /// the slot is empty, out of range, or `count` is not positive).
+    int DropInventorySlot(std::size_t slot, int count);
 
 private:
     void EnsureChunkResidentAroundPlayer();
@@ -156,6 +164,8 @@ private:
     std::vector<Vec3I> m_editedBlocks;
     std::vector<GameplaySoundEvent> m_soundEvents;
     std::vector<Vec3I> m_particleBursts;
+    gameplay::ItemDropSimulation m_itemDrops;
+    bool m_dropItemHeldLastFrame = false;
     gameplay::ItemStack m_lastSelectedStack{};
     std::string m_selectedItemLabel;
     float m_selectedItemLabelAge = 0.0f;

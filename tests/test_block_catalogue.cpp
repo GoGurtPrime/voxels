@@ -18,11 +18,12 @@
 TEST_CASE("BlockRegistry.LoadsAllLaunchBlocksWithExpectedFlags", "[world][block]") {
     const voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
 
-    REQUIRE(registry.Count() == 16);
+    REQUIRE(registry.Count() == 20);
 
     const std::vector<std::string> expectedLaunchBlocks = {
         "air", "stone", "dirt", "grass", "sand", "gravel", "water",
-        "coal_ore", "iron_ore", "wood_log", "leaves", "planks", "glass", "bedrock", "stairs", "slab"
+        "coal_ore", "iron_ore", "wood_log", "leaves", "planks", "glass", "bedrock", "stairs", "slab",
+        "coal", "stick", "garden_mix", "stone_axe"
     };
 
     std::set<voxels::BlockId> numericIds;
@@ -33,7 +34,7 @@ TEST_CASE("BlockRegistry.LoadsAllLaunchBlocksWithExpectedFlags", "[world][block]
         REQUIRE(def->name == name);
         numericIds.insert(def->id);
     }
-    REQUIRE(numericIds.size() == 16);
+    REQUIRE(numericIds.size() == 20);
     REQUIRE(registry.ValidateDenseNumericIds());
 
     // Spot-check physical flags and metadata
@@ -88,6 +89,15 @@ TEST_CASE("BlockRegistry.LoadsAllLaunchBlocksWithExpectedFlags", "[world][block]
     REQUIRE(bedrock->id == 13);
     REQUIRE(bedrock->isSolid);
     REQUIRE(bedrock->hardness < 0.0f);
+
+    // Inventory-only items (coal, stick, garden mix, stone axe) are real registered items,
+    // not aliases of a placeable world block, and are rejected by placement.
+    for (const std::string& itemName : {"coal", "stick", "garden_mix", "stone_axe"}) {
+        const auto* item = registry.GetDefinition(itemName);
+        REQUIRE(item != nullptr);
+        REQUIRE_FALSE(item->isPlaceable);
+    }
+    REQUIRE(registry.GetDefinition("coal")->id != registry.GetDefinition("coal_ore")->id);
 }
 
 TEST_CASE("BlockRegistry.RejectsDuplicateOrMalformedDefinitions", "[world][block]") {

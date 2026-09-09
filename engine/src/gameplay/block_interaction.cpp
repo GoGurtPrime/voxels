@@ -105,7 +105,8 @@ InteractionResult BlockInteraction::BreakBlock(World& world, const RaycastHit& t
     return result;
 }
 
-InteractionResult BlockInteraction::PlaceBlock(World& world, const Player& player, const RaycastHit& target) const {
+InteractionResult BlockInteraction::PlaceBlock(World& world, const Player& player, const RaycastHit& target,
+                                               const BlockRegistry& registry) const {
     if (!target.hit) {
         return {};
     }
@@ -123,6 +124,8 @@ InteractionResult BlockInteraction::PlaceBlock(World& world, const Player& playe
     const ItemStack& heldStack = player.state.inventory.GetSelectedStack();
     const BlockId blockId = heldStack.IsEmpty() ? static_cast<BlockId>(BlockType::Air) : heldStack.blockId;
     if (blockId == static_cast<BlockId>(BlockType::Air)) return {};
+    const BlockDefinition* heldDefinition = registry.GetDefinition(blockId);
+    if (heldDefinition == nullptr || !heldDefinition->isPlaceable) return {};
     if (world.GetBlock(placement) != static_cast<BlockId>(BlockType::Air)) {
         return {};
     }

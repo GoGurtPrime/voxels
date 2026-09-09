@@ -40,6 +40,7 @@ struct InputState {
     bool pause = false;
     bool destroyBlock = false;
     bool placeBlock = false;
+    bool dropItem = false;
     int hotbarSlot = -1;
     int mouseWheelY = 0;
     float mouseX = 0.0f;

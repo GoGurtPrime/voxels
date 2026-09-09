@@ -73,6 +73,7 @@ Use kind prefix `ui.action.`:
 - `ui.action.open-crafting`
 - `ui.action.close-crafting`
 - `ui.action.craft-recipe`
+- `ui.action.drop-item`
 - `ui.action.acknowledge-error`
 
 Legacy (non-prefixed) kinds are still accepted for compatibility.
@@ -93,6 +94,8 @@ Mapping rules:
 - If `secondary` is a string, C++ stores it in `PlayerUIAction.secondary`.
 - If `secondary` is an object, C++ stores it as compact JSON text in `PlayerUIAction.secondary`.
 - If `settings` exists and `secondary` is empty, C++ stores `settings` JSON in `PlayerUIAction.secondary`.
+- `drop-item` sends the inventory slot index (0-35) as action `value` and drops the slot's
+  entire stack as a ground item tossed in front of the player.
 
 ### Native -> browser model updates
 

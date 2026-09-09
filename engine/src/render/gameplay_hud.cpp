@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <fstream>
 #include <vector>
 
@@ -45,6 +46,33 @@ void AddRect(std::vector<Vertex>& vertices, float left, float bottom, float righ
     AddLine(vertices, {left, top, 0.0f}, {left, bottom, 0.0f}, color);
 }
 
+void AddQuad(std::vector<Vertex>& vertices, glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 d, glm::vec4 color) {
+    vertices.push_back({a, color}); vertices.push_back({b, color}); vertices.push_back({c, color});
+    vertices.push_back({a, color}); vertices.push_back({c, color}); vertices.push_back({d, color});
+}
+
+/// Appends a small solid cube centred at `center`, rotated `yaw` radians about Y, with a per-face
+/// shading tint so the item drop reads as a floating object rather than a flat billboard.
+void AddSpinningCube(std::vector<Vertex>& vertices, glm::vec3 center, float halfExtent, float yaw, glm::vec4 baseColor) {
+    const float cosYaw = std::cos(yaw);
+    const float sinYaw = std::sin(yaw);
+    const auto rotate = [&](float x, float y, float z) {
+        return glm::vec3(center.x + x * cosYaw - z * sinYaw, center.y + y, center.z + x * sinYaw + z * cosYaw);
+    };
+    const float e = halfExtent;
+    const glm::vec3 p000 = rotate(-e, -e, -e), p100 = rotate(e, -e, -e), p110 = rotate(e, e, -e), p010 = rotate(-e, e, -e);
+    const glm::vec3 p001 = rotate(-e, -e, e), p101 = rotate(e, -e, e), p111 = rotate(e, e, e), p011 = rotate(-e, e, e);
+    const glm::vec4 top = baseColor;
+    const glm::vec4 side = baseColor * glm::vec4(0.78f, 0.78f, 0.78f, 1.0f);
+    const glm::vec4 bottom = baseColor * glm::vec4(0.55f, 0.55f, 0.55f, 1.0f);
+    AddQuad(vertices, p010, p110, p111, p011, top);
+    AddQuad(vertices, p000, p001, p101, p100, bottom);
+    AddQuad(vertices, p000, p010, p011, p001, side);
+    AddQuad(vertices, p100, p101, p111, p110, side);
+    AddQuad(vertices, p001, p011, p111, p101, side);
+    AddQuad(vertices, p000, p100, p110, p010, side);
+}
+
 std::array<CrackVertex, 36> MakeCrackBox(const RaycastHit& target) {
     constexpr float kBias = 0.005f;
     const float minX = static_cast<float>(target.blockPosition.x);
@@ -80,7 +108,7 @@ GameplayHudRenderer::~GameplayHudRenderer() { Shutdown(); }
 void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target, float breakProgress,
                                  const gameplay::Inventory& inventory, const std::string& selectedItemLabel,
                                  float selectedItemLabelAge, const std::vector<Vec3I>& particleBursts,
-                                 bool drawScreenSpaceHud) {
+                                 const std::vector<gameplay::ItemDrop>& itemDrops, bool drawScreenSpaceHud) {
     if (glCreateShader == nullptr) return;
     if (m_program == 0) {
         constexpr const char* vertexSource = "#version 330 core\nlayout(location=0) in vec3 p; layout(location=1) in vec4 c; uniform mat4 vp; uniform bool screen; out vec4 color; void main(){gl_Position=screen?vec4(p,1):vp*vec4(p,1);color=c;}";
@@ -177,6 +205,25 @@ void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target,
     glUniform1i(glGetUniformLocation(m_program, "screen"), GL_FALSE);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(worldLines.size() * sizeof(Vertex)), worldLines.data(), GL_DYNAMIC_DRAW);
     glLineWidth(2.0f); glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(worldLines.size()));
+
+    if (!itemDrops.empty()) {
+        std::vector<Vertex> dropTriangles;
+        dropTriangles.reserve(itemDrops.size() * 36U);
+        for (const gameplay::ItemDrop& drop : itemDrops) {
+            const float bob = std::sin(drop.age * 2.4f) * 0.05f;
+            const glm::vec3 center{drop.position.x, drop.position.y + bob, drop.position.z};
+            // Distinguish item families by a stable hash-derived hue since this line/triangle
+            // shader has no texture sampling; a textured world-space icon is a follow-up
+            // (see ASSET_REQUESTS.md).
+            const std::uint32_t hash = static_cast<std::uint32_t>(drop.stack.blockId) * 2654435761u;
+            const glm::vec4 color{0.45f + 0.35f * ((hash >> 8) & 0xFF) / 255.0f,
+                                  0.45f + 0.35f * ((hash >> 16) & 0xFF) / 255.0f,
+                                  0.45f + 0.35f * ((hash >> 24) & 0xFF) / 255.0f, 1.0f};
+            AddSpinningCube(dropTriangles, center, 0.16f, drop.age * 1.1f, color);
+        }
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(dropTriangles.size() * sizeof(Vertex)), dropTriangles.data(), GL_DYNAMIC_DRAW);
+        glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(dropTriangles.size()));
+    }
 
     if (target.hit && breakProgress > 0.0f && m_crackProgram != 0) {
         const std::size_t stage = std::min<std::size_t>(m_crackTextures.size() - 1,

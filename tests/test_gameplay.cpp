@@ -144,12 +144,31 @@ TEST_CASE("BlockInteraction.BreakAndPlace", "[gameplay][block_interaction]") {
     REQUIRE(world.GetBlock(voxels::Vec3I{3, 2, -1}) == static_cast<voxels::BlockId>(voxels::BlockType::Air));
 
     const voxels::gameplay::InteractionResult placeResult =
-        interaction.PlaceBlock(world, player, interaction.Target(world, player, registry));
+        interaction.PlaceBlock(world, player, interaction.Target(world, player, registry), registry);
     REQUIRE(placeResult.success);
     REQUIRE(world.GetBlock(voxels::Vec3I{3, 2, -2}) == static_cast<voxels::BlockId>(voxels::BlockType::Dirt));
 
-    const voxels::gameplay::InteractionResult rejected = interaction.PlaceBlock(world, player, {});
+    const voxels::gameplay::InteractionResult rejected = interaction.PlaceBlock(world, player, {}, registry);
     REQUIRE_FALSE(rejected.success);
+}
+
+TEST_CASE("BlockInteraction.RejectsPlacingNonPlaceableItems", "[gameplay][block_interaction]") {
+    voxels::World world;
+    world.SetBlock(voxels::Vec3I{3, 2, -1}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+
+    voxels::Player player;
+    player.state.position = voxels::Vec3{3.5f, 2.0f, 1.5f};
+    player.state.yaw = 0.0f;
+    player.state.pitch = 0.0f;
+    const voxels::BlockDefinition* coal = registry.GetDefinition("coal");
+    REQUIRE(coal != nullptr);
+    player.state.inventory.GetSlot(0) = {coal->id, 4};
+
+    const voxels::gameplay::BlockInteraction interaction;
+    const voxels::gameplay::InteractionResult placeResult =
+        interaction.PlaceBlock(world, player, interaction.Target(world, player, registry), registry);
+    REQUIRE_FALSE(placeResult.success);
 }
 
 TEST_CASE("CameraController.UpdatesMovementFromInput", "[gameplay][camera]") {

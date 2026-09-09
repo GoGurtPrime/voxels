@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <chrono>
+#include <random>
 
 #include "voxels/world/generation_pipeline.hpp"
 #include "voxels/world/spawn_calculator.hpp"
@@ -294,11 +295,16 @@ void GameSession::Update(float deltaSeconds) {
                     if (m_breakProgress >= 1.0f) {
                         const gameplay::InteractionResult result = m_blockInteraction.BreakBlock(*m_world, m_target, *m_registry);
                         if (result.success) {
+                            static std::mt19937 scatterRng{std::random_device{}()};
+                            std::uniform_real_distribution<float> scatter(-1.2f, 1.2f);
+                            const Vec3 dropOrigin{static_cast<float>(result.targetPosition.x) + 0.5f,
+                                                  static_cast<float>(result.targetPosition.y) + 0.5f,
+                                                  static_cast<float>(result.targetPosition.z) + 0.5f};
                             for (const BlockDrop& drop : definition->drops) {
                                 const BlockDefinition* dropDefinition = m_registry->GetDefinition(drop.item);
                                 if (dropDefinition != nullptr) {
-                                    const int overflow = m_player.state.inventory.AddItem(dropDefinition->id, drop.count);
-                                    (void)overflow;
+                                    m_itemDrops.Spawn({dropDefinition->id, drop.count}, dropOrigin,
+                                                      {scatter(scatterRng), 2.2f, scatter(scatterRng)});
                                 }
                             }
                             m_editedBlocks.push_back(result.targetPosition);
@@ -322,7 +328,7 @@ void GameSession::Update(float deltaSeconds) {
                 m_hasBreakTarget = false;
             }
             if (input.placeBlock && m_target.hit && m_placeCooldown <= 0.0f) {
-                const gameplay::InteractionResult result = m_blockInteraction.PlaceBlock(*m_world, m_player, m_target);
+                const gameplay::InteractionResult result = m_blockInteraction.PlaceBlock(*m_world, m_player, m_target, *m_registry);
                 if (result.success) {
                     if (!m_worldOptions.sandboxMode) {
                         const bool removed = m_player.state.inventory.RemoveItem(
@@ -340,6 +346,10 @@ void GameSession::Update(float deltaSeconds) {
                     }
                 }
             }
+            if (input.dropItem && !m_dropItemHeldLastFrame) {
+                DropInventorySlot(static_cast<std::size_t>(m_player.state.inventory.GetSelectedSlot()), 1);
+            }
+            m_dropItemHeldLastFrame = input.dropItem;
             const gameplay::ItemStack& selectedStack = m_player.state.inventory.GetSelectedStack();
             if (selectedStack != m_lastSelectedStack) {
                 m_lastSelectedStack = selectedStack;
@@ -357,6 +367,16 @@ void GameSession::Update(float deltaSeconds) {
         m_hasBreakTarget = false;
     }
 
+    m_itemDrops.Update(*m_world, m_registry, deltaSeconds);
+    for (const gameplay::ItemStack& pickedUp : m_itemDrops.CollectPickups(m_player.state.position)) {
+        const int overflow = m_player.state.inventory.AddItem(pickedUp.blockId, pickedUp.count);
+        if (overflow > 0) {
+            // Inventory is full: leave the remainder on the ground with a short delay so it
+            // doesn't repeatedly bounce in and out every frame.
+            m_itemDrops.Spawn({pickedUp.blockId, overflow}, m_player.state.position, Vec3{0.0f, 1.0f, 0.0f}, 1.0f);
+        }
+    }
+
     m_camera.position = glm::vec3(m_player.state.position.x,
                                   m_player.state.position.y + 0.72f,
                                   m_player.state.position.z);
@@ -367,6 +387,23 @@ void GameSession::Update(float deltaSeconds) {
                                          {m_player.state.yaw, m_player.state.pitch, 0.0f},
                                          m_player.state.velocity});
     }
+}
+
+int GameSession::DropInventorySlot(std::size_t slot, int count) {
+    if (slot >= gameplay::Inventory::kSlotCount || count <= 0) return 0;
+    gameplay::ItemStack& stack = m_player.state.inventory.GetSlot(slot);
+    if (stack.IsEmpty()) return 0;
+    const BlockId droppedBlockId = stack.blockId;
+    const int toDrop = std::min(count, stack.count);
+    if (!m_player.state.inventory.RemoveItem(slot, toDrop)) return 0;
+
+    const Vec3 forward{-std::sin(m_player.state.yaw), 0.0f, -std::cos(m_player.state.yaw)};
+    const Vec3 tossOrigin{m_player.state.position.x + forward.x * 0.4f,
+                          m_player.state.position.y + 0.2f,
+                          m_player.state.position.z + forward.z * 0.4f};
+    m_itemDrops.Spawn({droppedBlockId, toDrop}, tossOrigin,
+                      {forward.x * 0.6f, 2.0f, forward.z * 0.6f}, 0.75f);
+    return toDrop;
 }
 
 void GameSession::Shutdown() noexcept {

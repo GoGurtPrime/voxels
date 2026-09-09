@@ -240,6 +240,70 @@ constexpr const char* kEmbeddedLaunchBlocksJson = R"({
       "model_id": null,
       "sounds": { "break": "sfx/break_stone", "step": "sfx/step_stone", "place": "sfx/place_stone" },
       "drops": []
+    },
+    {
+      "id": "coal",
+      "numeric_id": 14,
+      "display_name": "Coal",
+      "solid": false,
+      "opaque": false,
+      "liquid": false,
+      "placeable": false,
+      "hardness": -1.0,
+      "light_emission": 0,
+      "textures": { "all": "blocks/coal_ore" },
+      "render_type": "cube",
+      "model_id": null,
+      "sounds": {},
+      "drops": []
+    },
+    {
+      "id": "stick",
+      "numeric_id": 15,
+      "display_name": "Stick",
+      "solid": false,
+      "opaque": false,
+      "liquid": false,
+      "placeable": false,
+      "hardness": -1.0,
+      "light_emission": 0,
+      "textures": { "all": "blocks/wood_log_side" },
+      "render_type": "cube",
+      "model_id": null,
+      "sounds": {},
+      "drops": []
+    },
+    {
+      "id": "garden_mix",
+      "numeric_id": 16,
+      "display_name": "Garden Mix",
+      "solid": false,
+      "opaque": false,
+      "liquid": false,
+      "placeable": false,
+      "hardness": -1.0,
+      "light_emission": 0,
+      "textures": { "all": "blocks/dirt" },
+      "render_type": "cube",
+      "model_id": null,
+      "sounds": {},
+      "drops": []
+    },
+    {
+      "id": "stone_axe",
+      "numeric_id": 17,
+      "display_name": "Stone Axe",
+      "solid": false,
+      "opaque": false,
+      "liquid": false,
+      "placeable": false,
+      "hardness": -1.0,
+      "light_emission": 0,
+      "textures": { "all": "blocks/stone" },
+      "render_type": "cube",
+      "model_id": null,
+      "sounds": {},
+      "drops": []
     }
   ]
 })";
@@ -310,6 +374,7 @@ void BlockRegistry::LoadFromJsonString(std::string_view jsonContent, std::string
         def.isOpaque = blockJson.value("opaque", def.isSolid);
         def.isTransparent = !def.isOpaque;
         def.isLiquid = blockJson.value("liquid", false);
+        def.isPlaceable = blockJson.value("placeable", true);
         def.hardness = blockJson.value("hardness", 1.0f);
         def.lightEmission = static_cast<std::uint8_t>(blockJson.value("light_emission", 0));
         def.renderType = blockJson.value("render_type", "cube");
@@ -493,7 +558,6 @@ BlockRegistry CreateDefaultBlockRegistry() {
     registry.RegisterAlias("tree_trunk", static_cast<BlockId>(BlockType::Wood));
     registry.RegisterAlias("tree", static_cast<BlockId>(BlockType::Wood));
     registry.RegisterAlias("leaf", static_cast<BlockId>(BlockType::Leaf));
-    registry.RegisterAlias("coal", static_cast<BlockId>(BlockType::Coal));
 
     return registry;
 }
