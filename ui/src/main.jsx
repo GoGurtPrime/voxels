@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { Route, parseJson, sendUiAction, useVoxelsActionGate, useVoxelsBridgeModel } from "./lib/voxelsBridge";
+import iconPlanks from "./assets/recipes/planks.svg";
+import iconGardenMix from "./assets/recipes/garden_mix.svg";
+import iconStoneAxe from "./assets/recipes/stone_axe.svg";
 
 const splashLogo = "/assets/studio-logo.png";
 
@@ -509,7 +512,10 @@ function Settings({ model }) {
     effects: 0.8,
     sensitivity: 1,
     invertY: false,
-    particles: true
+    particles: true,
+    crosshairSize: 1,
+    crosshairHighContrast: false,
+    reducedMotion: false
   });
   useEffect(() => {
     const payload = parseJson(model?.payload, null);
@@ -527,7 +533,10 @@ function Settings({ model }) {
       effects: typeof payload.effects === "number" ? payload.effects : previous.effects,
       sensitivity: typeof payload.sensitivity === "number" ? payload.sensitivity : previous.sensitivity,
       invertY: typeof payload.invertY === "boolean" ? payload.invertY : previous.invertY,
-      particles: typeof payload.particles === "boolean" ? payload.particles : previous.particles
+      particles: typeof payload.particles === "boolean" ? payload.particles : previous.particles,
+      crosshairSize: typeof payload.crosshairSize === "number" ? payload.crosshairSize : previous.crosshairSize,
+      crosshairHighContrast: typeof payload.crosshairHighContrast === "boolean" ? payload.crosshairHighContrast : previous.crosshairHighContrast,
+      reducedMotion: typeof payload.reducedMotion === "boolean" ? payload.reducedMotion : previous.reducedMotion
     }));
   }, [model?.revision, model?.payload]);
   const update = (key, value) => setSettings({ ...settings, [key]: value });
@@ -590,12 +599,226 @@ function Settings({ model }) {
 
         <p className="section-title">Controls</p>
         <SliderField label="Mouse sensitivity" value={settings.sensitivity} min={0.1} max={4} step={0.1} onChange={(value) => update("sensitivity", value)} format={(value) => value.toFixed(1)} />
+        <SliderField label="Crosshair size" value={settings.crosshairSize} min={0.5} max={2} step={0.1} onChange={(value) => update("crosshairSize", value)} format={(value) => `${value.toFixed(1)}x`} />
         <div className="toggle-grid" style={{ marginTop: 4 }}>
           <Chip checked={settings.invertY} onChange={(value) => update("invertY", value)}>Invert Y</Chip>
           <Chip checked={settings.particles} onChange={(value) => update("particles", value)}>Particles</Chip>
+          <Chip checked={settings.crosshairHighContrast} onChange={(value) => update("crosshairHighContrast", value)}>High contrast crosshair</Chip>
+          <Chip checked={settings.reducedMotion} onChange={(value) => update("reducedMotion", value)}>Reduced motion</Chip>
         </div>
       </form>
     </RouteShell>
+  );
+}
+
+const RECIPE_ICONS = {
+  planks: iconPlanks,
+  garden_mix: iconGardenMix,
+  stone_axe: iconStoneAxe
+};
+
+function HudRoute({ model }) {
+  const payload = parseJson(model?.payload, {}) || {};
+  const hotbar = Array.isArray(payload.hotbar) ? payload.hotbar : [];
+  const inventorySlots = Array.isArray(payload?.inventory?.slots) ? payload.inventory.slots : [];
+  const notifications = Array.isArray(payload.notifications) ? payload.notifications : [];
+  const recipes = Array.isArray(payload?.crafting?.recipes) ? payload.crafting.recipes : [];
+  const [chatDraft, setChatDraft] = useState("");
+  const [recipeTab, setRecipeTab] = useState("all");
+  const chatOpen = Boolean(payload?.chat?.open);
+  const craftingOpen = Boolean(payload?.crafting?.open);
+  const crosshairSize = Math.max(0.5, Math.min(2, Number(payload?.crosshair?.size || 1)));
+  const crosshairHighContrast = Boolean(payload?.crosshair?.highContrast);
+  const reducedMotion = Boolean(payload?.crosshair?.reducedMotion);
+  const targetName = payload?.target?.hit ? payload?.target?.name || "Target" : "";
+  const orderedInventory = [...inventorySlots].sort((a, b) => Number(a.slot) - Number(b.slot));
+  const mainSlots = orderedInventory.filter((slot) => !slot.hotbar);
+  const hotbarSlots = orderedInventory.filter((slot) => slot.hotbar);
+  const displayHotbar = hotbarSlots.length ? hotbarSlots : hotbar;
+  const inventoryByName = orderedInventory.reduce((map, slot) => {
+    const name = String(slot?.name || "").trim().toLowerCase();
+    const count = Number(slot?.count || 0);
+    if (!name || count <= 0) return map;
+    map.set(name, (map.get(name) || 0) + count);
+    return map;
+  }, new Map());
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      if (chatOpen) {
+        sendUiAction("close-chat");
+        return;
+      }
+      if (craftingOpen) {
+        sendUiAction("close-crafting");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [chatOpen, craftingOpen]);
+
+  const categories = [
+    ["all", "All"],
+    ["construction", "Construction"],
+    ["food", "Food"],
+    ["tools", "Tools"],
+    ["furniture", "Furniture"],
+    ["smelters", "Smelters"]
+  ];
+  const filteredRecipes = recipes
+    .filter((recipe) => recipeTab === "all" || recipe.category === recipeTab)
+    .sort((a, b) => String(a.sort || a.name || "").localeCompare(String(b.sort || b.name || "")));
+
+  const canCraftRecipe = (recipe) => {
+    if (!Array.isArray(recipe?.ingredients)) return false;
+    return recipe.ingredients.every((ingredient) => {
+      const needed = Number(ingredient?.count || 0);
+      const key = String(ingredient?.name || "").trim().toLowerCase();
+      if (!key || needed <= 0) return true;
+      return (inventoryByName.get(key) || 0) >= needed;
+    });
+  };
+
+  const overlayOpen = chatOpen || craftingOpen;
+
+  return (
+    <main className={`hud-root ${craftingOpen ? "overlay-open" : ""}`} aria-live="polite">
+      {!overlayOpen ? (
+        <div className={`hud-crosshair ${crosshairHighContrast ? "high-contrast" : ""}`} style={{ "--crosshair-size": `${crosshairSize}` }} data-reduced-motion={reducedMotion ? "true" : "false"}>
+          <span />
+          <span />
+        </div>
+      ) : null}
+
+      {!overlayOpen && targetName ? <div className="hud-target">{targetName}</div> : null}
+
+      {!overlayOpen ? (
+        <aside className="hud-feed glass-panel" aria-label="Session events">
+          <div className="hud-feed-header">
+            <span>Events</span>
+            <button type="button" className="hud-utility" onClick={() => sendUiAction("open-chat")}>Chat (T)</button>
+            <button type="button" className="hud-utility" onClick={() => sendUiAction("open-crafting")}>Inventory & Crafting (E)</button>
+          </div>
+          <div className="hud-feed-log" role="log" aria-label="Session messages">
+            {notifications.length ? notifications.map((entry) => <p key={entry.id}>{entry.text}</p>) : <p className="quiet">No messages yet.</p>}
+          </div>
+        </aside>
+      ) : null}
+
+      {chatOpen ? (
+        <section className="glass-panel hud-chat-panel" aria-label="Chat input">
+          <header className="hud-overlay-header">
+            <div>
+              <p className="kicker">Player Chat</p>
+              <h2>Session Messages</h2>
+            </div>
+            <button type="button" className="action-button ghost" onClick={() => sendUiAction("close-chat")}>Close</button>
+          </header>
+          <div className="hud-chat-log" role="log" aria-label="Recent chat and notifications">
+            {notifications.length ? notifications.map((entry) => <p key={entry.id}>{entry.text}</p>) : <p className="quiet">No messages yet.</p>}
+          </div>
+          <form
+            className="hud-chat-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!chatDraft.trim()) return;
+              sendUiAction("send-chat", { primary: chatDraft.trim() });
+              setChatDraft("");
+            }}
+          >
+            <label>
+              Message
+              <input type="text" maxLength={120} value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} autoFocus />
+            </label>
+            <div className="hud-chat-actions">
+              <button type="submit" className="action-button quiet">Send</button>
+              <button type="button" className="action-button ghost" onClick={() => sendUiAction("close-chat")}>Cancel</button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
+      {craftingOpen ? (
+        <section className="hud-overlay-shell glass-panel hud-crafting-modal" aria-label="Crafting and inventory">
+          <header className="hud-overlay-header">
+            <div>
+              <p className="kicker">Paused Interaction</p>
+              <h2>Inventory & Crafting</h2>
+            </div>
+            <button type="button" className="action-button ghost" onClick={() => sendUiAction("close-crafting")}>Close</button>
+          </header>
+
+          <div className="hud-crafting-layout">
+            <section className="hud-recipes" aria-label="Crafting recipes">
+              <div className="hud-crafting-tabs" role="tablist" aria-label="Recipe categories">
+                {categories.map(([value, label]) => (
+                  <button key={value} type="button" role="tab" aria-selected={recipeTab === value} className={recipeTab === value ? "active" : ""} onClick={() => setRecipeTab(value)}>{label}</button>
+                ))}
+              </div>
+              <div className="hud-recipe-list">
+                {filteredRecipes.map((recipe) => {
+                  const canCraft = canCraftRecipe(recipe);
+                  return (
+                    <button key={recipe.id} type="button" className={`hud-recipe ${canCraft ? "" : "disabled"}`} onClick={() => sendUiAction("craft-recipe", { primary: recipe.id })}>
+                      <img src={RECIPE_ICONS[recipe.icon]} alt="" aria-hidden="true" />
+                      <span className="hud-recipe-name">{recipe.name}</span>
+                      <span className="hud-recipe-meta">{Array.isArray(recipe.ingredients) ? recipe.ingredients.map((ingredient) => `${ingredient.count}x ${ingredient.name}`).join(" + ") : ""}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="hud-inventory" aria-label="Inventory">
+              <p className="section-title">Backpack</p>
+              <div className="hud-inventory-grid">
+                {mainSlots.map((slot) => (
+                  <div key={slot.slot} className="hud-bag-slot" role="group" aria-label={`Inventory slot ${Number(slot.slot) + 1}`}>
+                    <span className="hud-slot-name">{slot.name || "Empty"}</span>
+                    <span className="hud-slot-count">{slot.count > 0 ? slot.count : ""}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="section-title">Hotbar</p>
+              <nav className="hud-hotbar-overlay" aria-label="Hotbar">
+                {displayHotbar.map((slot) => (
+                  <button
+                    key={slot.slot}
+                    type="button"
+                    className={`hud-slot ${slot.selected ? "selected" : ""}`}
+                    aria-pressed={Boolean(slot.selected)}
+                    onClick={() => sendUiAction("hotbar", { value: slot.slot })}
+                  >
+                    <span className="hud-slot-number">{Number(slot.slot) + 1}</span>
+                    <span className="hud-slot-name">{slot.name || "Empty"}</span>
+                    <span className="hud-slot-count">{slot.count > 0 ? slot.count : ""}</span>
+                  </button>
+                ))}
+              </nav>
+            </section>
+          </div>
+        </section>
+      ) : null}
+
+      {!overlayOpen ? (
+        <nav className="hud-hotbar" aria-label="Hotbar">
+          {displayHotbar.map((slot) => (
+            <button
+              key={slot.slot}
+              type="button"
+              className={`hud-slot ${slot.selected ? "selected" : ""}`}
+              aria-pressed={Boolean(slot.selected)}
+              onClick={() => sendUiAction("hotbar", { value: slot.slot })}
+            >
+              <span className="hud-slot-number">{Number(slot.slot) + 1}</span>
+              <span className="hud-slot-name">{slot.name || "Empty"}</span>
+              <span className="hud-slot-count">{slot.count > 0 ? slot.count : ""}</span>
+            </button>
+          ))}
+        </nav>
+      ) : null}
+    </main>
   );
 }
 
@@ -620,7 +843,7 @@ function App() {
           case Route.Join: return <JoinGame />;
           case Route.Error: return <ErrorRoute model={model} />;
           case Route.FatalError: return <ErrorRoute model={model} />;
-          case Route.Hud: return null;
+          case Route.Hud: return <HudRoute model={model} />;
           case Route.Pause: return <PauseMenu model={model} />;
           case Route.Settings: return <Settings model={model} />;
           case Route.ControlsCard: return <Controls />;

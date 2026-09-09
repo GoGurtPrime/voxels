@@ -30,7 +30,8 @@ public:
     /// `particleBursts` are world block coords to draw break particles at this frame.
     void Render(const Camera& camera, const RaycastHit& target, float breakProgress,
                 const gameplay::Inventory& inventory, const std::string& selectedItemLabel,
-                float selectedItemLabelAge, const std::vector<Vec3I>& particleBursts);
+                float selectedItemLabelAge, const std::vector<Vec3I>& particleBursts,
+                bool drawScreenSpaceHud = true);
     void Shutdown();
 
 private:

@@ -79,7 +79,8 @@ GameplayHudRenderer::~GameplayHudRenderer() { Shutdown(); }
 
 void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target, float breakProgress,
                                  const gameplay::Inventory& inventory, const std::string& selectedItemLabel,
-                                 float selectedItemLabelAge, const std::vector<Vec3I>& particleBursts) {
+                                 float selectedItemLabelAge, const std::vector<Vec3I>& particleBursts,
+                                 bool drawScreenSpaceHud) {
     if (glCreateShader == nullptr) return;
     if (m_program == 0) {
         constexpr const char* vertexSource = "#version 330 core\nlayout(location=0) in vec3 p; layout(location=1) in vec4 c; uniform mat4 vp; uniform bool screen; out vec4 color; void main(){gl_Position=screen?vec4(p,1):vp*vec4(p,1);color=c;}";
@@ -199,33 +200,35 @@ void GameplayHudRenderer::Render(const Camera& camera, const RaycastHit& target,
         glDisable(GL_BLEND);
     }
 
-    std::vector<Vertex> screenLines;
-    const glm::vec4 white{1,1,1,0.92f};
-    AddLine(screenLines, {-0.016f,0,0}, {0.016f,0,0}, white); AddLine(screenLines, {0,-0.026f,0}, {0,0.026f,0}, white);
-    constexpr float slotWidth = 0.105f, bottom = -0.78f;
-    for (int slot = 0; slot < 9; ++slot) {
-        const float left = -0.4725f + slot * slotWidth;
-        const bool selected = inventory.GetSelectedSlot() == slot;
-        AddRect(screenLines, left, bottom, left + 0.095f, bottom + 0.13f, selected ? glm::vec4{1.0f,0.82f,0.2f,1.0f} : glm::vec4{0.08f,0.08f,0.08f,0.9f});
-        const auto& stack = inventory.GetSlot(static_cast<std::size_t>(slot));
-        if (!stack.IsEmpty()) AddRect(screenLines, left + 0.028f, bottom + 0.035f, left + 0.067f, bottom + 0.095f, {0.32f,0.72f,0.34f,1.0f});
+    if (drawScreenSpaceHud) {
+        std::vector<Vertex> screenLines;
+        const glm::vec4 white{1,1,1,0.92f};
+        AddLine(screenLines, {-0.016f,0,0}, {0.016f,0,0}, white); AddLine(screenLines, {0,-0.026f,0}, {0,0.026f,0}, white);
+        constexpr float slotWidth = 0.105f, bottom = -0.78f;
+        for (int slot = 0; slot < 9; ++slot) {
+            const float left = -0.4725f + slot * slotWidth;
+            const bool selected = inventory.GetSelectedSlot() == slot;
+            AddRect(screenLines, left, bottom, left + 0.095f, bottom + 0.13f, selected ? glm::vec4{1.0f,0.82f,0.2f,1.0f} : glm::vec4{0.08f,0.08f,0.08f,0.9f});
+            const auto& stack = inventory.GetSlot(static_cast<std::size_t>(slot));
+            if (!stack.IsEmpty()) AddRect(screenLines, left + 0.028f, bottom + 0.035f, left + 0.067f, bottom + 0.095f, {0.32f,0.72f,0.34f,1.0f});
+        }
+        const auto& held = inventory.GetSelectedStack();
+        if (!held.IsEmpty()) AddRect(screenLines, 0.66f, -0.82f, 0.91f, -0.45f, {0.45f,0.85f,0.38f,1.0f});
+        glUseProgram(m_program);
+        glBindVertexArray(m_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+        glUniform1i(glGetUniformLocation(m_program, "screen"), GL_TRUE);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(screenLines.size() * sizeof(Vertex)), screenLines.data(), GL_DYNAMIC_DRAW);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+        glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(screenLines.size()));
     }
-    const auto& held = inventory.GetSelectedStack();
-    if (!held.IsEmpty()) AddRect(screenLines, 0.66f, -0.82f, 0.91f, -0.45f, {0.45f,0.85f,0.38f,1.0f});
-    glUseProgram(m_program);
-    glBindVertexArray(m_vao);
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glUniform1i(glGetUniformLocation(m_program, "screen"), GL_TRUE);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(screenLines.size() * sizeof(Vertex)), screenLines.data(), GL_DYNAMIC_DRAW);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDisable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
-    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(screenLines.size()));
 
     constexpr float kLabelHoldSeconds = 2.0f;
     constexpr float kLabelFadeSeconds = 1.2f;
-    if (m_fontReady && !selectedItemLabel.empty() && selectedItemLabelAge < kLabelHoldSeconds + kLabelFadeSeconds) {
+    if (drawScreenSpaceHud && m_fontReady && !selectedItemLabel.empty() && selectedItemLabelAge < kLabelHoldSeconds + kLabelFadeSeconds) {
         const float alpha = selectedItemLabelAge <= kLabelHoldSeconds ? 1.0f : 1.0f - (selectedItemLabelAge - kLabelHoldSeconds) / kLabelFadeSeconds;
         GLint viewport[4]{};
         glGetIntegerv(GL_VIEWPORT, viewport);

@@ -133,6 +133,9 @@ std::string BuildSettingsPayload(const GamePreferences& preferences, RendererBac
         {"sensitivity", preferences.mouseSensitivity},
         {"invertY", preferences.invertY},
         {"particles", preferences.particles},
+        {"crosshairSize", preferences.crosshairSize},
+        {"crosshairHighContrast", preferences.highContrastCrosshair},
+        {"reducedMotion", preferences.reducedMotion},
         {"rendererBackend", static_cast<int>(preferences.rendererBackend)},
         {"activeRenderer", static_cast<int>(activeRenderer)},
         {"restartRequired", preferences.rendererBackend != activeRenderer}

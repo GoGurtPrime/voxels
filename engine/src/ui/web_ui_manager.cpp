@@ -133,6 +133,12 @@ struct VerifiedUiAssets {
     if (wireKind == "apply-settings" || wireKind == "apply_settings") return PlayerUIActionKind::ApplySettings;
     if (wireKind == "dismiss-controls" || wireKind == "dismiss_controls") return PlayerUIActionKind::DismissControls;
     if (wireKind == "hotbar") return PlayerUIActionKind::HudHotbar;
+    if (wireKind == "open-chat") return PlayerUIActionKind::HudOpenChat;
+    if (wireKind == "close-chat") return PlayerUIActionKind::HudCloseChat;
+    if (wireKind == "send-chat") return PlayerUIActionKind::HudSendChat;
+    if (wireKind == "open-crafting") return PlayerUIActionKind::HudOpenCrafting;
+    if (wireKind == "close-crafting") return PlayerUIActionKind::HudCloseCrafting;
+    if (wireKind == "craft-recipe") return PlayerUIActionKind::HudCraftRecipe;
     if (wireKind == "acknowledge-error" || wireKind == "acknowledge_error") return PlayerUIActionKind::AcknowledgeError;
     return std::nullopt;
 }
@@ -673,6 +679,12 @@ private:
         else if (kind == "apply-settings") action.kind = PlayerUIActionKind::ApplySettings;
         else if (kind == "dismiss-controls") action.kind = PlayerUIActionKind::DismissControls;
         else if (kind == "hotbar") action.kind = PlayerUIActionKind::HudHotbar;
+        else if (kind == "open-chat") action.kind = PlayerUIActionKind::HudOpenChat;
+        else if (kind == "close-chat") action.kind = PlayerUIActionKind::HudCloseChat;
+        else if (kind == "send-chat") action.kind = PlayerUIActionKind::HudSendChat;
+        else if (kind == "open-crafting") action.kind = PlayerUIActionKind::HudOpenCrafting;
+        else if (kind == "close-crafting") action.kind = PlayerUIActionKind::HudCloseCrafting;
+        else if (kind == "craft-recipe") action.kind = PlayerUIActionKind::HudCraftRecipe;
         else if (kind == "acknowledge-error") action.kind = PlayerUIActionKind::AcknowledgeError;
         else return std::nullopt;
         const std::string requestId = QueryValue(url, "requestId");

@@ -15,9 +15,11 @@
 #include <memory>
 #include <functional>
 #include <future>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "voxels/app/game_session.hpp"
@@ -315,8 +317,15 @@ class InGameState final : public IAppState {public:
     [[nodiscard]] graphics::ChunkRenderer* GetChunkRenderer() const noexcept { return m_chunkRenderer.get(); }
     [[nodiscard]] bool IsRemoteSession() const noexcept { return m_remoteSession; }
     [[nodiscard]] const GameSave& GetActiveSave() const noexcept { return m_activeSave; }
+    [[nodiscard]] bool IsChatOpen() const noexcept { return m_chatOpen; }
+    [[nodiscard]] bool IsCraftingOpen() const noexcept { return m_craftingOpen; }
     /// Persists and republishes local-world join visibility; remote sessions reject the change.
     [[nodiscard]] bool SetPublicVisibility(bool isPublic);
+    bool SelectHotbarSlot(int slot);
+    void SetChatOpen(bool open);
+    void SetCraftingOpen(bool open);
+    bool SubmitChatMessage(const std::string& message);
+    bool CraftRecipe(const std::string& recipeId);
     /// Captures a raw world preview on the next rendered frame, then returns to the main menu.
     void RequestSaveAndReturnToMenu() noexcept;
     /// Captures a raw world preview on the next rendered frame, then requests process exit.
@@ -334,6 +343,17 @@ private:
     void StartAutosave();
     void ApplyNetworkedBlockUpdates();
     void CompletePendingPreviewCapture();
+    void RefreshHudNotifications(float deltaSeconds);
+    void ObserveRemotePlayerPresence();
+    void PublishHudModel(bool forcePublish);
+    void UpdateHudInputPolicy();
+    void PushHudNotification(std::string text, float lifetimeSeconds = 8.0f);
+
+    struct HudNotification {
+        std::uint64_t id = 0;
+        std::string text;
+        float remainingSeconds = 0.0f;
+    };
 
     BlockRegistry* m_registry = nullptr;
     TextureAtlas* m_atlas = nullptr;
@@ -355,6 +375,16 @@ private:
     bool m_worldGenerated = false;
     bool m_remoteSession = false;
     bool m_hasRemoteSpawn = false;
+    bool m_chatOpen = false;
+    bool m_craftingOpen = false;
+    std::uint64_t m_hudRevision = 0;
+    float m_hudPublishCooldownSeconds = 0.0f;
+    float m_lastPublishedBreakProgress = -1.0f;
+    bool m_lastPublishedTargetHit = false;
+    int m_lastPublishedSelectedSlot = -1;
+    std::uint64_t m_nextHudNotificationId = 1;
+    std::vector<HudNotification> m_hudNotifications;
+    std::unordered_set<std::uint32_t> m_knownRemotePlayers;
     PreviewCaptureAction m_previewCaptureAction = PreviewCaptureAction::None;
     Vec3 m_remoteSpawn{};
     GameSave m_activeSave{};

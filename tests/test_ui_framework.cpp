@@ -452,6 +452,9 @@ TEST_CASE("PlayerUI.DispatcherAppliesSettingsFromStructuredPayload", "[player-ui
     preferences.mouseSensitivity = 1.0f;
     preferences.invertY = false;
     preferences.particles = true;
+    preferences.crosshairSize = 1.0f;
+    preferences.highContrastCrosshair = false;
+    preferences.reducedMotion = false;
 
     voxels::AppContext context{};
     context.preferences = &preferences;
@@ -459,7 +462,7 @@ TEST_CASE("PlayerUI.DispatcherAppliesSettingsFromStructuredPayload", "[player-ui
     const voxels::PlayerUIAction action{
         .requestId = 77,
         .kind = voxels::PlayerUIActionKind::ApplySettings,
-        .secondary = R"({"settings":{"windowMode":"Fullscreen","resolutionWidth":1920,"resolutionHeight":1080,"fov":72.0,"renderDistance":16,"simulationDistance":12,"master":0.4,"music":0.5,"effects":0.6,"sensitivity":2.3,"invertY":true,"particles":false}})"};
+        .secondary = R"({"settings":{"windowMode":"Fullscreen","resolutionWidth":1920,"resolutionHeight":1080,"fov":72.0,"renderDistance":16,"simulationDistance":12,"master":0.4,"music":0.5,"effects":0.6,"sensitivity":2.3,"invertY":true,"particles":false,"crosshairSize":1.7,"crosshairHighContrast":true,"reducedMotion":true}})"};
 
     REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Settings, action, context));
     REQUIRE(preferences.windowMode == voxels::WindowMode::Fullscreen);
@@ -474,6 +477,37 @@ TEST_CASE("PlayerUI.DispatcherAppliesSettingsFromStructuredPayload", "[player-ui
     REQUIRE(preferences.mouseSensitivity == Catch::Approx(2.3f));
     REQUIRE(preferences.invertY);
     REQUIRE_FALSE(preferences.particles);
+    REQUIRE(preferences.crosshairSize == Catch::Approx(1.7f));
+    REQUIRE(preferences.highContrastCrosshair);
+    REQUIRE(preferences.reducedMotion);
+}
+
+TEST_CASE("PlayerUI.HudActionsDriveGameplayState", "[player-ui][hud]") {
+    voxels::AppContext context{};
+    voxels::InGameState game(&context);
+    context.activeGame = &game;
+    const voxels::PlayerUIActionDispatcher dispatcher;
+
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Hud,
+                                {.requestId = 601, .kind = voxels::PlayerUIActionKind::HudOpenChat}, context));
+    REQUIRE(game.IsChatOpen());
+    REQUIRE_FALSE(game.IsCraftingOpen());
+
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Hud,
+                                {.requestId = 602, .kind = voxels::PlayerUIActionKind::HudOpenCrafting}, context));
+    REQUIRE(game.IsCraftingOpen());
+    REQUIRE_FALSE(game.IsChatOpen());
+
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Hud,
+                                {.requestId = 603, .kind = voxels::PlayerUIActionKind::HudCloseCrafting}, context));
+    REQUIRE_FALSE(game.IsCraftingOpen());
+
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Hud,
+                                {.requestId = 604, .kind = voxels::PlayerUIActionKind::HudHotbar, .value = 4.0f}, context));
+    REQUIRE(game.GetPlayer().state.inventory.GetSelectedSlot() == 4);
+
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Hud,
+                                {.requestId = 605, .kind = voxels::PlayerUIActionKind::HudSendChat, .primary = "hello"}, context));
 }
 
 TEST_CASE("PlayerUI.DispatcherIgnoresPayloadlessApplySettingsForDisplayMode", "[player-ui]") {

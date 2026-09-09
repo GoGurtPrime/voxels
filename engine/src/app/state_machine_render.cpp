@@ -15,6 +15,7 @@
 
 #include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <nlohmann/json.hpp>
 
 #include "voxels/core/logger.hpp"
 #include "voxels/graphics/renderer.hpp"
@@ -382,6 +383,43 @@ std::string ScreenshotName() {
     std::strftime(name, sizeof(name), "shot_%Y%m%d_%H%M%S.png", &localTime);
     return name;
 }
+
+std::string TrimmedMessage(std::string message, std::size_t limit = 96U) {
+    auto first = message.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return {};
+    auto last = message.find_last_not_of(" \t\r\n");
+    message = message.substr(first, last - first + 1U);
+    if (message.size() > limit) message.resize(limit);
+    return message;
+}
+
+std::string DisplayNameForBlock(const BlockRegistry* registry, BlockId blockId) {
+    if (registry == nullptr) return "Item";
+    const BlockDefinition* definition = registry->GetDefinition(blockId);
+    return definition == nullptr ? "Item" : definition->displayName;
+}
+
+bool ConsumeInventoryItem(gameplay::Inventory& inventory, BlockId blockId, int count) {
+    int remaining = std::max(0, count);
+    for (std::size_t slot = 0; slot < gameplay::Inventory::kSlotCount && remaining > 0; ++slot) {
+        auto& stack = inventory.GetSlot(slot);
+        if (stack.IsEmpty() || stack.blockId != blockId) continue;
+        const int removed = std::min(remaining, stack.count);
+        stack.count -= removed;
+        remaining -= removed;
+        if (stack.count <= 0) stack = {};
+    }
+    return remaining == 0;
+}
+
+int CountInventoryItem(const gameplay::Inventory& inventory, BlockId blockId) {
+    int total = 0;
+    for (std::size_t slot = 0; slot < gameplay::Inventory::kSlotCount; ++slot) {
+        const auto& stack = inventory.GetSlot(slot);
+        if (!stack.IsEmpty() && stack.blockId == blockId) total += stack.count;
+    }
+    return total;
+}
 } // namespace
 
 void SetGlobalRenderer(voxels::graphics::IGraphicsRenderer* renderer) noexcept {
@@ -588,11 +626,21 @@ void InGameState::OnEnter() {
         RenderStateLog().Info("Remote session started: playing on the host's world.");
     }
 
+    m_chatOpen = false;
+    m_craftingOpen = false;
+    m_hudRevision = 0;
+    m_hudPublishCooldownSeconds = 0.0f;
+    m_lastPublishedBreakProgress = -1.0f;
+    m_lastPublishedTargetHit = false;
+    m_lastPublishedSelectedSlot = -1;
+    m_hudNotifications.clear();
+    m_knownRemotePlayers.clear();
     if (m_context != nullptr && m_context->ui != nullptr) {
         m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Gameplay);
-        m_context->ui->Publish({.route = PlayerUIRoute::Hud, .revision = 1, .title = "HUD"});
+        PublishHudModel(true);
+    } else if (m_platform != nullptr) {
+        m_platform->SetRelativeMouseMode(true);
     }
-    else if (m_platform != nullptr) m_platform->SetRelativeMouseMode(true);
 
     if (m_registry != nullptr && m_atlas != nullptr) {
         if (m_chunkRenderer == nullptr) {
@@ -613,6 +661,8 @@ void InGameState::OnEnter() {
         m_inputManager->BindAction("Jump", InputBinding{"Jump", static_cast<int>(' '), 0, InputDeviceType::Keyboard});
         m_inputManager->BindAction("Sprint", InputBinding{"Sprint", 1073742049, 0, InputDeviceType::Keyboard});
         m_inputManager->BindAction("Pause", InputBinding{"Pause", 27, 0, InputDeviceType::Keyboard});
+        m_inputManager->BindAction("Chat", InputBinding{"Chat", static_cast<int>('t'), static_cast<int>('T'), InputDeviceType::Keyboard});
+        m_inputManager->BindAction("Crafting", InputBinding{"Crafting", static_cast<int>('e'), static_cast<int>('E'), InputDeviceType::Keyboard});
         m_inputManager->BindAction("Screenshot", InputBinding{"Screenshot", 1073741883, 0, InputDeviceType::Keyboard});
         m_inputManager->BindAction("DestroyBlock", InputBinding{"DestroyBlock", 1, 0, InputDeviceType::Mouse});
         m_inputManager->BindAction("PlaceBlock", InputBinding{"PlaceBlock", 3, 0, InputDeviceType::Mouse});
@@ -694,14 +744,20 @@ void InGameState::OnExit() {
     m_session.Shutdown();
     m_remoteSession = false;
     m_hasRemoteSpawn = false;
+    m_chatOpen = false;
+    m_craftingOpen = false;
+    m_hudNotifications.clear();
+    m_knownRemotePlayers.clear();
     m_previewCaptureAction = PreviewCaptureAction::None;
     m_worldGenerated = false;
 }
 
 void InGameState::OnResume() {
+    m_chatOpen = false;
+    m_craftingOpen = false;
     if (m_context != nullptr && m_context->ui != nullptr) {
         m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Gameplay);
-        m_context->ui->Publish({.route = PlayerUIRoute::Hud, .revision = 1, .title = "HUD"});
+        PublishHudModel(true);
     } else if (m_platform != nullptr) {
         m_platform->SetRelativeMouseMode(true);
     }
@@ -728,6 +784,95 @@ bool InGameState::SetPublicVisibility(bool isPublic) {
     if (m_context->networkServer != nullptr) {
         m_context->networkServer->SetWorldReady(m_options, m_session.GetPlayer().state.position);
     }
+    return true;
+}
+
+bool InGameState::SelectHotbarSlot(int slot) {
+    m_session.GetPlayer().state.inventory.SetSelectedSlot(slot);
+    PublishHudModel(true);
+    return true;
+}
+
+void InGameState::UpdateHudInputPolicy() {
+    if (m_context == nullptr || m_context->ui == nullptr) return;
+    if (m_chatOpen) {
+        m_context->ui->SetInputPolicy(PlayerUIInputPolicy::TextEntry);
+    } else if (m_craftingOpen) {
+        m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Overlay);
+    } else {
+        m_context->ui->SetInputPolicy(PlayerUIInputPolicy::Gameplay);
+    }
+    if (m_context->input != nullptr) m_context->input->ClearGameplayInput();
+}
+
+void InGameState::SetChatOpen(bool open) {
+    m_chatOpen = open;
+    if (open) m_craftingOpen = false;
+    UpdateHudInputPolicy();
+    PublishHudModel(true);
+}
+
+void InGameState::SetCraftingOpen(bool open) {
+    m_craftingOpen = open;
+    if (open) m_chatOpen = false;
+    UpdateHudInputPolicy();
+    PublishHudModel(true);
+}
+
+void InGameState::PushHudNotification(std::string text, float lifetimeSeconds) {
+    text = TrimmedMessage(std::move(text));
+    if (text.empty()) return;
+    if (m_hudNotifications.size() >= 24U) {
+        m_hudNotifications.erase(m_hudNotifications.begin());
+    }
+    m_hudNotifications.push_back(
+        {.id = m_nextHudNotificationId++, .text = std::move(text), .remainingSeconds = std::max(0.5f, lifetimeSeconds)});
+}
+
+bool InGameState::SubmitChatMessage(const std::string& message) {
+    const std::string sanitized = TrimmedMessage(message, 120U);
+    if (sanitized.empty()) return false;
+    PushHudNotification("You: " + sanitized, 12.0f);
+    PublishHudModel(true);
+    return true;
+}
+
+bool InGameState::CraftRecipe(const std::string& recipeId) {
+    gameplay::Inventory& inventory = m_session.GetPlayer().state.inventory;
+    struct RecipeRule {
+        std::string_view id;
+        std::vector<std::pair<BlockId, int>> inputs;
+        BlockId output;
+        int outputCount;
+        std::string_view outputName;
+    };
+
+    static const std::array<RecipeRule, 3> kRecipes{{
+        {"recipe_planks", {{static_cast<BlockId>(BlockType::TreeTrunk), 1}}, static_cast<BlockId>(BlockType::Planks), 4, "Planks"},
+        {"recipe_garden_mix", {{static_cast<BlockId>(BlockType::Dirt), 1}, {static_cast<BlockId>(BlockType::Stone), 1}}, static_cast<BlockId>(BlockType::Grass), 2, "Garden Mix"},
+        {"recipe_stone_axe", {{static_cast<BlockId>(BlockType::Planks), 1}, {static_cast<BlockId>(BlockType::Stone), 3}}, static_cast<BlockId>(BlockType::IronOre), 1, "Stone Axe"},
+    }};
+
+    const auto recipeIt = std::find_if(kRecipes.begin(), kRecipes.end(), [&recipeId](const RecipeRule& recipe) {
+        return recipe.id == recipeId;
+    });
+    if (recipeIt == kRecipes.end()) return false;
+
+    for (const auto& [blockId, count] : recipeIt->inputs) {
+        if (CountInventoryItem(inventory, blockId) < count) {
+            PushHudNotification("Missing ingredients for " + std::string(recipeIt->outputName) + ".");
+            PublishHudModel(true);
+            return false;
+        }
+    }
+
+    for (const auto& [blockId, count] : recipeIt->inputs) {
+        if (!ConsumeInventoryItem(inventory, blockId, count)) return false;
+    }
+    (void)inventory.AddItem(recipeIt->output, recipeIt->outputCount);
+    PushHudNotification("Crafted " + std::to_string(recipeIt->outputCount) + "x " +
+                        std::string(recipeIt->outputName) + ".");
+    PublishHudModel(true);
     return true;
 }
 
@@ -784,9 +929,31 @@ void InGameState::GenerateInitialWorld() {
 void InGameState::Update(double deltaSeconds) {
     m_elapsedSeconds += static_cast<float>(deltaSeconds);
     m_autosaveSeconds += static_cast<float>(deltaSeconds);
+    m_hudPublishCooldownSeconds += static_cast<float>(deltaSeconds);
+    RefreshHudNotifications(static_cast<float>(deltaSeconds));
+
+    if (m_context != nullptr && m_context->input != nullptr) {
+        if (m_context->input->IsActionActive("Chat")) {
+            SetChatOpen(!m_chatOpen);
+            m_context->input->ClearGameplayInput();
+            return;
+        }
+        if (m_context->input->IsActionActive("Crafting")) {
+            SetCraftingOpen(!m_craftingOpen);
+            m_context->input->ClearGameplayInput();
+            return;
+        }
+    }
 
     if (m_context != nullptr && m_context->input != nullptr && m_context->input->IsActionActive("Pause") &&
         m_context->requestPushOverlay) {
+        if (m_chatOpen || m_craftingOpen) {
+            m_chatOpen = false;
+            m_craftingOpen = false;
+            UpdateHudInputPolicy();
+            PublishHudModel(true);
+            return;
+        }
         m_context->requestPushOverlay(std::make_unique<PauseMenuState>(m_context, m_activeSave, m_remoteSession));
         return;
     }
@@ -806,6 +973,7 @@ void InGameState::Update(double deltaSeconds) {
     }
 
     ApplyNetworkedBlockUpdates();
+    ObserveRemotePlayerPresence();
 
     m_session.Update(static_cast<float>(deltaSeconds));
     if (m_context != nullptr && m_context->audio != nullptr && m_registry != nullptr) {
@@ -840,6 +1008,8 @@ void InGameState::Update(double deltaSeconds) {
             const auto path = m_context->saveManager->GetSaveDirectory(m_activeSave.saveName) / "screenshots" / ScreenshotName();
             const bool captured = m_context->renderer->CaptureScreenshot(path);
             if (m_context->ui != nullptr) m_context->ui->ShowToast(captured ? "Screenshot saved" : "Screenshot capture failed");
+            PushHudNotification(captured ? "Screenshot saved." : "Screenshot capture failed.");
+            PublishHudModel(true);
         }
         m_screenshotPressed = screenshotActive;
     }
@@ -849,11 +1019,19 @@ void InGameState::Update(double deltaSeconds) {
             m_context->platformServices->OnWorldSaved(m_context->saveManager->GetSaveDirectory(m_activeSave.saveName));
         }
         if (m_context != nullptr && m_context->ui != nullptr) m_context->ui->ShowToast(saved ? "World autosaved" : "World autosave failed");
+        PushHudNotification(saved ? "World autosaved." : "World autosave failed.");
+        PublishHudModel(true);
     }
     if (m_autosaveSeconds >= kAutosaveIntervalSeconds && !m_autosaveFuture.valid()) StartAutosave();
     if (m_cameraOverride != nullptr) {
         *m_cameraOverride = m_session.GetCamera();
     }
+
+    const int selectedSlot = m_session.GetPlayer().state.inventory.GetSelectedSlot();
+    const bool targetChanged = m_session.GetTarget().hit != m_lastPublishedTargetHit;
+    const bool breakChanged = std::abs(m_session.GetBreakProgress() - m_lastPublishedBreakProgress) >= 0.05f;
+    const bool slotChanged = selectedSlot != m_lastPublishedSelectedSlot;
+    PublishHudModel(targetChanged || breakChanged || slotChanged);
 
     if (m_chunkRenderer) {
         auto& world = m_session.GetWorld();
@@ -939,6 +1117,137 @@ void InGameState::StartAutosave() {
     });
 }
 
+void InGameState::RefreshHudNotifications(float deltaSeconds) {
+    for (HudNotification& notification : m_hudNotifications) {
+        notification.remainingSeconds -= std::max(0.0f, deltaSeconds);
+    }
+    const auto originalSize = m_hudNotifications.size();
+    std::erase_if(m_hudNotifications, [](const HudNotification& notification) {
+        return notification.remainingSeconds <= 0.0f;
+    });
+    if (m_hudNotifications.size() != originalSize) PublishHudModel(true);
+}
+
+void InGameState::ObserveRemotePlayerPresence() {
+    if (m_context == nullptr || m_context->networkClient == nullptr) return;
+    networking::GameClient& client = *m_context->networkClient;
+    std::unordered_set<std::uint32_t> observed;
+    const std::uint32_t localPlayerId = client.PlayerId();
+    for (const auto& [entityId, state] : client.ReceivedEntityStates()) {
+        (void)state;
+        if (entityId == 0 || entityId == localPlayerId) continue;
+        observed.insert(entityId);
+        if (!m_knownRemotePlayers.contains(entityId)) {
+            m_knownRemotePlayers.insert(entityId);
+            PushHudNotification("Player " + std::to_string(entityId) + " joined.");
+        }
+    }
+    for (const std::uint32_t departedId : client.TakeDepartedPlayers()) {
+        m_knownRemotePlayers.erase(departedId);
+        PushHudNotification("Player " + std::to_string(departedId) + " left.");
+    }
+    m_knownRemotePlayers = std::move(observed);
+}
+
+void InGameState::PublishHudModel(bool forcePublish) {
+    if (m_context == nullptr || m_context->ui == nullptr) return;
+    if (!forcePublish) {
+        constexpr float kHudPublishIntervalSeconds = 1.0f / 30.0f;
+        if (m_hudPublishCooldownSeconds < kHudPublishIntervalSeconds) return;
+        m_hudPublishCooldownSeconds = 0.0f;
+    } else {
+        m_hudPublishCooldownSeconds = 0.0f;
+    }
+
+    const PlayerState& player = m_session.GetPlayer().state;
+    const gameplay::Inventory& inventory = player.inventory;
+    nlohmann::json hotbar = nlohmann::json::array();
+    for (std::size_t slot = 0; slot < gameplay::Inventory::kHotbarSlots; ++slot) {
+        const auto& stack = inventory.GetSlot(slot);
+        hotbar.push_back({
+            {"slot", static_cast<int>(slot)},
+            {"selected", inventory.GetSelectedSlot() == static_cast<int>(slot)},
+            {"blockId", stack.IsEmpty() ? 0 : static_cast<int>(stack.blockId)},
+            {"count", stack.IsEmpty() ? 0 : stack.count},
+            {"name", stack.IsEmpty() ? std::string{} : DisplayNameForBlock(m_registry, stack.blockId)}
+        });
+    }
+
+    nlohmann::json inventorySlots = nlohmann::json::array();
+    for (std::size_t slot = 0; slot < gameplay::Inventory::kSlotCount; ++slot) {
+        const auto& stack = inventory.GetSlot(slot);
+        inventorySlots.push_back({
+            {"slot", static_cast<int>(slot)},
+            {"hotbar", slot < gameplay::Inventory::kHotbarSlots},
+            {"selected", inventory.GetSelectedSlot() == static_cast<int>(slot)},
+            {"blockId", stack.IsEmpty() ? 0 : static_cast<int>(stack.blockId)},
+            {"count", stack.IsEmpty() ? 0 : stack.count},
+            {"name", stack.IsEmpty() ? std::string{} : DisplayNameForBlock(m_registry, stack.blockId)}
+        });
+    }
+
+    nlohmann::json notifications = nlohmann::json::array();
+    for (const HudNotification& notification : m_hudNotifications) {
+        notifications.push_back({
+            {"id", notification.id},
+            {"text", notification.text},
+            {"remaining", std::max(0.0f, notification.remainingSeconds)}
+        });
+    }
+
+    static const nlohmann::json kRecipes = nlohmann::json::array({
+        {{"id", "recipe_planks"}, {"name", "Planks"}, {"icon", "planks"}, {"category", "construction"}, {"sort", "Planks"},
+         {"ingredients", nlohmann::json::array({{{"name", "Tree Trunk"}, {"count", 1}}})}, {"output", {{"name", "Planks"}, {"count", 4}}}},
+        {{"id", "recipe_garden_mix"}, {"name", "Garden Mix"}, {"icon", "garden_mix"}, {"category", "food"}, {"sort", "Garden Mix"},
+         {"ingredients", nlohmann::json::array({{{"name", "Dirt"}, {"count", 1}}, {{"name", "Stone"}, {"count", 1}}})}, {"output", {{"name", "Garden Mix"}, {"count", 2}}}},
+        {{"id", "recipe_stone_axe"}, {"name", "Stone Axe"}, {"icon", "stone_axe"}, {"category", "tools"}, {"sort", "Stone Axe"},
+         {"ingredients", nlohmann::json::array({{{"name", "Planks"}, {"count", 1}}, {{"name", "Stone"}, {"count", 3}}})}, {"output", {{"name", "Stone Axe"}, {"count", 1}}}}
+    });
+
+    const RaycastHit& target = m_session.GetTarget();
+    const gameplay::ItemStack& held = inventory.GetSelectedStack();
+    const GamePreferences& preferences = m_session.GetPreferences();
+    const BlockId targetBlockId = target.hit ? m_session.GetWorld().GetBlock(target.blockPosition)
+                                             : static_cast<BlockId>(BlockType::Air);
+    const nlohmann::json payload{
+        {"hotbar", std::move(hotbar)},
+        {"selectedSlot", inventory.GetSelectedSlot()},
+        {"heldItem", {
+            {"empty", held.IsEmpty()},
+            {"name", held.IsEmpty() ? std::string{} : DisplayNameForBlock(m_registry, held.blockId)},
+            {"count", held.IsEmpty() ? 0 : held.count}
+        }},
+        {"target", {
+            {"hit", target.hit},
+            {"name", target.hit ? DisplayNameForBlock(m_registry, targetBlockId) : std::string{}},
+            {"breakProgress", std::clamp(m_session.GetBreakProgress(), 0.0f, 1.0f)}
+        }},
+        {"status", {
+            {"health", std::clamp(player.health, 0.0f, 100.0f)},
+            {"remoteSession", m_remoteSession}
+        }},
+        {"chat", {{"open", m_chatOpen}}},
+        {"crafting", {{"open", m_craftingOpen}, {"recipes", kRecipes}}},
+        {"inventory", {{"slots", std::move(inventorySlots)}}},
+        {"notifications", std::move(notifications)},
+        {"crosshair", {
+            {"size", std::clamp(preferences.crosshairSize, 0.5f, 2.0f)},
+            {"highContrast", preferences.highContrastCrosshair},
+            {"reducedMotion", preferences.reducedMotion}
+        }}
+    };
+
+    m_context->ui->Publish({
+        .route = PlayerUIRoute::Hud,
+        .revision = ++m_hudRevision,
+        .title = "HUD",
+        .payload = payload.dump()
+    });
+    m_lastPublishedSelectedSlot = inventory.GetSelectedSlot();
+    m_lastPublishedBreakProgress = m_session.GetBreakProgress();
+    m_lastPublishedTargetHit = target.hit;
+}
+
 void InGameState::Render() {
     if (g_renderer == nullptr) {
         return;
@@ -973,8 +1282,12 @@ void InGameState::Render() {
     }
     CompletePendingPreviewCapture();
     if (m_hudRenderer) {
+        const bool drawNativeScreenHud =
+            m_context == nullptr || m_context->ui == nullptr ||
+            m_context->ui->UsesNativeRoutePresentation(PlayerUIRoute::Hud);
         m_hudRenderer->Render(camera, m_session.GetTarget(), m_session.GetBreakProgress(), m_session.GetPlayer().state.inventory,
-                              m_session.GetSelectedItemLabel(), m_session.GetSelectedItemLabelAge(), m_session.GetParticleBursts());
+                              m_session.GetSelectedItemLabel(), m_session.GetSelectedItemLabelAge(),
+                              m_session.GetParticleBursts(), drawNativeScreenHud);
         m_session.ClearParticleBursts();
     }
 }

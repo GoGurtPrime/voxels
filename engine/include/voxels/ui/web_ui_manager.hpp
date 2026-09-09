@@ -38,7 +38,7 @@ public:
     [[nodiscard]] bool CapturesKeyboard() const noexcept override { return m_policy != PlayerUIInputPolicy::Gameplay; }
     [[nodiscard]] bool ConsumeTransitionMouseDelta() noexcept override;
     [[nodiscard]] bool UsesNativeRoutePresentation(PlayerUIRoute route) const noexcept override {
-        return route == PlayerUIRoute::Hud || route == PlayerUIRoute::FatalError;
+        return route == PlayerUIRoute::FatalError;
     }
     [[nodiscard]] bool UsesNativeRoutePresentation() const noexcept { return false; }
     void Publish(PlayerUIViewModel model) override;

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <filesystem>
 #include <string_view>
 #include <nlohmann/json.hpp>
@@ -231,6 +232,9 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
                 context.preferences->mouseSensitivity = std::clamp(payload.value("sensitivity", context.preferences->mouseSensitivity), 0.1f, 4.0f);
                 context.preferences->invertY = payload.value("invertY", context.preferences->invertY);
                 context.preferences->particles = payload.value("particles", context.preferences->particles);
+                context.preferences->crosshairSize = std::clamp(payload.value("crosshairSize", context.preferences->crosshairSize), 0.5f, 2.0f);
+                context.preferences->highContrastCrosshair = payload.value("crosshairHighContrast", context.preferences->highContrastCrosshair);
+                context.preferences->reducedMotion = payload.value("reducedMotion", context.preferences->reducedMotion);
             } catch (const nlohmann::json::exception&) {
                 RequestError(context, "Settings data was malformed.");
                 return true;
@@ -278,6 +282,31 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
             if (activeRoute != PlayerUIRoute::MainMenu || !context.requestQuit) return false;
             context.requestQuit();
             return true;
+        case PlayerUIActionKind::HudHotbar:
+            if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
+            return context.activeGame->SelectHotbarSlot(static_cast<int>(std::round(action.value)));
+        case PlayerUIActionKind::HudOpenChat:
+            if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
+            context.activeGame->SetChatOpen(true);
+            return true;
+        case PlayerUIActionKind::HudCloseChat:
+            if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
+            context.activeGame->SetChatOpen(false);
+            return true;
+        case PlayerUIActionKind::HudSendChat:
+            if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
+            return context.activeGame->SubmitChatMessage(action.primary);
+        case PlayerUIActionKind::HudOpenCrafting:
+            if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
+            context.activeGame->SetCraftingOpen(true);
+            return true;
+        case PlayerUIActionKind::HudCloseCrafting:
+            if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
+            context.activeGame->SetCraftingOpen(false);
+            return true;
+        case PlayerUIActionKind::HudCraftRecipe:
+            if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
+            return context.activeGame->CraftRecipe(action.primary);
         default: return false;
     }
 }

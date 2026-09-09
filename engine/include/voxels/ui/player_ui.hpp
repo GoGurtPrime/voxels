@@ -53,6 +53,12 @@ enum class PlayerUIActionKind : std::uint8_t {
     ApplySettings,
     DismissControls,
     HudHotbar,
+    HudOpenChat,
+    HudCloseChat,
+    HudSendChat,
+    HudOpenCrafting,
+    HudCloseCrafting,
+    HudCraftRecipe,
     AcknowledgeError
 };
 

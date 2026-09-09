@@ -331,6 +331,9 @@ std::string PreferencesManager::ToJson(const GamePreferences& preferences) {
     out << "  \"masterVolume\": " << preferences.masterVolume << ",\n";
     out << "  \"musicVolume\": " << preferences.musicVolume << ",\n";
     out << "  \"sfxVolume\": " << preferences.sfxVolume << ",\n";
+    out << "  \"crosshairSize\": " << preferences.crosshairSize << ",\n";
+    out << "  \"highContrastCrosshair\": " << (preferences.highContrastCrosshair ? "true" : "false") << ",\n";
+    out << "  \"reducedMotion\": " << (preferences.reducedMotion ? "true" : "false") << ",\n";
     out << "  \"controlsCardSeen\": " << (preferences.controlsCardSeen ? "true" : "false") << ",\n";
     out << "  \"keyBindings\": {\n";
     std::size_t index = 0;
@@ -371,6 +374,9 @@ GamePreferences PreferencesManager::FromJson(const std::string& json) {
     preferences.masterVolume = root.GetFloat("masterVolume", preferences.masterVolume);
     preferences.musicVolume = root.GetFloat("musicVolume", preferences.musicVolume);
     preferences.sfxVolume = root.GetFloat("sfxVolume", preferences.sfxVolume);
+    preferences.crosshairSize = root.GetFloat("crosshairSize", preferences.crosshairSize);
+    preferences.highContrastCrosshair = root.GetBool("highContrastCrosshair", preferences.highContrastCrosshair);
+    preferences.reducedMotion = root.GetBool("reducedMotion", preferences.reducedMotion);
     preferences.controlsCardSeen = root.GetBool("controlsCardSeen", preferences.controlsCardSeen);
     if (const JsonValue* keyBindings = root.GetObject("keyBindings")) {
         for (const auto& [action, binding] : keyBindings->objectValue) {

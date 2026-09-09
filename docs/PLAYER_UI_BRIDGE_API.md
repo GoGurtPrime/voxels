@@ -67,6 +67,12 @@ Use kind prefix `ui.action.`:
 - `ui.action.apply-settings`
 - `ui.action.dismiss-controls`
 - `ui.action.hotbar`
+- `ui.action.open-chat`
+- `ui.action.close-chat`
+- `ui.action.send-chat`
+- `ui.action.open-crafting`
+- `ui.action.close-crafting`
+- `ui.action.craft-recipe`
 - `ui.action.acknowledge-error`
 
 Legacy (non-prefixed) kinds are still accepted for compatibility.
@@ -190,6 +196,9 @@ loopback before the state transition or process exit.
   "sensitivity": 1.0,
   "invertY": false,
   "particles": true,
+  "crosshairSize": 1.0,
+  "crosshairHighContrast": false,
+  "reducedMotion": false,
   "rendererBackend": 0,
   "activeRenderer": 1,
   "restartRequired": false
@@ -201,6 +210,51 @@ Notes:
 - Web UI must hydrate controls from this payload when entering or revising settings.
 - Native side clamps values before applying.
 - Native side applies window mode and resolution immediately, then persists to settings file and republishes the current settings snapshot after apply.
+
+### Gameplay HUD route (`route = 9`)
+
+`payload` JSON object:
+
+```json
+{
+  "hotbar": [
+    { "slot": 0, "selected": true, "blockId": 1, "count": 32, "name": "Stone" }
+  ],
+  "inventory": {
+    "slots": [
+      { "slot": 0, "hotbar": true, "selected": true, "blockId": 1, "count": 32, "name": "Stone" },
+      { "slot": 9, "hotbar": false, "selected": false, "blockId": 0, "count": 0, "name": "" }
+    ]
+  },
+  "selectedSlot": 0,
+  "heldItem": { "empty": false, "name": "Stone", "count": 32 },
+  "target": { "hit": true, "name": "Stone", "breakProgress": 0.35 },
+  "status": { "health": 100.0, "remoteSession": false },
+  "chat": { "open": false },
+  "crafting": {
+    "open": false,
+    "recipes": [
+      {
+        "id": "recipe_planks",
+        "name": "Planks",
+        "icon": "planks",
+        "category": "construction",
+        "sort": "Planks",
+        "ingredients": [{ "name": "Tree Trunk", "count": 1 }],
+        "output": { "name": "Planks", "count": 4 }
+      }
+    ]
+  },
+  "notifications": [{ "id": 4, "text": "Player 2 joined.", "remaining": 7.6 }],
+  "crosshair": { "size": 1.0, "highContrast": false, "reducedMotion": false }
+}
+```
+
+Notes:
+
+- Native publishes at up to 30 Hz plus immediate event-driven revisions for selection, break progress, and notifications.
+- `inventory.slots` is authoritative full inventory state (9 hotbar + 27 main slots) for centered inventory/crafting layouts.
+- Browser HUD is presentation-only; native C++ remains authoritative for inventory changes, crafting, and gameplay state.
 
 ### Loading route (`route = 3`)
 

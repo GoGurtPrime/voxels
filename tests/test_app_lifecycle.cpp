@@ -238,6 +238,9 @@ TEST_CASE("SettingsState.PublishesAuthoritativeSettingsPayload", "[app][ui][play
     preferences.mouseSensitivity = 1.8f;
     preferences.invertY = true;
     preferences.particles = false;
+    preferences.crosshairSize = 1.6f;
+    preferences.highContrastCrosshair = true;
+    preferences.reducedMotion = true;
 
     voxels::NullPlayerUI ui;
     voxels::AppContext context{};
@@ -259,4 +262,7 @@ TEST_CASE("SettingsState.PublishesAuthoritativeSettingsPayload", "[app][ui][play
     REQUIRE(payload.value("sensitivity", 0.0f) == Catch::Approx(1.8f));
     REQUIRE(payload.value("invertY", false));
     REQUIRE_FALSE(payload.value("particles", true));
+    REQUIRE(payload.value("crosshairSize", 0.0f) == Catch::Approx(1.6f));
+    REQUIRE(payload.value("crosshairHighContrast", false));
+    REQUIRE(payload.value("reducedMotion", false));
 }

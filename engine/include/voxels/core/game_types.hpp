@@ -68,6 +68,9 @@ struct GamePreferences {
     float musicVolume = 0.7f;
     float sfxVolume = 0.8f;
     bool particles = true;           ///< Not serialized by PreferencesManager; resets each launch.
+    float crosshairSize = 1.0f;      ///< Scalar applied to HUD crosshair rendering.
+    bool highContrastCrosshair = false;
+    bool reducedMotion = false;
     /// Persisted so the first-run controls card (work_items/18 §4) is shown exactly once.
     bool controlsCardSeen = false;
     std::map<std::string, std::string> keyBindings; ///< Action name -> key name.
