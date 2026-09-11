@@ -15,6 +15,8 @@ uniform vec3 uFoliageTint;
 uniform vec3 uSunColor;
 uniform vec3 uAmbientColor;
 uniform vec3 uSkyColor;
+uniform float uFogStart;
+uniform float uFogEnd;
 
 out vec4 FragColor;
 
@@ -36,6 +38,6 @@ void main() {
     vec3 blockLighting = blockFactor * vec3(1.0, 0.58, 0.28);
     vec3 lit = baseColor * aoFactor * max(skyLighting + blockLighting, vec3(0.015));
 
-    float fog = clamp((length(vWorldPos - uCameraPos) - 24.0) / 48.0, 0.0, 1.0);
+    float fog = smoothstep(uFogStart, uFogEnd, length(vWorldPos - uCameraPos));
     FragColor = vec4(mix(lit, uSkyColor, fog), texColor.a);
 }

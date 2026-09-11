@@ -28,6 +28,7 @@
 #include "voxels/render/celestial_lighting.hpp"
 #include "voxels/render/chunk_mesher.hpp"
 #include "voxels/render/model_registry.hpp"
+#include "voxels/render/sky_renderer.hpp"
 #include "voxels/render/texture_atlas.hpp"
 #include "voxels/world/block.hpp"
 #include "voxels/world/geometry.hpp"
@@ -95,6 +96,8 @@ public:
     /// transparent back-to-front.
     void Render(const voxels::Camera& camera);
     void SetCelestialLighting(const CelestialLighting& lighting) noexcept { m_celestialLighting = lighting; }
+    /// Sets camera-relative block distances for the shared opaque/transparent fog treatment.
+    void SetFogRange(FogRange fogRange) noexcept { m_fogRange = fogRange; }
 
     /// Releases every GPU resource owned by this renderer.
     void Shutdown();
@@ -162,6 +165,8 @@ private:
     GLint m_uniformSunColor = -1;
     GLint m_uniformAmbientColor = -1;
     GLint m_uniformSkyColor = -1;
+    GLint m_uniformFogStart = -1;
+    GLint m_uniformFogEnd = -1;
 
     std::unordered_map<voxels::ChunkCoordinate, GpuChunkMesh, voxels::ChunkCoordinateHash> m_meshes;
     std::unordered_set<voxels::ChunkCoordinate, voxels::ChunkCoordinateHash> m_dirty;
@@ -182,6 +187,7 @@ private:
     double m_uploadBudgetMilliseconds = 2.0;
     std::size_t m_backgroundMeshQueueLimit = std::numeric_limits<std::size_t>::max();
     CelestialLighting m_celestialLighting{};
+    FogRange m_fogRange{};
 
     ChunkRenderMetrics m_metrics;
 };

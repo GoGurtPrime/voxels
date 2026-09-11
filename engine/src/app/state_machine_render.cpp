@@ -75,10 +75,11 @@ public:
 
         m_jobs = std::make_unique<JobSystem>();
         m_chunkRenderer = std::make_unique<graphics::ChunkRenderer>(*m_registry, *m_atlas, *m_jobs, m_renderer);
+        m_skyRenderer = std::make_unique<graphics::SkyRenderer>();
         m_chunkRenderer->SetUploadBudget(3, 1.4);
         m_chunkRenderer->SetBackgroundMeshQueueLimit(2);
 
-        const int radius = std::clamp(m_options.renderDistanceChunks - 1, 3, 8);
+        const int radius = std::clamp(m_options.renderDistanceChunks, 3, 8);
         for (int ring = 0; ring <= radius; ++ring) {
             for (int z = -ring; z <= ring; ++z) {
                 for (int x = -ring; x <= ring; ++x) {
@@ -108,8 +109,10 @@ public:
 
     void Stop() noexcept {
         if (m_chunkRenderer != nullptr) m_chunkRenderer->Shutdown();
+        if (m_skyRenderer != nullptr) m_skyRenderer->Shutdown();
         if (m_jobs != nullptr) m_jobs->Shutdown();
         m_chunkRenderer.reset();
+        m_skyRenderer.reset();
         m_jobs.reset();
         m_world.reset();
         m_pending.clear();
@@ -162,6 +165,8 @@ public:
         const graphics::CelestialLighting lighting =
             graphics::EvaluateCelestialLighting(graphics::kDayDurationSeconds * 0.30f, true);
         m_chunkRenderer->SetCelestialLighting(lighting);
+        m_chunkRenderer->SetFogRange(graphics::FogRangeForRenderDistance(m_options.renderDistanceChunks));
+        m_skyRenderer->Render(m_camera, lighting);
         m_chunkRenderer->Render(m_camera);
     }
 
@@ -334,6 +339,7 @@ private:
     std::unique_ptr<World> m_world;
     std::unique_ptr<JobSystem> m_jobs;
     std::unique_ptr<graphics::ChunkRenderer> m_chunkRenderer;
+    std::unique_ptr<graphics::SkyRenderer> m_skyRenderer;
     std::vector<PendingChunk> m_pending;
     std::size_t m_totalChunkJobs = 0;
     std::size_t m_completedChunkJobs = 0;
@@ -683,6 +689,7 @@ void InGameState::OnEnter() {
             m_chunkRenderer->SetUploadBudget(2, 1.0);
             m_chunkRenderer->SetBackgroundMeshQueueLimit(1);
         }
+        if (m_skyRenderer == nullptr) m_skyRenderer = std::make_unique<graphics::SkyRenderer>();
         if (m_hudRenderer == nullptr) m_hudRenderer = std::make_unique<graphics::GameplayHudRenderer>();
         if (m_remotePlayerRenderer == nullptr) m_remotePlayerRenderer = std::make_unique<graphics::RemotePlayerRenderer>();
     }
@@ -771,9 +778,11 @@ void InGameState::OnExit() {
     if (m_chunkRenderer) {
         m_chunkRenderer->Shutdown();
     }
+    if (m_skyRenderer) m_skyRenderer->Shutdown();
     if (m_hudRenderer) m_hudRenderer->Shutdown();
     if (m_remotePlayerRenderer) m_remotePlayerRenderer->Shutdown();
     m_chunkRenderer.reset();
+    m_skyRenderer.reset();
     m_hudRenderer.reset();
     m_remotePlayerRenderer.reset();
     m_jobSystem.reset();
@@ -1366,6 +1375,8 @@ void InGameState::Render() {
         {celestial.skyColor.r, celestial.skyColor.g, celestial.skyColor.b, 1.0f}));
     if (m_chunkRenderer) {
         m_chunkRenderer->SetCelestialLighting(celestial);
+        m_chunkRenderer->SetFogRange(graphics::FogRangeForRenderDistance(m_options.renderDistanceChunks));
+        if (m_skyRenderer) m_skyRenderer->Render(camera, celestial);
         m_chunkRenderer->Render(camera);
     }
     if (m_remotePlayerRenderer && m_context != nullptr && m_context->networkClient != nullptr) {

@@ -49,6 +49,7 @@ add_library(voxels_engine
     src/rendering.cpp
     src/render/camera.cpp
     src/render/celestial_lighting.cpp
+    src/render/sky_renderer.cpp
     src/render/texture_forge.cpp
     src/render/texture_atlas.cpp
     src/render/chunk_mesher.cpp

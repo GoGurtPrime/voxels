@@ -12,6 +12,7 @@
 #include "voxels/world/geometry.hpp"
 #include "voxels/world/world.hpp"
 #include "voxels/render/celestial_lighting.hpp"
+#include "voxels/render/sky_renderer.hpp"
 
 TEST_CASE("BlockRegistry.RegistrationAndLookup", "[world][block]") {
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
@@ -282,6 +283,17 @@ TEST_CASE("CelestialLighting.CyclesDeterministicallyAndAlwaysDayPinsNoon", "[ren
     REQUIRE(alwaysDay.sunDirection == noon.sunDirection);
     REQUIRE(alwaysDay.skyColor == noon.skyColor);
     REQUIRE(voxels::graphics::NormalizeDayTime(-1.0f) == Catch::Approx(kDayDurationSeconds - 1.0f));
+}
+
+TEST_CASE("Sky.FogRangeReservesTheFinalLoadedChunk", "[render][sky][fog]") {
+    const auto fog = voxels::graphics::FogRangeForRenderDistance(8);
+    REQUIRE(fog.endBlocks == Catch::Approx(112.0f));
+    REQUIRE(fog.startBlocks == Catch::Approx(67.2f));
+    REQUIRE(fog.startBlocks < fog.endBlocks);
+
+    const auto minimumFog = voxels::graphics::FogRangeForRenderDistance(1);
+    REQUIRE(minimumFog.endBlocks == Catch::Approx(16.0f));
+    REQUIRE(minimumFog.startBlocks == Catch::Approx(9.6f));
 }
 
 TEST_CASE("GreedyMeshing.FaceCulling", "[world][geometry]") {

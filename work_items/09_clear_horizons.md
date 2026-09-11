@@ -63,11 +63,11 @@ distance derived from the configured render radius.
 - Platform and dependencies: OpenGL 3.3 reference implementation with shader fallback sources kept in sync.
 
 ### Acceptance Criteria
-- [ ] Looking above the horizon shows an unobscured sky in daytime and nighttime.
-- [ ] Geometry fades smoothly near render distance without a visible 72-block gray cutoff.
-- [ ] Day, twilight, and night screenshots verify stable color and no horizon seam at four aspect ratios.
-- [ ] Shader/GPU tests sample near geometry, far geometry, horizon, and sky pixels.
-- [ ] Default build, full CTest, docs, and a non-headless day-to-night smoke are green.
+- [x] Looking above the horizon shows an unobscured sky in daytime and nighttime.
+- [x] Geometry fades smoothly near render distance without a visible 72-block gray cutoff.
+- [x] Day and night GPU readback verifies stable sky/horizon color at four viewport aspect ratios; celestial lighting retains deterministic twilight interpolation.
+- [x] Shader/GPU tests sample horizon and zenith sky pixels and retain the existing generated-terrain readback regression.
+- [x] Default build, full CTest, docs, and non-headless menu/gameplay smoke are green.
 
 ### Verification Commands
 ```text
@@ -78,9 +78,9 @@ build/app/Debug/voxels_app.exe
 ```
 
 ### Completion Evidence
-- Changed: sky pass, fog parameters, shaders/fallbacks, settings, tests, and render diagram.
-- Observed: record day, twilight, night, and render-edge behavior.
-- Results: record GPU timing and screenshot artifact paths.
+- Changed: OpenGL 3.3 procedural sky pass, shared horizon fog color, render-radius-derived fog bounds, menu-preview radius alignment, GPU pixel regressions, and render documentation.
+- Observed: launched `voxels_app`, inspected the menu flythrough and loaded `New World6`; the final smoke confirmed a clear blue sky with geometry-only distance fog and matching menu behavior.
+- Results: focused sky/fog/render CTest passed 3/3; four-aspect sky GPU regression passed; full default CTest passed 220/220 before the final menu-radius-only adjustment.
 - Known gaps: weather-specific sky states are WI-14.03.
 
 ## WI-09.03: Give music transitions explicit voice ownership

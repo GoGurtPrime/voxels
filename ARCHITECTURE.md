@@ -157,7 +157,7 @@ Every state receives an `AppContext&` holding non-owning references to the servi
 - `GLRenderer` implements this against GL 3.3 Core. Shaders live in `app/assets/shaders/*.glsl` with a compiled-in fallback source string so a missing file never blanks the screen.
 - OpenGL scene lighting is linear: colour textures use sRGB internal formats and an sRGB-capable default framebuffer encodes scene output for SDR presentation. CEF and ImGui surfaces already contain display-encoded colours, so their final composition temporarily bypasses framebuffer sRGB conversion and restores it afterward.
 - On Windows, `Fullscreen` uses SDL desktop fullscreen so native window, drawable, and input bounds remain synchronized. At startup the app presents one complete windowed frame before applying the requested fullscreen mode; this establishes the same Windows colour state used by later live mode transitions in both HDR and SDR. OpenGL 3.3 remains an SDR renderer and does not advertise HDR metadata or rely on driver Auto HDR.
-- Passes per frame, in order: **opaque chunks → sub-voxel models/entities → transparent (water) → debug lines → UI**.
+- Passes per frame, in order: **procedural sky → opaque chunks → sub-voxel models/entities → transparent (water) → debug lines → UI**. The OpenGL sky is a camera-relative full-screen pass derived from replicated world time. Chunk fog uses the same celestial horizon color and fades from 60% of its range to one chunk inside the configured render boundary, so it never becomes a near-field gray wall.
 
 ### 6.2 World & Meshing
 - `World` owns sparse `Chunk` sections plus the block registry.

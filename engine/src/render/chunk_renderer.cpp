@@ -108,6 +108,8 @@ uniform vec3 uFoliageTint;
 uniform vec3 uSunColor;
 uniform vec3 uAmbientColor;
 uniform vec3 uSkyColor;
+uniform float uFogStart;
+uniform float uFogEnd;
 
 out vec4 FragColor;
 
@@ -131,7 +133,7 @@ void main() {
     vec3 blockLighting = blockFactor * vec3(1.0, 0.58, 0.28);
     vec3 lit = baseColor * aoFactor * max(skyLighting + blockLighting, vec3(0.015));
 
-    float fog = clamp((length(vWorldPos - uCameraPos) - 24.0) / 48.0, 0.0, 1.0);
+    float fog = smoothstep(uFogStart, uFogEnd, length(vWorldPos - uCameraPos));
     FragColor = vec4(mix(lit, uSkyColor, fog), texColor.a);
 })";
 
@@ -377,6 +379,8 @@ bool ChunkRenderer::EnsureProgram() {
     m_uniformSunColor = glGetUniformLocation(m_program, "uSunColor");
     m_uniformAmbientColor = glGetUniformLocation(m_program, "uAmbientColor");
     m_uniformSkyColor = glGetUniformLocation(m_program, "uSkyColor");
+    m_uniformFogStart = glGetUniformLocation(m_program, "uFogStart");
+    m_uniformFogEnd = glGetUniformLocation(m_program, "uFogEnd");
     return true;
 }
 
@@ -798,7 +802,10 @@ void ChunkRenderer::Render(const voxels::Camera& camera) {
     glUniform3fv(m_uniformSunDirection, 1, &m_celestialLighting.sunDirection[0]);
     glUniform3fv(m_uniformSunColor, 1, &m_celestialLighting.sunColor[0]);
     glUniform3fv(m_uniformAmbientColor, 1, &m_celestialLighting.ambientColor[0]);
-    glUniform3fv(m_uniformSkyColor, 1, &m_celestialLighting.skyColor[0]);
+    const glm::vec3 fogColor = SkyHorizonColor(m_celestialLighting);
+    glUniform3fv(m_uniformSkyColor, 1, &fogColor[0]);
+    glUniform1f(m_uniformFogStart, m_fogRange.startBlocks);
+    glUniform1f(m_uniformFogEnd, m_fogRange.endBlocks);
     glUniform1i(m_uniformTexture, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D_ARRAY, m_atlas.GetTextureHandle());

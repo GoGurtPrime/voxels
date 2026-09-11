@@ -34,6 +34,7 @@
 #include "voxels/render/chunk_renderer.hpp"
 #include "voxels/render/gameplay_hud.hpp"
 #include "voxels/render/remote_player_renderer.hpp"
+#include "voxels/render/sky_renderer.hpp"
 #include "voxels/world/generation_pipeline.hpp"
 #include "voxels/world/world.hpp"
 #include "voxels/world/world_options.hpp"
@@ -375,6 +376,7 @@ private:
     GameSession m_session;
     std::unique_ptr<JobSystem> m_jobSystem;
     std::unique_ptr<graphics::ChunkRenderer> m_chunkRenderer;
+    std::unique_ptr<graphics::SkyRenderer> m_skyRenderer;
     std::unique_ptr<graphics::GameplayHudRenderer> m_hudRenderer;
     std::unique_ptr<graphics::RemotePlayerRenderer> m_remotePlayerRenderer;
     RemoteChunkApplier m_remoteChunkApplier;

@@ -297,14 +297,15 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     BEGIN["Renderer.BeginFrame<br/>bind sRGB SDR framebuffer<br/>clear color + depth"] --> CAMU["Update camera matrices<br/>view, projection, interpolated eye"]
-    CAMU --> FRUS["Build frustum, cull chunk meshes"]
-    FRUS --> OPAQUE["Pass 1: opaque chunk meshes<br/>atlas texture, depth write on"]
-    OPAQUE --> MODELS["Pass 2: sub-voxel models + entities<br/>.vmdl instances, players"]
-    MODELS --> WATER["Pass 3: transparent<br/>water, leaves, glass — sorted back to front, depth write off"]
-    WATER --> DEBUG["Pass 4: debug lines<br/>targeted block outline, chunk bounds if enabled"]
-    DEBUG --> HUD["Pass 5: HUD primitives<br/>crosshair, hotbar, held item"]
-    HUD --> IMGUI["Pass 6: ImGui draw data<br/>display-encoded UI bypasses framebuffer sRGB conversion"]
-    IMGUI --> WEBUI["Pass 7 (VOXELS_ENABLE_WEB_UI only): CEF React menu layer<br/>WebUiOpenGLCompositor draws the browser's premultiplied-BGRA<br/>paint with framebuffer sRGB conversion bypassed, then restores it;<br/>menu routes replace ImGui, while pause/HUD remain native"]
+    CAMU --> SKY["Pass 1: procedural sky<br/>camera-relative zenith/horizon + sun<br/>from replicated world time"]
+    SKY --> FRUS["Build frustum, cull chunk meshes"]
+    FRUS --> OPAQUE["Pass 2: opaque chunk meshes<br/>atlas texture, depth write on<br/>fog ends one chunk inside render boundary"]
+    OPAQUE --> MODELS["Pass 3: sub-voxel models + entities<br/>.vmdl instances, players"]
+    MODELS --> WATER["Pass 4: transparent<br/>water, leaves, glass — sorted back to front, depth write off"]
+    WATER --> DEBUG["Pass 5: debug lines<br/>targeted block outline, chunk bounds if enabled"]
+    DEBUG --> HUD["Pass 6: HUD primitives<br/>crosshair, hotbar, held item"]
+    HUD --> IMGUI["Pass 7: ImGui draw data<br/>display-encoded UI bypasses framebuffer sRGB conversion"]
+    IMGUI --> WEBUI["Pass 8 (VOXELS_ENABLE_WEB_UI only): CEF React menu layer<br/>WebUiOpenGLCompositor draws the browser's premultiplied-BGRA<br/>paint with framebuffer sRGB conversion bypassed, then restores it;<br/>menu routes replace ImGui, while pause/HUD remain native"]
     WEBUI --> PRES["Renderer.EndFrame → Present"]
 ```
 

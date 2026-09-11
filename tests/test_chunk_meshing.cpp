@@ -24,6 +24,7 @@
 #include "voxels/render/chunk_mesher.hpp"
 #include "voxels/render/chunk_renderer.hpp"
 #include "voxels/render/gameplay_hud.hpp"
+#include "voxels/render/sky_renderer.hpp"
 #include "voxels/render/texture_atlas.hpp"
 #include "voxels/world/block.hpp"
 #include "voxels/world/chunk.hpp"
@@ -40,6 +41,56 @@ voxels::TextureAtlas MakeAtlas(const voxels::BlockRegistry& registry) {
 }
 
 } // namespace
+
+TEST_CASE("SkyRenderer.DrawsDistinctDayAndNightHorizonPixels", "[render][sky][gpu]") {
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO) == 0);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+
+    constexpr int kWidth = 320;
+    constexpr int kHeight = 320;
+    SDL_Window* window = SDL_CreateWindow("Sky Renderer Test", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                           kWidth, kHeight, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    REQUIRE(window != nullptr);
+    SDL_GLContext context = SDL_GL_CreateContext(window);
+    REQUIRE(context != nullptr);
+    REQUIRE(gladLoadGLLoader(static_cast<GLADloadproc>(SDL_GL_GetProcAddress)));
+
+    voxels::graphics::GLRenderer renderer;
+    REQUIRE(renderer.Initialize());
+    voxels::Camera camera;
+    voxels::graphics::SkyRenderer sky;
+    const auto day = voxels::graphics::EvaluateCelestialLighting(voxels::graphics::kDayDurationSeconds * 0.25f, false);
+    const auto night = voxels::graphics::EvaluateCelestialLighting(voxels::graphics::kDayDurationSeconds * 0.75f, false);
+
+    const std::array<std::pair<int, int>, 4> viewports{{{320, 180}, {240, 240}, {180, 320}, {320, 120}}};
+    for (const auto [width, height] : viewports) {
+        camera.aspect = static_cast<float>(width) / static_cast<float>(height);
+        REQUIRE(renderer.BeginFrame({0.0f, 0.0f, 0.0f, 1.0f}, width, height));
+        sky.Render(camera, day);
+        std::array<std::uint8_t, 4> dayZenith{};
+        std::array<std::uint8_t, 4> dayHorizon{};
+        glReadPixels(width / 2, height - 12, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, dayZenith.data());
+        glReadPixels(width / 2, height / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, dayHorizon.data());
+
+        REQUIRE(renderer.BeginFrame({0.0f, 0.0f, 0.0f, 1.0f}, width, height));
+        sky.Render(camera, night);
+        std::array<std::uint8_t, 4> nightZenith{};
+        glReadPixels(width / 2, height - 12, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, nightZenith.data());
+
+        REQUIRE(dayZenith != dayHorizon);
+        REQUIRE(dayZenith[2] > dayZenith[0]);
+        REQUIRE(dayZenith[0] > nightZenith[0]);
+        REQUIRE(dayZenith[2] > nightZenith[2]);
+    }
+
+    sky.Shutdown();
+    renderer.Shutdown();
+    SDL_GL_DeleteContext(context);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+}
 
 TEST_CASE("Mesher.SingleBlockProducesSixQuads", "[render][mesher]") {
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
