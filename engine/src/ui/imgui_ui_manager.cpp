@@ -204,6 +204,7 @@ void ImGuiUIManager::RenderDebugOverlay() {
         ImGui::Text("Position %.1f, %.1f, %.1f | Chunk %d, %d, %d", m_debugMetrics.playerX, m_debugMetrics.playerY, m_debugMetrics.playerZ, m_debugMetrics.chunkX, m_debugMetrics.chunkY, m_debugMetrics.chunkZ);
         ImGui::Text("Chunks L/M/V: %zu / %zu / %zu", m_debugMetrics.loadedChunks, m_debugMetrics.meshedChunks, m_debugMetrics.visibleChunks);
         ImGui::Text("Draw calls: %zu | Triangles: %zu | Mesh queue: %zu", m_debugMetrics.drawCalls, m_debugMetrics.triangles, m_debugMetrics.meshQueueDepth);
+        ImGui::Text("World tick: %llu | Day: %llu | Time: %.3f", static_cast<unsigned long long>(m_debugMetrics.worldTick), static_cast<unsigned long long>(m_debugMetrics.worldDay), m_debugMetrics.worldDayFraction);
         ImGui::Text("GL: %s", m_debugMetrics.glRenderer.c_str());
         ImGui::Text("Driver: %s | %s", m_debugMetrics.glVendor.c_str(), m_debugMetrics.glVersion.c_str());
     }

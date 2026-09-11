@@ -17,6 +17,7 @@
 #include "voxels/graphics/renderer.hpp"
 #include "voxels/world/chunk.hpp"
 #include "voxels/world/world.hpp"
+#include "voxels/world/world_clock.hpp"
 #include "voxels/world/world_serialization.hpp"
 
 TEST_CASE("Save.ChunkEditsTrackDirtyState", "[persistence]") {
@@ -97,6 +98,7 @@ TEST_CASE("Save.LevelMetadataRoundTripsAndRejectsTraversal", "[persistence]") {
     source.createdUtc = "2026-08-30T00:00:00Z";
     source.lastPlayedAt = "2026-08-30T01:00:00Z";
     source.playTimeSeconds = 3600;
+    source.worldTick = 9876543210123ULL;
     source.spawnX = 12.5f;
     source.spawnY = 43.0f;
     source.spawnZ = -8.5f;
@@ -105,16 +107,39 @@ TEST_CASE("Save.LevelMetadataRoundTripsAndRejectsTraversal", "[persistence]") {
     REQUIRE(manager.Save(source));
     voxels::GameSave loaded{};
     REQUIRE(manager.Load(source.saveName, loaded));
-    REQUIRE(loaded.schemaVersion == 1);
+    REQUIRE(loaded.schemaVersion == 2);
     REQUIRE(loaded.worldName == source.worldName);
     REQUIRE(loaded.seed == source.seed);
     REQUIRE(loaded.playTimeSeconds == source.playTimeSeconds);
+    REQUIRE(loaded.worldTick == source.worldTick);
     REQUIRE(loaded.spawnX == source.spawnX);
     REQUIRE(loaded.sandboxMode);
     REQUIRE_FALSE(manager.Save(voxels::GameSave{.saveName = "../../outside"}));
     REQUIRE_FALSE(manager.DeleteSave("../../world_one"));
     REQUIRE(std::filesystem::exists(root / source.saveName / "level.json"));
     std::filesystem::remove_all(root);
+}
+
+TEST_CASE("Save.LegacyLevelMetadataDefaultsWorldClockToDawn", "[persistence][world_clock]") {
+    const std::string legacyMetadata = R"({
+"schemaVersion":1,
+"displayName":"Legacy World",
+"saveName":"legacy_world",
+"playerName":"Player",
+"seed":42,
+"createdUtc":"2026-01-01T00:00:00Z",
+"lastPlayedUtc":"2026-01-01T00:00:00Z",
+"playTimeSeconds":0,
+"spawnX":0,"spawnY":64,"spawnZ":0,
+"generatorVersion":1,"engineVersion":"0.0.0",
+"peaceful":0,"permadeath":0,"alwaysSunny":1,"sandboxMode":0,
+"renderDistanceChunks":8,"simulationDistanceChunks":4,"publicVisibility":1
+})";
+
+    const voxels::GameSave migrated = voxels::SaveManager::FromMetaText(legacyMetadata);
+    REQUIRE(migrated.saveName == "legacy_world");
+    REQUIRE(migrated.schemaVersion == 1);
+    REQUIRE(migrated.worldTick == voxels::kInitialWorldTick);
 }
 
 TEST_CASE("Settings.PreserveUnknownKeysAcrossAtomicRewrite", "[persistence]") {

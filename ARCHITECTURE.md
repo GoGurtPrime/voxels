@@ -75,7 +75,7 @@ These are binding. Do not silently deviate; if a work item requires deviating, s
 | **ADR-002** | **SDL2 is a hard dependency of the desktop build.** If `find_package` fails, CMake **fetches and builds it**. `voxels_app` must never silently fall back to `HeadlessPlatform`. | The current silent fallback is the reason a "successful build" produces a black window. Headless is a *test fixture*, selected only by an explicit `--headless` flag. |
 | **ADR-003** | **Dear ImGui is the UI system** for menus, settings, debug overlays, and the entire editor. Gameplay HUD elements that must not depend on ImGui (crosshair, hotbar, block highlight) are drawn with engine render primitives. | ImGui is already assumed by the architecture, is trivially vendorable, and unblocks the editor quickly. |
 | **ADR-004** | **Mock/Headless/procedural implementations are test-only.** They sit behind `IRenderer`/`IPlatform`/`IAudioDevice` and may only be selected by tests or an explicit `--headless` flag. | Prevents the exact failure mode that produced this realignment. |
-| **ADR-005** | **Fixed 60 Hz simulation, decoupled variable-rate rendering** via an accumulator plus render interpolation. | Deterministic physics and networking, smooth visuals on any refresh rate. |
+| **ADR-005** | **Fixed 60 Hz simulation, decoupled variable-rate rendering** via an accumulator plus render interpolation. The hosted server owns a monotonic `uint64_t` world tick, persists it in `level.json`, and replicates exact snapshots; presentation derives day fraction without advancing its own clock. Local pause suppresses advancement while dedicated hosts continue. | Deterministic physics, time, and networking, with smooth visuals on any refresh rate. |
 | **ADR-006** | **Singleplayer is a hosted server.** The client always talks to a `GameServer`; solo play binds it to loopback. There is no separate "offline" gameplay path. | Already the intent; keeps multiplayer from becoming a rewrite. |
 | **ADR-007** | **Simulation state is server-authoritative.** The client owns camera, input prediction, and rendering only. | One source of truth; cheat resistance. |
 | **ADR-008** | **Generation and meshing run on a worker thread pool**; results return to the main thread through guarded result queues. GPU uploads happen only on the render thread. | Chunk streaming must never stall a frame. |
@@ -183,7 +183,7 @@ format namespace; unsupported unversioned save directories are removed at deskto
 
 | File | Contents |
 | :--- | :--- |
-| `level.json` | Schema version, display name, seed, world options, created/last-played timestamps, spawn point. |
+| `level.json` | Schema version, display name, seed, world options, exact `worldTick`, created/last-played timestamps, spawn point. |
 | `player.dat` | Position, velocity, yaw/pitch, health, hotbar/inventory. |
 | `preview.png` | Latest player-perspective world preview, captured after world rendering and before HUD/web UI composition. |
 | `regions/r.<rx>.<rz>.vrg` | Versioned, CRC-checked, sector-aligned RLE chunk sections grouped into 32×32-chunk regions. |

@@ -187,7 +187,7 @@ TEST_CASE("Protocol.ConnectAcceptRoundTripsWorldInfo", "[networking][packet]") {
     source.world.sandboxMode = true;
     source.world.alwaysSunny = true;
     source.world.spawnPosition = {8.5f, 41.9f, 8.5f};
-    source.world.dayTimeSeconds = 317.5f;
+    source.world.worldTick = 9876543210123ULL;
 
     const std::vector<std::uint8_t> bytes = voxels::networking::SerializeConnectAccept(source);
     voxels::networking::ConnectAccept decoded;
@@ -199,7 +199,7 @@ TEST_CASE("Protocol.ConnectAcceptRoundTripsWorldInfo", "[networking][packet]") {
     REQUIRE(decoded.world.sandboxMode);
     REQUIRE_FALSE(decoded.world.peaceful);
     REQUIRE(decoded.world.spawnPosition == source.world.spawnPosition);
-    REQUIRE(decoded.world.dayTimeSeconds == source.world.dayTimeSeconds);
+    REQUIRE(decoded.world.worldTick == source.world.worldTick);
 
     const voxels::networking::ConnectAccept notReady{{3, {}}, false, {}};
     const std::vector<std::uint8_t> notReadyBytes = voxels::networking::SerializeConnectAccept(notReady);
@@ -218,11 +218,66 @@ TEST_CASE("Protocol.ConnectAcceptRoundTripsWorldInfo", "[networking][packet]") {
     voxels::networking::ConnectAccept scratch;
     REQUIRE_FALSE(voxels::networking::DeserializeConnectAccept(oversized, scratch));
 
-    float decodedTime = 0.0f;
-    REQUIRE(voxels::networking::DeserializeWorldTime(voxels::networking::SerializeWorldTime(42.5f), decodedTime));
-    REQUIRE(decodedTime == 42.5f);
-    REQUIRE(voxels::networking::SerializeWorldTime(-1.0f).empty());
-    REQUIRE(voxels::networking::SerializeWorldTime(voxels::kWorldDayDurationSeconds).empty());
+    voxels::WorldTick decodedTime = 0;
+    REQUIRE(voxels::networking::DeserializeWorldTime(
+        voxels::networking::SerializeWorldTime(9876543210123ULL), decodedTime));
+    REQUIRE(decodedTime == 9876543210123ULL);
+}
+
+TEST_CASE("WorldClock.ServerAdvancesExactTicksAndHonorsLocalPause", "[networking][world_clock]") {
+    voxels::networking::GameServer server;
+    voxels::WorldOptions options{};
+    options.alwaysSunny = false;
+    constexpr voxels::WorldTick savedTick = 4ULL * voxels::kWorldTicksPerDay + 12345ULL;
+
+    REQUIRE(server.Start("127.0.0.1", 0));
+    server.SetWorldReady(options, {}, savedTick);
+    server.Tick();
+    server.Tick();
+    REQUIRE(server.GetWorldTick() == savedTick + 2ULL);
+
+    server.Tick(false);
+    REQUIRE(server.GetWorldTick() == savedTick + 2ULL);
+    REQUIRE(voxels::WorldDayIndex(server.GetWorldTick()) == 4ULL);
+    REQUIRE(voxels::WorldDayFraction(server.GetWorldTick()) > 0.0f);
+    server.Stop();
+}
+
+TEST_CASE("WorldClock.LoopbackReplicationPreservesExactSavedTick", "[networking][world_clock]") {
+    voxels::networking::GameServer server;
+    voxels::networking::GameClient client;
+    voxels::WorldOptions options{};
+    options.alwaysSunny = false;
+    constexpr voxels::WorldTick savedTick = 9876543210123ULL;
+
+    REQUIRE(server.Start("127.0.0.1", 0));
+    REQUIRE(client.Connect("127.0.0.1", server.Port(), voxels::networking::ClientKind::InProcessHost));
+    Service(server, client);
+    server.SetWorldReady(options, {}, savedTick);
+    client.Tick();
+    REQUIRE(client.GetWorldTick() == savedTick);
+
+    for (int tick = 0; tick < 20; ++tick) Service(server, client);
+    REQUIRE(server.GetWorldTick() == savedTick + 20ULL);
+    REQUIRE(client.GetWorldTick() == savedTick + 20ULL);
+    client.Disconnect();
+    server.Stop();
+}
+
+TEST_CASE("WorldClock.DayDerivationDependsOnlyOnTickSequence", "[networking][world_clock]") {
+    constexpr voxels::WorldTick startTick = 17ULL * voxels::kWorldTicksPerDay + 34567ULL;
+    voxels::WorldTick steadyRenderTick = startTick;
+    voxels::WorldTick unevenRenderTick = startTick;
+
+    for (int frame = 0; frame < 120; ++frame) ++steadyRenderTick;
+    for (int frame = 0; frame < 40; ++frame) {
+        unevenRenderTick += 1ULL;
+        unevenRenderTick += 2ULL;
+    }
+
+    REQUIRE(steadyRenderTick == unevenRenderTick);
+    REQUIRE(voxels::WorldDayIndex(steadyRenderTick) == voxels::WorldDayIndex(unevenRenderTick));
+    REQUIRE(voxels::WorldDayFraction(steadyRenderTick) == voxels::WorldDayFraction(unevenRenderTick));
 }
 
 TEST_CASE("Fragmentation.LargeChunkPayloadReassemblesExactly", "[networking][packet]") {

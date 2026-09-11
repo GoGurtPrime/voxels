@@ -271,6 +271,7 @@ sequenceDiagram
     Cli->>Srv: C2S_Input (sequence numbered)
     Cli->>Phy: predict locally with same intent
 
+    Srv->>Srv: advance persistent world tick unless local play is paused
     Srv->>Phy: apply intent → velocity
     Phy->>Phy: gravity, drag, jump impulse
     Phy->>W: query solid AABBs in swept region

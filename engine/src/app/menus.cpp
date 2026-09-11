@@ -9,6 +9,7 @@
 #include <cctype>
 
 #include "voxels/world/generation_pipeline.hpp"
+#include "voxels/world/world_clock.hpp"
 
 namespace voxels {
 
@@ -39,6 +40,7 @@ GameSave WorldCreationController::BuildGameSave(const std::string& playerName) c
     save.playerName = playerName;
     save.seed = static_cast<WorldSeed>(m_options.seed);
     save.generatorVersion = WorldGenerator::kGeneratorVersion;
+    save.worldTick = kInitialWorldTick;
     save.publicVisibility = m_options.isPublic;
     return save;
 }

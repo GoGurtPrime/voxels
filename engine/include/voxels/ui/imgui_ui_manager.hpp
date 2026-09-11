@@ -30,6 +30,9 @@ struct UIDebugMetrics {
     std::size_t drawCalls = 0;
     std::size_t triangles = 0;
     std::size_t meshQueueDepth = 0;
+    std::uint64_t worldTick = 0;
+    std::uint64_t worldDay = 0;
+    float worldDayFraction = 0.0f;
     std::string glVendor;
     std::string glRenderer;
     std::string glVersion;

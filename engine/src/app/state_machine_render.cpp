@@ -653,7 +653,7 @@ void InGameState::OnEnter() {
     }
     if (!m_remoteSession && m_context != nullptr && m_context->networkServer != nullptr) {
         // Publish the hosted world so remote joiners receive its identity and spawn point.
-        m_context->networkServer->SetWorldReady(m_options, m_session.GetPlayer().state.position);
+        m_context->networkServer->SetWorldReady(m_options, m_session.GetPlayer().state.position, m_activeSave.worldTick);
         RenderStateLog().Info("Hosting world on UDP port " + std::to_string(m_context->networkServer->Port()));
     }
     if (m_remoteSession) {
@@ -744,6 +744,7 @@ void InGameState::OnEnter() {
 
 void InGameState::OnExit() {
     if (!m_remoteSession && m_context != nullptr && m_context->saveManager != nullptr && !m_activeSave.saveName.empty()) {
+        m_activeSave.worldTick = GetWorldTick();
         m_activeSave.lastPlayedAt = "saved";
         m_activeSave.spawnX = m_session.GetPlayer().state.position.x;
         m_activeSave.spawnY = m_session.GetPlayer().state.position.y;
@@ -817,7 +818,7 @@ bool InGameState::SetPublicVisibility(bool isPublic) {
     }
     m_options.isPublic = isPublic;
     if (m_context->networkServer != nullptr) {
-        m_context->networkServer->SetWorldReady(m_options, m_session.GetPlayer().state.position);
+        m_context->networkServer->SetWorldReady(m_options, m_session.GetPlayer().state.position, GetWorldTick());
     }
     return true;
 }
@@ -1186,6 +1187,7 @@ void InGameState::ApplyNetworkedBlockUpdates() {
 void InGameState::StartAutosave() {
     if (m_context == nullptr || m_context->saveManager == nullptr || m_jobSystem == nullptr || m_activeSave.saveName.empty()) return;
     m_autosaveSeconds = 0.0f;
+    m_activeSave.worldTick = GetWorldTick();
     auto worldSnapshot = std::shared_ptr<World>(SnapshotWorld(m_session.GetWorld()).release());
     const GameSave saveSnapshot = m_activeSave;
     const PlayerState playerSnapshot = m_session.GetPlayer().state;
@@ -1352,14 +1354,14 @@ void InGameState::Render() {
     }
     const Camera camera = m_cameraOverride != nullptr ? *m_cameraOverride : m_session.GetCamera();
     g_renderer->SetCamera(camera);
-    float worldTime = graphics::kDayDurationSeconds * 0.25f;
+    WorldTick worldTick = kInitialWorldTick;
     if (m_remoteSession && m_context != nullptr && m_context->networkClient != nullptr) {
-        worldTime = m_context->networkClient->GetEstimatedWorldTimeSeconds();
+        worldTick = m_context->networkClient->GetWorldTick();
     } else if (m_context != nullptr && m_context->networkServer != nullptr) {
-        worldTime = m_context->networkServer->GetWorldTimeSeconds();
+        worldTick = m_context->networkServer->GetWorldTick();
     }
     const graphics::CelestialLighting celestial =
-        graphics::EvaluateCelestialLighting(worldTime, m_options.alwaysSunny);
+        graphics::EvaluateCelestialLighting(WorldDayTimeSeconds(worldTick), m_options.alwaysSunny);
     static_cast<void>(g_renderer->BeginFrame(
         {celestial.skyColor.r, celestial.skyColor.g, celestial.skyColor.b, 1.0f}));
     if (m_chunkRenderer) {
@@ -1388,6 +1390,16 @@ void InGameState::Render() {
                               m_session.GetParticleBursts(), m_session.GetItemDrops(), drawNativeScreenHud);
         m_session.ClearParticleBursts();
     }
+}
+
+WorldTick InGameState::GetWorldTick() const noexcept {
+    if (m_remoteSession && m_context != nullptr && m_context->networkClient != nullptr) {
+        return m_context->networkClient->GetWorldTick();
+    }
+    if (m_context != nullptr && m_context->networkServer != nullptr) {
+        return m_context->networkServer->GetWorldTick();
+    }
+    return m_activeSave.worldTick;
 }
 
 } // namespace voxels

@@ -844,7 +844,10 @@ int main(int argc, char** argv) {
 
         const int simTicks = frameAccumulator.Resolve(kFixedStepSeconds, kMaxSimulationStepsPerFrame);
         for (int i = 0; i < simTicks; ++i) {
-            if (localServer != nullptr) localServer->Tick();
+            if (localServer != nullptr) {
+                const auto* inGame = dynamic_cast<const voxels::InGameState*>(stateMachine.GetCurrentState());
+                localServer->Tick(inGame != nullptr);
+            }
             localClient.Tick();
             stateMachine.Update(kFixedStepSeconds);
         }
@@ -876,6 +879,9 @@ int main(int argc, char** argv) {
         debugMetrics.chunkY = static_cast<int>(std::floor(camera.position.y / 16.0f));
         debugMetrics.chunkZ = static_cast<int>(std::floor(camera.position.z / 16.0f));
         if (const auto* inGame = dynamic_cast<const voxels::InGameState*>(stateMachine.GetCurrentState())) {
+            debugMetrics.worldTick = inGame->GetWorldTick();
+            debugMetrics.worldDay = voxels::WorldDayIndex(debugMetrics.worldTick);
+            debugMetrics.worldDayFraction = voxels::WorldDayFraction(debugMetrics.worldTick);
             if (const auto* chunkRenderer = inGame->GetChunkRenderer()) {
                 const auto& metrics = chunkRenderer->GetMetrics();
                 debugMetrics.loadedChunks = metrics.loadedChunks;

@@ -22,11 +22,11 @@ lighting, seasons, growth, weather, and scheduled entities.
 - Platform and dependencies: version persistence and network messages; no wall-clock or timezone dependency.
 
 ### Acceptance Criteria
-- [ ] Equal tick sequences produce equal day/day-fraction results independent of render cadence.
-- [ ] Save/reload and loopback replication preserve the exact world tick and do not reset dawn.
-- [ ] Pause semantics and dedicated-server semantics are explicitly tested.
-- [ ] F3 or an equivalent developer surface shows world tick, day, and normalized time.
-- [ ] Default build, full CTest, docs, and non-headless clock-observation smoke are green.
+- [x] Equal tick sequences produce equal day/day-fraction results independent of render cadence.
+- [x] Save/reload and loopback replication preserve the exact world tick and do not reset dawn.
+- [x] Pause semantics and dedicated-server semantics are explicitly tested.
+- [x] F3 or an equivalent developer surface shows world tick, day, and normalized time.
+- [x] Default build, full CTest, docs, and non-headless clock-observation smoke are green.
 
 ### Verification Commands
 ```text
@@ -37,9 +37,12 @@ build/app/Debug/voxels_app.exe
 ```
 
 ### Completion Evidence
-- Changed: clock owner, persistence/network schema, debug publication, tests, and diagrams.
-- Observed: time advances in play, freezes under local pause, and resumes at the saved instant.
-- Results: record tests, migration fixtures, and desktop observation.
+- Changed: `WorldTick` clock contract, server advancement/pause gate, exact protocol snapshots,
+	level metadata schema v2 migration, F3 metrics, tests, and architecture/flow documentation.
+- Observed: launched `voxels_app`, loaded `New World6`, resumed gameplay, and exited cleanly after
+	inspecting the F3 clock surface and pause behavior.
+- Results: Debug build passed; full CTest passed 218/218; focused clock suite passed 16 assertions
+	across 4 cases, including persistence migration, pause, loopback replication, and render cadence.
 - Known gaps: seasons consume this contract in WI-12.01; plant ticks consume it in WI-11.01.
 
 ## WI-09.02: Separate clear sky rendering from distance fog

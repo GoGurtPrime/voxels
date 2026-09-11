@@ -14,6 +14,8 @@
 #include <fstream>
 #include <sstream>
 
+#include "voxels/world/world_clock.hpp"
+
 #if defined(_WIN32)
 #include <windows.h>
 #endif
@@ -105,6 +107,7 @@ std::string SaveManager::ToMetaText(const GameSave& save) {
     out << "\"createdUtc\":" << JsonString(save.createdUtc) << ",\n";
     out << "\"lastPlayedUtc\":" << JsonString(save.lastPlayedAt) << ",\n";
     out << "\"playTimeSeconds\":" << save.playTimeSeconds << ",\n";
+    out << "\"worldTick\":" << save.worldTick << ",\n";
     out << "\"spawnX\":" << save.spawnX << ",\"spawnY\":" << save.spawnY << ",\"spawnZ\":" << save.spawnZ << ",\n";
     out << "\"generatorVersion\":" << save.generatorVersion << ",\"engineVersion\":" << JsonString(save.engineVersion) << ",\n";
     out << "\"peaceful\":" << save.peaceful << ",\"permadeath\":" << save.permadeath << ",\"alwaysSunny\":" << save.alwaysSunny << ",\"sandboxMode\":" << save.sandboxMode << ",\n";
@@ -116,10 +119,13 @@ GameSave SaveManager::FromMetaText(const std::string& text) {
     GameSave save{};
     try {
         save.schemaVersion = static_cast<std::uint32_t>(std::stoul(ReadValue(text, "schemaVersion")));
-        if (save.schemaVersion > 1) return {};
+        if (save.schemaVersion > 2) return {};
         save.saveName = ReadValue(text, "saveName"); save.worldName = ReadValue(text, "displayName"); save.playerName = ReadValue(text, "playerName");
         save.createdUtc = ReadValue(text, "createdUtc"); save.lastPlayedAt = ReadValue(text, "lastPlayedUtc"); save.seed = static_cast<WorldSeed>(std::stoul(ReadValue(text, "seed")));
-        save.playTimeSeconds = std::stoull(ReadValue(text, "playTimeSeconds")); save.spawnX = std::stof(ReadValue(text, "spawnX")); save.spawnY = std::stof(ReadValue(text, "spawnY")); save.spawnZ = std::stof(ReadValue(text, "spawnZ"));
+        save.playTimeSeconds = std::stoull(ReadValue(text, "playTimeSeconds"));
+        if (save.schemaVersion >= 2) save.worldTick = std::stoull(ReadValue(text, "worldTick"));
+        else save.worldTick = kInitialWorldTick;
+        save.spawnX = std::stof(ReadValue(text, "spawnX")); save.spawnY = std::stof(ReadValue(text, "spawnY")); save.spawnZ = std::stof(ReadValue(text, "spawnZ"));
         save.generatorVersion = static_cast<std::uint32_t>(std::stoul(ReadValue(text, "generatorVersion"))); save.engineVersion = ReadValue(text, "engineVersion");
         save.peaceful = ReadValue(text, "peaceful") == "1"; save.permadeath = ReadValue(text, "permadeath") == "1"; save.alwaysSunny = ReadValue(text, "alwaysSunny") != "0"; save.sandboxMode = ReadValue(text, "sandboxMode") == "1";
         save.renderDistanceChunks = std::stoi(ReadValue(text, "renderDistanceChunks")); save.simulationDistanceChunks = std::stoi(ReadValue(text, "simulationDistanceChunks")); save.publicVisibility = ReadValue(text, "publicVisibility") != "0";

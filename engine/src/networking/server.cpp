@@ -49,7 +49,7 @@ public:
     World world;
     WorldOptions worldOptions{};
     Vec3 worldSpawn{};
-    float worldTimeSeconds = kWorldDayDurationSeconds * 0.25f;
+    WorldTick worldTick = kInitialWorldTick;
     std::uint32_t worldTimeBroadcastTicks = 0;
     bool worldReady = false;
     std::unordered_map<std::string, Peer> peers;
@@ -133,7 +133,7 @@ ConnectAccept MakeConnectAccept(const ServerImpl& impl, const EntityState& state
         accept.world.alwaysSunny = impl.worldOptions.alwaysSunny;
         accept.world.permadeath = impl.worldOptions.permadeath;
         accept.world.spawnPosition = impl.worldSpawn;
-        accept.world.dayTimeSeconds = impl.worldTimeSeconds;
+        accept.world.worldTick = impl.worldTick;
     }
     return accept;
 }
@@ -272,10 +272,10 @@ void GameServer::Stop() {
     m_impl->running = false;
 }
 
-void GameServer::SetWorldReady(const WorldOptions& options, const Vec3& spawn) {
+void GameServer::SetWorldReady(const WorldOptions& options, const Vec3& spawn, WorldTick worldTick) {
     m_impl->worldOptions = options;
     m_impl->worldSpawn = spawn;
-    m_impl->worldTimeSeconds = kWorldDayDurationSeconds * 0.25f;
+    m_impl->worldTick = worldTick;
     m_impl->worldTimeBroadcastTicks = 0;
     m_impl->worldReady = true;
     for (auto& [key, peer] : m_impl->peers) {
@@ -316,7 +316,7 @@ void GameServer::ClearWorld() {
 
 bool GameServer::IsWorldReady() const noexcept { return m_impl->worldReady; }
 
-float GameServer::GetWorldTimeSeconds() const noexcept { return m_impl->worldTimeSeconds; }
+WorldTick GameServer::GetWorldTick() const noexcept { return m_impl->worldTick; }
 
 std::vector<ChunkCoordinate> GameServer::TakeNewlyGeneratedChunks() {
     std::vector<ChunkCoordinate> chunks;
@@ -330,7 +330,7 @@ std::vector<BlockModify> GameServer::TakeRemoteBlockEdits() {
     return edits;
 }
 
-void GameServer::Tick() {
+void GameServer::Tick(bool advanceWorldTime) {
     if (!m_impl->running) {
         return;
     }
@@ -450,15 +450,13 @@ void GameServer::Tick() {
         BroadcastPlayerLeft(*m_impl, playerId);
     }
     if (m_impl->worldReady) {
-        if (!m_impl->worldOptions.alwaysSunny) {
-            m_impl->worldTimeSeconds = std::fmod(
-                m_impl->worldTimeSeconds + std::chrono::duration<float>(kTickInterval).count(),
-                kWorldDayDurationSeconds);
+        if (advanceWorldTime && !m_impl->worldOptions.alwaysSunny) {
+            ++m_impl->worldTick;
         }
         ++m_impl->worldTimeBroadcastTicks;
         if (m_impl->worldTimeBroadcastTicks >= 20) {
             m_impl->worldTimeBroadcastTicks = 0;
-            const std::vector<std::uint8_t> worldTime = SerializeWorldTime(m_impl->worldTimeSeconds);
+            const std::vector<std::uint8_t> worldTime = SerializeWorldTime(m_impl->worldTick);
             for (const auto& [key, peer] : m_impl->peers) {
                 (void)key;
                 SendPacket(*m_impl, peer.endpoint, PacketId::S2C_WorldTime, worldTime);

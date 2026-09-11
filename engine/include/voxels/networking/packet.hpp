@@ -16,6 +16,7 @@
 
 #include "voxels/core/game_types.hpp"
 #include "voxels/core/math.hpp"
+#include "voxels/world/world_clock.hpp"
 #include "voxels/world/world_options.hpp"
 
 namespace voxels::networking {
@@ -38,7 +39,7 @@ enum class PacketId : std::uint16_t {
     S2C_WorldTime
 };
 
-inline constexpr std::uint16_t kProtocolVersion = 3;
+inline constexpr std::uint16_t kProtocolVersion = 4;
 inline constexpr std::size_t kMaximumPacketPayloadBytes = 1200;
 /// Upper bound accepted for a reassembled RLE chunk payload (a 16^3 section is far smaller).
 inline constexpr std::uint32_t kMaximumChunkTransferBytes = 512u * 1024u;
@@ -83,7 +84,7 @@ struct WorldInfo {
     bool alwaysSunny = true;
     bool permadeath = false;
     Vec3 spawnPosition{};
-    float dayTimeSeconds = kWorldDayDurationSeconds * 0.25f;
+    WorldTick worldTick = kInitialWorldTick;
 };
 
 /// Handshake acceptance: the joiner's assigned entity plus the host world, when one is live.
@@ -121,8 +122,8 @@ struct Packet {
 [[nodiscard]] bool DeserializeChunkFragment(std::span<const std::uint8_t> bytes, ChunkFragment& fragment);
 [[nodiscard]] std::vector<std::uint8_t> SerializeVec3I(const Vec3I& value);
 [[nodiscard]] bool DeserializeVec3I(std::span<const std::uint8_t> bytes, Vec3I& value);
-[[nodiscard]] std::vector<std::uint8_t> SerializeWorldTime(float dayTimeSeconds);
-[[nodiscard]] bool DeserializeWorldTime(std::span<const std::uint8_t> bytes, float& dayTimeSeconds);
+[[nodiscard]] std::vector<std::uint8_t> SerializeWorldTime(WorldTick worldTick);
+[[nodiscard]] bool DeserializeWorldTime(std::span<const std::uint8_t> bytes, WorldTick& worldTick);
 
 /// Splits an RLE chunk payload into MTU-safe fragments; empty result when the payload is
 /// empty or exceeds the transfer bound.

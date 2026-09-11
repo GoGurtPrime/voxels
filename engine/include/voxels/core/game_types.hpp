@@ -96,8 +96,9 @@ struct GameSave {
     std::string createdUtc;
     std::string lastPlayedAt;
     WorldSeed seed = 0;
-    std::uint32_t schemaVersion = 1;  ///< Loaders reject saves from newer schemas.
+    std::uint32_t schemaVersion = 2;  ///< Loaders reject saves from newer schemas.
     std::uint64_t playTimeSeconds = 0;
+    std::uint64_t worldTick = 0;      ///< Authoritative 60 Hz simulation tick persisted with the world.
     float spawnX = 0.0f;
     float spawnY = 0.0f;
     float spawnZ = 0.0f;

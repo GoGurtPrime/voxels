@@ -35,14 +35,15 @@ public:
 
     [[nodiscard]] bool Start(std::string host = "127.0.0.1", std::uint16_t port = kDefaultPort);
     void Stop();
-    void Tick();
+    /// Services networking and advances the world one fixed simulation tick when requested.
+    void Tick(bool advanceWorldTime = true);
 
     /// Marks the authoritative world live for joiners and records the spawn handed to them.
-    void SetWorldReady(const WorldOptions& options, const Vec3& spawn);
+    void SetWorldReady(const WorldOptions& options, const Vec3& spawn, WorldTick worldTick = kInitialWorldTick);
     /// Ends the hosted session: remote peers are disconnected and the world is dropped.
     void ClearWorld();
     [[nodiscard]] bool IsWorldReady() const noexcept;
-    [[nodiscard]] float GetWorldTimeSeconds() const noexcept;
+    [[nodiscard]] WorldTick GetWorldTick() const noexcept;
 
     [[nodiscard]] bool IsRunning() const noexcept;
     [[nodiscard]] std::uint16_t Port() const noexcept;

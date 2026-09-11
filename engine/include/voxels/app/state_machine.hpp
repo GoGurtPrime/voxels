@@ -318,6 +318,7 @@ class InGameState final : public IAppState {public:
     [[nodiscard]] graphics::ChunkRenderer* GetChunkRenderer() const noexcept { return m_chunkRenderer.get(); }
     [[nodiscard]] bool IsRemoteSession() const noexcept { return m_remoteSession; }
     [[nodiscard]] const GameSave& GetActiveSave() const noexcept { return m_activeSave; }
+    [[nodiscard]] WorldTick GetWorldTick() const noexcept;
     [[nodiscard]] bool IsChatOpen() const noexcept { return m_chatOpen; }
     [[nodiscard]] bool IsCraftingOpen() const noexcept { return m_craftingOpen; }
     /// Persists and republishes local-world join visibility; remote sessions reject the change.
