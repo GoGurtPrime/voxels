@@ -1,5 +1,10 @@
 # Web UI Migration Roadmap
 
+> This file is the focused web-UI delivery track. The portfolio-level product health assessment,
+> version phases, dependency graph, and gameplay roadmap live in [../ROADMAP.md](../ROADMAP.md).
+> New gameplay work should use that plan; WI-06 through WI-08 here remain required UI hardening
+> gates and must have their completion evidence reconciled before a version-complete claim.
+
 ## Intended Outcome
 
 The desktop game presents React/Tailwind player UI as a transparent final render pass above OpenGL and future renderer backends. The same system owns menus, overlays, and the in-game HUD, while gameplay continues rendering underneath it. Menu backgrounds are real rendered voxel-world camera sequences, not browser video or a separate native window.
