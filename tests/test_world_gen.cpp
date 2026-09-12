@@ -179,6 +179,65 @@ TEST_CASE("WorldGen.SafeWorldSpawnHasFlatSurfaceAndClearance", "[world][generati
     }
 }
 
+TEST_CASE("WorldGen.ComposedWorldSpawnIsAlwaysDryAcrossSeeds", "[world][generation][spawn]") {
+    // Reproduces the full generation-to-player-spawn path for several seeds (including known
+    // ocean-heavy ones) and asserts every composed world yields dry, player-clear support -
+    // never a fallback position floating over water.
+    constexpr std::array<std::uint64_t, 4> kSeeds = {20260830u, 7u, 424242u, 99999999u};
+    for (const std::uint64_t seed : kSeeds) {
+        voxels::WorldOptions options{.seed = seed};
+        voxels::World world;
+        world.Initialize(options);
+        voxels::WorldGenerator generator(options);
+        for (int z = -3; z <= 3; ++z) {
+            for (int x = -3; x <= 3; ++x) {
+                for (int y = 0; y <= 3; ++y) {
+                    world.GetOrCreateChunk({x, y, z}) = generator.GenerateChunk({x, y, z});
+                }
+            }
+        }
+
+        const auto found = voxels::TryFindSafeSpawn(world);
+        REQUIRE(found.has_value());
+        const voxels::Vec3I spawn = *found;
+        const voxels::Vec3 playerCenter{static_cast<float>(spawn.x) + 0.5f, static_cast<float>(spawn.y) + 1.9f,
+                                        static_cast<float>(spawn.z) + 0.5f};
+        INFO("seed = " << seed << " spawn = (" << spawn.x << ", " << spawn.y << ", " << spawn.z << ")");
+        REQUIRE(voxels::IsSafePlayerSpawn(world, playerCenter));
+        REQUIRE(world.GetBlock({spawn.x, spawn.y - 1, spawn.z}) != static_cast<voxels::BlockId>(voxels::BlockType::Air));
+        REQUIRE(world.GetBlock({spawn.x, spawn.y - 1, spawn.z}) != static_cast<voxels::BlockId>(voxels::BlockType::Water));
+        REQUIRE(voxels::FindSafeSpawn(world) == spawn);
+    }
+}
+
+TEST_CASE("WorldGen.SpawnSearchNeverFallsBackOverWaterWhenAreaIsAllOcean", "[world][generation][spawn]") {
+    // A world where every loaded column is deep water (no terrain support anywhere) must be
+    // reported as a failed search, not silently answered with an unsafe sky-over-water position.
+    voxels::WorldOptions options{.seed = 1u};
+    voxels::World world;
+    world.Initialize(options);
+    for (int z = -2; z <= 2; ++z) {
+        for (int x = -2; x <= 2; ++x) {
+            for (int y = 0; y <= 1; ++y) {
+                voxels::Chunk chunk = world.GetOrCreateChunk({x, y, z});
+                for (std::uint32_t lz = 0; lz < chunk.GetDepth(); ++lz) {
+                    for (std::uint32_t lx = 0; lx < chunk.GetWidth(); ++lx) {
+                        for (std::uint32_t ly = 0; ly < chunk.GetHeight(); ++ly) {
+                            chunk.SetBlock(static_cast<int>(lx), static_cast<int>(ly), static_cast<int>(lz),
+                                          static_cast<voxels::BlockId>(voxels::BlockType::Water));
+                        }
+                    }
+                }
+                world.GetOrCreateChunk({x, y, z}) = std::move(chunk);
+            }
+        }
+    }
+
+    REQUIRE_FALSE(voxels::TryFindSafeSpawn(world, 0, 0, 8).has_value());
+    REQUIRE_FALSE(voxels::FindAnyLoadedDrySpawn(world).has_value());
+}
+
+
 TEST_CASE("WorldGen.InitialPlayableCapIsNotFlooded", "[world][generation][water]") {
     voxels::WorldOptions options{};
     options.seed = 12345u;

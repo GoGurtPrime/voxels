@@ -93,6 +93,78 @@ TEST_CASE("BlockInteraction.BreakUsesTheLiquidSkippingTarget", "[interaction][br
     REQUIRE(world.GetBlock({0, 2, -2}) == static_cast<voxels::BlockId>(voxels::BlockType::Air));
 }
 
+TEST_CASE("BlockInteraction.TargetThroughWaterPlacesOnTopOfSolidSupport", "[interaction][place][water]") {
+    // End-to-end: aiming straight down through a water column lands the placement into the
+    // water cell itself, directly above the solid seafloor the raycast actually targeted.
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    world.SetBlock({2, 1, -2}, static_cast<voxels::BlockId>(voxels::BlockType::Sand));
+    world.SetBlock({2, 2, -2}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+
+    voxels::Player player;
+    player.state.position = {2.5f, 4.0f, -1.5f};
+    player.state.pitch = -1.5707963f;
+    player.state.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Stone), 1};
+    const voxels::gameplay::BlockInteraction interaction;
+    const voxels::RaycastHit target = interaction.Target(world, player, registry);
+    REQUIRE(target.hit);
+    REQUIRE(target.blockPosition == voxels::Vec3I{2, 1, -2});
+    REQUIRE(target.face == voxels::Face::PosY);
+
+    const auto placed = interaction.PlaceBlock(world, player, target, registry);
+    REQUIRE(placed.success);
+    REQUIRE(placed.adjacentPosition == voxels::Vec3I{2, 2, -2});
+    REQUIRE(world.GetBlock({2, 2, -2}) == static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+}
+
+TEST_CASE("BlockInteraction.PlaceBlockReplacesWaterWhenAimingThroughItAtSolidSupport", "[interaction][place][water]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    world.SetBlock({2, 1, -2}, static_cast<voxels::BlockId>(voxels::BlockType::Sand));
+    world.SetBlock({2, 2, -2}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+
+    voxels::Player player;
+    player.state.position = {5.5f, 1.28f, -1.5f};
+    player.state.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Stone), 1};
+    const voxels::gameplay::BlockInteraction interaction;
+    const voxels::RaycastHit target{true, {2, 1, -2}, voxels::Face::PosY, 1.0f};
+
+    const auto placed = interaction.PlaceBlock(world, player, target, registry);
+    REQUIRE(placed.success);
+    REQUIRE(placed.adjacentPosition == voxels::Vec3I{2, 2, -2});
+    REQUIRE(world.GetBlock({2, 2, -2}) == static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+}
+
+TEST_CASE("BlockInteraction.PlaceBlockRejectsNonReplaceableTarget", "[interaction][place]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    world.SetBlock({2, 1, -2}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+    world.SetBlock({2, 2, -2}, static_cast<voxels::BlockId>(voxels::BlockType::Glass));
+
+    voxels::Player player;
+    player.state.position = {5.5f, 1.28f, -1.5f};
+    player.state.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1};
+    const voxels::gameplay::BlockInteraction interaction;
+    const voxels::RaycastHit target{true, {2, 1, -2}, voxels::Face::PosY, 1.0f};
+
+    const auto placed = interaction.PlaceBlock(world, player, target, registry);
+    REQUIRE_FALSE(placed.success);
+    REQUIRE(world.GetBlock({2, 2, -2}) == static_cast<voxels::BlockId>(voxels::BlockType::Glass));
+}
+
+TEST_CASE("BlockRegistry.AirAndWaterAreReplaceableByDefault", "[interaction][place][water]") {
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    const voxels::BlockDefinition* air = registry.GetDefinition(static_cast<voxels::BlockId>(voxels::BlockType::Air));
+    const voxels::BlockDefinition* water = registry.GetDefinition(static_cast<voxels::BlockId>(voxels::BlockType::Water));
+    const voxels::BlockDefinition* stone = registry.GetDefinition(static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+    REQUIRE(air != nullptr);
+    REQUIRE(water != nullptr);
+    REQUIRE(stone != nullptr);
+    REQUIRE(air->isReplaceable);
+    REQUIRE(water->isReplaceable);
+    REQUIRE_FALSE(stone->isReplaceable);
+}
+
 TEST_CASE("BlockInteraction.RejectsUnbreakableBlocks", "[interaction][break]") {
     voxels::World world;
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
