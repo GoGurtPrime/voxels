@@ -79,6 +79,34 @@ TEST_CASE("MVP.AsyncLoadingIntegratesAtMostTwoChunksPerFrame", "[mvp][generation
     loading.OnExit();
 }
 
+TEST_CASE("MVP.LoadingExistingWorldGeneratesAroundSavedPosition", "[mvp][generation][persistence]") {
+    const auto root = std::filesystem::temp_directory_path() / "voxels_mvp_saved_position_loading";
+    std::filesystem::remove_all(root);
+
+    voxels::SaveManager manager(root);
+    voxels::GameSave save{};
+    save.saveName = "TravelledWorld";
+    save.worldName = "TravelledWorld";
+    save.playerName = "Player";
+    save.seed = 1724465470u;
+    save.spawnX = 327.132f;
+    save.spawnY = 25.9f;
+    save.spawnZ = -89.875f;
+    REQUIRE(manager.Save(save));
+
+    voxels::LoadingScreenState loading;
+    loading.SetSaveManager(manager);
+    loading.SetSaveName(save.saveName);
+    loading.RunGeneration();
+    for (int index = 0; index < 200; ++index) loading.Update(0.0);
+
+    REQUIRE(loading.GetWorld().HasChunk({18, 0, -8}));
+    REQUIRE(loading.GetWorld().HasChunk({22, 8, -4}));
+    REQUIRE_FALSE(loading.GetWorld().HasChunk({0, 0, 0}));
+
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("MVP.LocalServerAcceptsSecondClient", "[mvp]") {
     voxels::networking::GameServer server;
     REQUIRE(server.Start("127.0.0.1", 0));

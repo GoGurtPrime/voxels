@@ -133,11 +133,15 @@ void AppStateMachine::Shutdown() {
 }
 
 void LoadingScreenState::RunGeneration() {
+    int initialCenterX = 0;
+    int initialCenterZ = 0;
     if (m_saveManager && !m_saveName.empty()) {
         GameSave loadedSave{};
         if (m_saveManager->Load(m_saveName, loadedSave)) {
             m_options.seed = loadedSave.seed;
             m_options.generatorVersion = loadedSave.generatorVersion;
+            initialCenterX = static_cast<int>(std::floor(loadedSave.spawnX / static_cast<float>(Chunk::kDefaultSize)));
+            initialCenterZ = static_cast<int>(std::floor(loadedSave.spawnZ / static_cast<float>(Chunk::kDefaultSize)));
             if (loadedSave.publicVisibility) {
                 m_options.isPublic = true;
             }
@@ -159,7 +163,9 @@ void LoadingScreenState::RunGeneration() {
         for (int z = -ring; z <= ring; ++z) {
             for (int x = -ring; x <= ring; ++x) {
                 if (std::max(std::abs(x), std::abs(z)) != ring) continue;
-                for (int y = 0; y < kTerrainSectionCount; ++y) m_generationQueue.push_back({x, y, z});
+                for (int y = 0; y < kTerrainSectionCount; ++y) {
+                    m_generationQueue.push_back({initialCenterX + x, y, initialCenterZ + z});
+                }
             }
         }
     }
