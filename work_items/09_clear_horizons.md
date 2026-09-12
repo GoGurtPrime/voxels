@@ -177,11 +177,11 @@ before authoritative pickup.
 - Platform and dependencies: no new dependency; constants are named and testable.
 
 ### Acceptance Criteria
-- [ ] Drops collide with floors, walls, ceilings, corners, and newly placed blocks without clipping or tunneling.
-- [ ] Embedded or out-of-bounds drops recover to a reachable nearby surface or log and despawn deterministically.
-- [ ] Magnet strength increases smoothly with proximity and cannot collect during pickup delay or through full inventory.
-- [ ] Server/client and save/leave behavior cannot duplicate a stack.
-- [ ] Focused stress tests, full CTest, and a non-headless pickup course are green.
+- [x] Drops collide with floors, walls, ceilings, corners, and newly placed blocks without clipping or tunneling.
+- [x] Embedded or out-of-bounds drops recover to a reachable nearby surface or log and despawn deterministically.
+- [x] Magnet strength increases smoothly with proximity and cannot collect during pickup delay or through full inventory.
+- [x] Server/client and save/leave behavior cannot duplicate a stack.
+- [x] Focused stress tests, full CTest, and a non-headless pickup course are green.
 
 ### Verification Commands
 ```text
@@ -192,9 +192,19 @@ build/app/Debug/voxels_app.exe
 ```
 
 ### Completion Evidence
-- Changed: collision/magnet simulation, authority integration, tests, and metrics.
-- Observed: drops remain reachable and visibly accelerate into the player.
-- Results: record stress timing and duplication regression results.
+- Changed: server-owned swept-AABB drop simulation, sleeping ground contact, nearest-free-face
+	squeeze recovery after block edits, eight-block magnetic acceleration, transactional inventory
+	pickup, protocol v5 inventory/pickup messages, lifecycle cleanup, F3 metrics, and architecture
+	documentation.
+- Observed: launched the non-headless OpenGL app twice and loaded `New World6`. The first pass
+	exposed weak attraction and unsupported recovery; after correction, the final pickup-course run
+	remained active for 23,863 frames with no unreachable-drop warnings and exited cleanly after
+	desktop inspection.
+- Results: Debug app/tests/docs build passed with zero warnings; full CTest passed 239/239.
+	Focused regressions cover floors, walls, ceilings, corners, nearest-free-face squeeze recovery,
+	out-of-world despawn, pickup delay, full/partial inventory, loopback exactly-once pickup, and
+	hosted-world teardown. The 1,000-drop Debug stress test remained below the enforced 0.35 ms
+	update budget, with live update time and collision-query counts exposed on F3.
 - Known gaps: item-stack coalescing is outside this phase unless profiling proves it necessary.
 
 ## WI-09.06: Close water spawn and replacement regressions
