@@ -283,11 +283,11 @@ sequenceDiagram
         BI->>W: SetBlock (break → Air, place → held block)
         W->>W: refresh edited skylight column across resident sections
         W->>CR: mark edited chunk and touched boundaries dirty
-        W->>Drop: squeeze overlapping drops through<br/>nearest collision-free block face
+        W->>Drop: squeeze overlapping drops through<br/>nearest empty, collision-free block face
         W->>Snd: queue block break/place sound event
         Srv->>Cli: S2C_BlockEdit broadcast
     end
-    Srv->>Drop: swept collision + bounded recovery<br/>8-block magnet toward nearest eligible player
+    Srv->>Drop: swept collision + bounded recovery<br/>5.33-block 3D magnet toward nearest eligible player
     Cli->>Srv: C2S_InventoryState (fixed 36 slots)
     Drop->>Srv: insert only into available inventory capacity
     Srv->>Cli: S2C_ItemPickup (accepted stack only)

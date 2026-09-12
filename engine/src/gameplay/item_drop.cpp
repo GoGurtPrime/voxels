@@ -167,6 +167,7 @@ bool SqueezeFromEditedBlock(const World& world, const BlockRegistry* registry, I
         float distance = 0.0f;
         Vec3 position{};
         Vec3 direction{};
+        Vec3I neighboringCell{};
     };
 
     const float minX = static_cast<float>(editedBlock.x);
@@ -177,31 +178,39 @@ bool SqueezeFromEditedBlock(const World& world, const BlockRegistry* registry, I
     const float maxZ = minZ + 1.0f;
     std::array<ExitCandidate, 6> candidates{{
         {drop.position.x - minX, {minX - ItemDropSimulation::kDropRadius - kCollisionEpsilon,
-                                  drop.position.y, drop.position.z}, {-1.0f, 0.0f, 0.0f}},
+                                  drop.position.y, drop.position.z}, {-1.0f, 0.0f, 0.0f},
+                                  {editedBlock.x - 1, editedBlock.y, editedBlock.z}},
         {maxX - drop.position.x, {maxX + ItemDropSimulation::kDropRadius + kCollisionEpsilon,
-                                  drop.position.y, drop.position.z}, {1.0f, 0.0f, 0.0f}},
+                                  drop.position.y, drop.position.z}, {1.0f, 0.0f, 0.0f},
+                                  {editedBlock.x + 1, editedBlock.y, editedBlock.z}},
         {drop.position.y - minY, {drop.position.x,
                                   minY - ItemDropSimulation::kDropRadius - kCollisionEpsilon,
-                                  drop.position.z}, {0.0f, -1.0f, 0.0f}},
+                                  drop.position.z}, {0.0f, -1.0f, 0.0f},
+                                  {editedBlock.x, editedBlock.y - 1, editedBlock.z}},
         {maxY - drop.position.y, {drop.position.x,
                                   maxY + ItemDropSimulation::kDropRadius + kCollisionEpsilon,
-                                  drop.position.z}, {0.0f, 1.0f, 0.0f}},
+                                  drop.position.z}, {0.0f, 1.0f, 0.0f},
+                                  {editedBlock.x, editedBlock.y + 1, editedBlock.z}},
         {drop.position.z - minZ, {drop.position.x, drop.position.y,
                                   minZ - ItemDropSimulation::kDropRadius - kCollisionEpsilon},
-                                  {0.0f, 0.0f, -1.0f}},
+                                  {0.0f, 0.0f, -1.0f},
+                                  {editedBlock.x, editedBlock.y, editedBlock.z - 1}},
         {maxZ - drop.position.z, {drop.position.x, drop.position.y,
                                   maxZ + ItemDropSimulation::kDropRadius + kCollisionEpsilon},
-                                  {0.0f, 0.0f, 1.0f}},
+                                  {0.0f, 0.0f, 1.0f},
+                                  {editedBlock.x, editedBlock.y, editedBlock.z + 1}},
     }};
     std::stable_sort(candidates.begin(), candidates.end(), [](const ExitCandidate& left,
                                                                const ExitCandidate& right) {
         return left.distance < right.distance;
     });
     for (const ExitCandidate& candidate : candidates) {
+        ++collisionQueries;
         if (candidate.position.y - ItemDropSimulation::kDropRadius <
                 static_cast<float>(ItemDropSimulation::kWorldMinimumY) ||
             candidate.position.y + ItemDropSimulation::kDropRadius >=
                 static_cast<float>(ItemDropSimulation::kWorldMaximumY) ||
+            Physics::IsSolidBlock(world.GetBlock(candidate.neighboringCell), registry) ||
             !IsClear(world, registry, candidate.position, collisionQueries)) {
             continue;
         }
@@ -220,15 +229,15 @@ bool OutsideWorld(const ItemDrop& drop) noexcept {
            drop.position.y + ItemDropSimulation::kDropRadius >= static_cast<float>(ItemDropSimulation::kWorldMaximumY);
 }
 
-void ApplyMagnet(ItemDrop& drop, const Vec3& target, float deltaSeconds) {
-    if (drop.pickupDelay > 0.0f) return;
+bool ApplyMagnet(ItemDrop& drop, const Vec3& target, float deltaSeconds) {
+    if (drop.pickupDelay > 0.0f) return false;
     const Vec3 offset{target.x - drop.position.x, target.y - drop.position.y, target.z - drop.position.z};
     if (std::abs(offset.x) > ItemDropSimulation::kMagnetRadius ||
         std::abs(offset.y) > ItemDropSimulation::kMagnetRadius ||
-        std::abs(offset.z) > ItemDropSimulation::kMagnetRadius) return;
+        std::abs(offset.z) > ItemDropSimulation::kMagnetRadius) return false;
     const float distanceSquared = offset.x * offset.x + offset.y * offset.y + offset.z * offset.z;
     if (distanceSquared <= 0.000001f ||
-        distanceSquared >= ItemDropSimulation::kMagnetRadius * ItemDropSimulation::kMagnetRadius) return;
+        distanceSquared >= ItemDropSimulation::kMagnetRadius * ItemDropSimulation::kMagnetRadius) return false;
     const float distance = std::sqrt(distanceSquared);
     const float strength = 1.0f - distance / ItemDropSimulation::kMagnetRadius;
     const float acceleration = ItemDropSimulation::kMagnetAcceleration * strength * strength;
@@ -244,6 +253,7 @@ void ApplyMagnet(ItemDrop& drop, const Vec3& target, float deltaSeconds) {
         drop.velocity.z *= scale;
     }
     drop.grounded = false;
+    return true;
 }
 
 } // namespace
@@ -301,7 +311,7 @@ void ItemDropSimulation::Update(const World& world, const BlockRegistry* registr
                 nearestTarget = &target;
             }
         }
-        if (nearestTarget != nullptr) ApplyMagnet(drop, *nearestTarget, deltaSeconds);
+        const bool magnetized = nearestTarget != nullptr && ApplyMagnet(drop, *nearestTarget, deltaSeconds);
 
         const bool movedHorizontally = drop.velocity.x != 0.0f || drop.velocity.z != 0.0f;
         SweepAxis(world, registry, drop.position, drop.velocity, 0, drop.velocity.x * deltaSeconds,
@@ -313,8 +323,10 @@ void ItemDropSimulation::Update(const World& world, const BlockRegistry* registr
             drop.grounded = false;
         }
         if (!drop.grounded) {
-            drop.velocity.y = std::max(drop.velocity.y - ItemDropSimulation::kGravity * deltaSeconds,
-                                       -ItemDropSimulation::kTerminalVelocity);
+            if (!magnetized) {
+                drop.velocity.y = std::max(drop.velocity.y - ItemDropSimulation::kGravity * deltaSeconds,
+                                           -ItemDropSimulation::kTerminalVelocity);
+            }
             const bool descending = drop.velocity.y <= 0.0f;
             const bool hitVertical = SweepAxis(world, registry, drop.position, drop.velocity, 1,
                                                drop.velocity.y * deltaSeconds, m_metrics.collisionQueries);

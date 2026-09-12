@@ -49,7 +49,7 @@ struct ItemDropSimulationMetrics {
 class ItemDropSimulation {
 public:
     static constexpr float kPickupRadius = 1.1f;        ///< Inner radius where inventory insertion is attempted.
-    static constexpr float kMagnetRadius = 8.0f;        ///< Outer radius where eligible drops begin accelerating.
+    static constexpr float kMagnetRadius = 16.0f / 3.0f; ///< Outer radius where eligible drops begin accelerating.
     static constexpr float kMagnetAcceleration = 28.0f; ///< Peak acceleration near the player, in blocks/s^2.
     static constexpr float kMaximumMagnetSpeed = 9.0f;
     static constexpr float kRecoveryImpulse = 2.5f;     ///< Outward speed when an edit squeezes a drop free.

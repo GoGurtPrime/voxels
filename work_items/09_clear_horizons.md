@@ -192,16 +192,18 @@ build/app/Debug/voxels_app.exe
 ```
 
 ### Completion Evidence
-- Changed: server-owned swept-AABB drop simulation, sleeping ground contact, nearest-free-face
-	squeeze recovery after block edits, eight-block magnetic acceleration, transactional inventory
+- Changed: server-owned swept-AABB drop simulation, sleeping ground contact, nearest-empty-face
+	squeeze recovery after block edits, 5.33-block gravity-free 3D magnetic acceleration, transactional inventory
 	pickup, protocol v5 inventory/pickup messages, lifecycle cleanup, F3 metrics, and architecture
 	documentation.
 - Observed: launched the non-headless OpenGL app twice and loaded `New World6`. The first pass
 	exposed weak attraction and unsupported recovery; after correction, the final pickup-course run
 	remained active for 23,863 frames with no unreachable-drop warnings and exited cleanly after
-	desktop inspection.
-- Results: Debug app/tests/docs build passed with zero warnings; full CTest passed 239/239.
-	Focused regressions cover floors, walls, ceilings, corners, nearest-free-face squeeze recovery,
+	desktop inspection. A final adjustment smoke loaded the same world for 76,771 frames, emitted no
+	collision-recovery warnings, saved the world preview, and exited cleanly.
+- Results: Debug app/tests/docs build passed with zero warnings; full CTest passed 241/241.
+	Focused regressions cover floors, walls, ceilings, corners, nearest-empty-face squeeze recovery,
+	vertical wall sliding, reduced magnet range,
 	out-of-world despawn, pickup delay, full/partial inventory, loopback exactly-once pickup, and
 	hosted-world teardown. The 1,000-drop Debug stress test remained below the enforced 0.35 ms
 	update budget, with live update time and collision-query counts exposed on F3.

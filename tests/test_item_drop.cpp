@@ -126,13 +126,37 @@ TEST_CASE("ItemDropSimulation.RecoversFromNewlyPlacedBlocksAndDespawnsWithoutASu
     REQUIRE(lostDrops.GetMetrics().despawnedDrops == 1);
 }
 
+TEST_CASE("ItemDropSimulation.SqueezeUsesOnlyAnEmptyNeighboringFace",
+          "[gameplay][item_drop][recovery]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    const auto stone = static_cast<voxels::BlockId>(voxels::BlockType::Stone);
+    const voxels::Vec3I editedBlock{0, 1, 0};
+    world.SetBlock({-1, 1, 0}, stone);
+    world.SetBlock({1, 1, 0}, stone);
+    world.SetBlock({0, 0, 0}, stone);
+    world.SetBlock({0, 1, -1}, stone);
+    world.SetBlock({0, 1, 1}, stone);
+
+    voxels::gameplay::ItemDropSimulation drops;
+    drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1},
+                {0.5f, 1.5f, 0.5f}, {});
+    world.SetBlock(editedBlock, stone);
+
+    drops.ResolveAfterBlockEdit(world, &registry, editedBlock);
+
+    REQUIRE(drops.Drops().size() == 1);
+    REQUIRE(drops.Drops().front().position.y > 2.0f);
+    REQUIRE(drops.Drops().front().velocity.y > 0.0f);
+}
+
 TEST_CASE("ItemDropSimulation.MagnetStrengthIncreasesWithProximityAfterDelay",
           "[gameplay][item_drop][magnet]") {
     voxels::World world;
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
     voxels::gameplay::ItemDropSimulation drops;
     drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1}, {2.0f, 4.0f, 0.0f}, {}, 0.5f);
-    drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1}, {7.0f, 4.0f, 0.0f}, {});
+    drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1}, {5.0f, 4.0f, 0.0f}, {});
     drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1}, {2.0f, 4.0f, 0.0f}, {});
     const voxels::Vec3 player{0.0f, 4.0f, 0.0f};
 
@@ -142,6 +166,42 @@ TEST_CASE("ItemDropSimulation.MagnetStrengthIncreasesWithProximityAfterDelay",
     REQUIRE(drops.Drops()[1].velocity.x < 0.0f);
     REQUIRE(drops.Drops()[2].velocity.x < 0.0f);
     REQUIRE(std::abs(drops.Drops()[2].velocity.x) > std::abs(drops.Drops()[1].velocity.x));
+}
+
+TEST_CASE("ItemDropSimulation.MagnetLiftsDropsAlongBlockingWallsWithinReducedRadius",
+          "[gameplay][item_drop][magnet][collision]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    const auto stone = static_cast<voxels::BlockId>(voxels::BlockType::Stone);
+    world.SetBlock({0, 0, 0}, stone);
+    world.SetBlock({1, 0, 0}, stone);
+    world.SetBlock({1, 1, 0}, stone);
+    world.SetBlock({1, 2, 0}, stone);
+    world.SetBlock({-3, 0, 0}, stone);
+
+    voxels::gameplay::ItemDropSimulation drops;
+    drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1},
+                {0.5f, 1.18f, 0.5f}, {});
+    drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1},
+                {-2.5f, 1.18f, 0.5f}, {});
+    drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1},
+                {3.0f, 7.0f, 0.5f}, {});
+    const voxels::Vec3 player{3.0f, 4.0f, 0.5f};
+
+    for (int step = 0; step < 45; ++step) {
+        drops.Update(world, &registry, 1.0f / 60.0f, &player);
+    }
+
+    REQUIRE(drops.Drops()[0].position.x < 1.0f);
+    REQUIRE(drops.Drops()[0].position.y > 1.35f);
+    REQUIRE(drops.Drops()[1].position.x == Catch::Approx(-2.5f).margin(0.01f));
+    REQUIRE(drops.Drops()[2].position.y < 7.0f);
+
+    for (int step = 0; step < 90; ++step) {
+        drops.Update(world, &registry, 1.0f / 60.0f, &player);
+    }
+
+    REQUIRE(drops.Drops()[0].position.x > 1.0f + voxels::gameplay::ItemDropSimulation::kDropRadius);
 }
 
 TEST_CASE("ItemDropSimulation.FullInventoryRetainsOriginalDropWithoutDuplication",
