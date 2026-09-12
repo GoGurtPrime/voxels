@@ -25,7 +25,7 @@ voxels::PcmBuffer ConstantClip(std::int16_t sample = 16000) {
 TEST_CASE("Mixer.MixesMultipleVoicesWithoutClipping", "[audio][mixer]") {
     voxels::AudioMixer mixer;
     const voxels::SoundHandle clip = mixer.AddClip(ConstantClip(), voxels::AudioCategory::Sfx);
-    for (int index = 0; index < 16; ++index) mixer.Play(clip);
+    for (int index = 0; index < 16; ++index) (void)mixer.Play(clip);
     std::array<float, 256> output{};
     mixer.Mix(output.data(), output.size() / 2U);
     const float peak = *std::max_element(output.begin(), output.end(), [](float left, float right) { return std::abs(left) < std::abs(right); });
@@ -51,14 +51,87 @@ TEST_CASE("Mixer.CategoryGainsApplyImmediately", "[audio][mixer]") {
     voxels::AudioMixer mixer;
     const voxels::SoundHandle clip = mixer.AddClip(ConstantClip(), voxels::AudioCategory::Sfx);
     std::array<float, 64> audible{};
-    mixer.Play(clip);
+    (void)mixer.Play(clip);
     mixer.Mix(audible.data(), audible.size() / 2U);
     mixer.SetCategoryGain(voxels::AudioCategory::Sfx, 0.0f);
     std::array<float, 64> muted{};
-    mixer.Play(clip);
+    (void)mixer.Play(clip);
     mixer.Mix(muted.data(), muted.size() / 2U);
     REQUIRE(std::abs(audible[0]) > 0.01f);
     REQUIRE(muted[0] == Catch::Approx(0.0f));
+}
+
+TEST_CASE("Mixer.VoiceHandlesRejectStaleEnvelopeCommands", "[audio][mixer][music]") {
+    voxels::AudioMixer mixer;
+    const voxels::SoundHandle clip = mixer.AddClip(ConstantClip(), voxels::AudioCategory::Music);
+    std::array<voxels::VoiceHandle, voxels::AudioMixer::kMaxVoices> firstVoices{};
+    for (auto& voice : firstVoices) voice = mixer.Play(clip, 1.0f, 1.0f, 0.0f, true);
+    std::array<float, 64> initial{};
+    mixer.Mix(initial.data(), initial.size() / 2U);
+
+    for (std::size_t index = 0; index < firstVoices.size(); ++index) (void)mixer.Play(clip, 1.0f, 1.0f, 0.0f, true);
+    mixer.SetVoiceEnvelope(firstVoices.front(), 0.0f, 0.0f);
+    std::array<float, 64> replacement{};
+    mixer.Mix(replacement.data(), replacement.size() / 2U);
+
+    REQUIRE(mixer.ActiveVoiceCount() == voxels::AudioMixer::kMaxVoices);
+    REQUIRE(std::abs(replacement[0]) > 0.01f);
+}
+
+TEST_CASE("Mixer.VoiceEnvelopeReachesSilenceBeforeReclaim", "[audio][mixer][music]") {
+    voxels::AudioMixer mixer;
+    const voxels::SoundHandle clip = mixer.AddClip(ConstantClip(), voxels::AudioCategory::Music);
+    const voxels::VoiceHandle voice = mixer.Play(clip, 1.0f, 1.0f, 0.0f, true);
+    std::array<float, 8> initial{};
+    mixer.Mix(initial.data(), initial.size() / 2U);
+    mixer.SetVoiceEnvelope(voice, 0.0f, 4.0f / 44100.0f);
+
+    std::array<float, 8> fading{};
+    mixer.Mix(fading.data(), fading.size() / 2U);
+    REQUIRE(std::abs(fading[0]) > std::abs(fading[6]));
+    REQUIRE(std::abs(fading[6]) == Catch::Approx(0.0f));
+    REQUIRE(mixer.ActiveVoiceCount() == 0);
+}
+
+TEST_CASE("Mixer.SequentialMusicVoicesDoNotOverlapOutsideCrossfade", "[audio][mixer][music]") {
+    voxels::AudioMixer mixer;
+    const voxels::SoundHandle firstClip = mixer.AddClip(ConstantClip(), voxels::AudioCategory::Music);
+    const voxels::SoundHandle secondClip = mixer.AddClip(ConstantClip(), voxels::AudioCategory::Music);
+    const voxels::VoiceHandle firstVoice = mixer.Play(firstClip, 1.0f, 1.0f, -1.0f, true);
+    std::array<float, 8> firstOutput{};
+    mixer.Mix(firstOutput.data(), firstOutput.size() / 2U);
+    mixer.SetVoiceEnvelope(firstVoice, 0.0f, 4.0f / 44100.0f);
+    std::array<float, 8> silenceBoundary{};
+    mixer.Mix(silenceBoundary.data(), silenceBoundary.size() / 2U);
+
+    const voxels::VoiceHandle secondVoice = mixer.Play(secondClip, 0.0f, 1.0f, 1.0f, true);
+    mixer.SetVoiceEnvelope(secondVoice, 1.0f, 4.0f / 44100.0f);
+    std::array<float, 8> secondOutput{};
+    mixer.Mix(secondOutput.data(), secondOutput.size() / 2U);
+
+    REQUIRE(std::abs(silenceBoundary[6]) == Catch::Approx(0.0f));
+    REQUIRE(std::abs(secondOutput[0]) == Catch::Approx(0.0f));
+    REQUIRE(std::abs(secondOutput[1]) > 0.01f);
+}
+
+TEST_CASE("Mixer.ActiveMusicVoiceIsNotStolenBySfx", "[audio][mixer][music]") {
+    voxels::AudioMixer mixer;
+    const voxels::SoundHandle musicClip = mixer.AddClip(ConstantClip(), voxels::AudioCategory::Music);
+    const voxels::SoundHandle sfxClip = mixer.AddClip(ConstantClip(), voxels::AudioCategory::Sfx);
+    mixer.SetCategoryGain(voxels::AudioCategory::Sfx, 0.0f);
+    const voxels::VoiceHandle musicVoice = mixer.Play(musicClip, 1.0f, 1.0f, 0.0f, true);
+    REQUIRE(musicVoice.IsValid());
+
+    std::array<float, 8> initial{};
+    mixer.Mix(initial.data(), initial.size() / 2U);
+    for (std::size_t index = 0; index < voxels::AudioMixer::kMaxVoices; ++index) {
+        (void)mixer.Play(sfxClip, 1.0f, 1.0f, 0.0f, true);
+    }
+
+    std::array<float, 8> afterSfxBurst{};
+    mixer.Mix(afterSfxBurst.data(), afterSfxBurst.size() / 2U);
+    REQUIRE(mixer.ActiveVoiceCount() == voxels::AudioMixer::kMaxVoices);
+    REQUIRE(std::abs(afterSfxBurst[0]) > 0.01f);
 }
 
 TEST_CASE("Decode.WavRoundTripsGeneratedFile", "[audio][decode]") {
@@ -71,6 +144,16 @@ TEST_CASE("Decode.WavRoundTripsGeneratedFile", "[audio][decode]") {
     REQUIRE(decoded.channels == 1);
     REQUIRE(decoded.samples.size() > 1000);
     std::filesystem::remove_all(root);
+}
+
+TEST_CASE("Decode.ImaAdpcmMusicAssetPreservesFormatAndDuration", "[audio][decode][music]") {
+    const std::filesystem::path asset = std::filesystem::path(VOXELS_SOURCE_DIR) / "app" / "assets" / "audio" / "playlist_ingame" / "Calm Fields.wav";
+    voxels::PcmBuffer decoded;
+    REQUIRE(voxels::DecodeWavFile(asset, decoded));
+    REQUIRE(decoded.sampleRate == 44100);
+    REQUIRE(decoded.channels == 2);
+    REQUIRE(decoded.samples.size() > 14'000'000);
+    REQUIRE(decoded.samples.size() < 15'000'000);
 }
 
 TEST_CASE("SoundBank.ResolvesBlockSoundIdsToShippedFiles", "[audio][sound_bank]") {

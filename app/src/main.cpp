@@ -255,8 +255,7 @@ public:
         const auto menu = m_soundBank.find("music/menu_theme");
         if (menu != m_soundBank.end()) {
             m_menuTrack = {menu->second.id};
-            m_audio.PlayMusic(m_menuTrack, true);
-            m_menuPlaying = true;
+            m_menuVoice = m_audio.PlayMusic(m_menuTrack, true, 1.0f);
         }
 
         LoadGameplayPlaylist();
@@ -271,12 +270,6 @@ public:
 
     void Update(double deltaSeconds, const voxels::IAppState* baseState) {
         const bool gameplayActive = baseState != nullptr && baseState->GetId() == voxels::AppStateId::InGame;
-        const float targetGameplayMix = gameplayActive ? 1.0f : 0.0f;
-        const float alpha = 1.0f - std::exp(-static_cast<float>(deltaSeconds) / kContextFadeSeconds);
-        m_gameplayMix += (targetGameplayMix - m_gameplayMix) * std::clamp(alpha, 0.0f, 1.0f);
-        m_gameplayMix = std::clamp(m_gameplayMix, 0.0f, 1.0f);
-        m_menuMix = 1.0f - m_gameplayMix;
-
         UpdateGameplayPlaylist(deltaSeconds, gameplayActive);
         ApplyGains();
     }
@@ -303,15 +296,9 @@ private:
         std::sort(files.begin(), files.end());
 
         for (const auto& file : files) {
-            const voxels::MusicHandle handle = m_audio.LoadMusic(file, voxels::AudioCategory::Ambience);
-            if (!handle.IsValid()) continue;
-            double durationSeconds = 0.0;
-            if (const voxels::PcmBuffer* clip = m_audio.GetMixer().GetClip({handle.id}); clip != nullptr &&
-                clip->channels > 0 && clip->sampleRate > 0) {
-                const std::size_t frames = clip->samples.size() / clip->channels;
-                durationSeconds = static_cast<double>(frames) / static_cast<double>(clip->sampleRate);
-            }
-            m_playlist.push_back({handle, durationSeconds, file.filename()});
+            // Keep startup limited to directory metadata. PCM/ADPCM expansion happens only
+            // when a gameplay track is actually selected, after the first frame is visible.
+            m_playlist.push_back({{}, 0.0, file});
         }
     }
 
@@ -331,89 +318,104 @@ private:
         const auto next = PickNextTrackIndex();
         if (!next.has_value()) {
             m_currentTrackIndex = -1;
-            m_trackPlaying = false;
-            m_trackEnvelope = 0.0f;
+            m_trackState = TrackState::Idle;
             return;
         }
 
         m_currentTrackIndex = static_cast<int>(*next);
         m_lastTrackIndex = m_currentTrackIndex;
+        MusicTrack& track = m_playlist[*next];
+        track.handle = m_audio.LoadMusic(track.path, voxels::AudioCategory::Music);
+        if (!track.handle.IsValid()) {
+            m_trackState = TrackState::Gap;
+            m_trackGapRemaining = kTrackGapSeconds;
+            return;
+        }
+        if (const voxels::PcmBuffer* clip = m_audio.GetMixer().GetClip({track.handle.id}); clip != nullptr &&
+            clip->channels > 0 && clip->sampleRate > 0) {
+            const std::size_t frames = clip->samples.size() / clip->channels;
+            track.durationSeconds = static_cast<double>(frames) / static_cast<double>(clip->sampleRate);
+        }
         m_trackElapsedSeconds = 0.0;
-        m_trackPlaying = true;
-        m_audio.PlayMusic(m_playlist[*next].handle, false);
+        m_currentVoice = m_audio.PlayMusic(track.handle, false, 0.0f);
+        m_audio.GetMixer().SetVoiceEnvelope(m_currentVoice, 1.0f, kTrackFadeInSeconds);
+        m_trackState = TrackState::FadingIn;
     }
 
     void UpdateGameplayPlaylist(double deltaSeconds, bool gameplayActive) {
         if (!gameplayActive) {
-            m_trackEnvelope = std::max(0.0f, m_trackEnvelope - static_cast<float>(deltaSeconds / kTrackFadeOutSeconds));
+            if (m_gameplayActive) {
+                m_audio.GetMixer().StopVoice(m_currentVoice, kContextFadeSeconds);
+                m_audio.GetMixer().SetVoiceEnvelope(m_menuVoice, 1.0f, kContextFadeSeconds);
+            }
+            m_gameplayActive = false;
+            m_trackState = TrackState::Idle;
             m_trackGapRemaining = 0.0;
             return;
         }
 
-        if (!m_trackPlaying) {
-            if (m_trackGapRemaining > 0.0) {
-                m_trackGapRemaining = std::max(0.0, m_trackGapRemaining - deltaSeconds);
-                m_trackEnvelope = 0.0f;
-                return;
-            }
+        if (!m_gameplayActive) {
+            m_gameplayActive = true;
+            m_audio.GetMixer().StopVoice(m_menuVoice, kContextFadeSeconds);
+        }
+
+        if (m_trackState == TrackState::Gap) {
+            m_trackGapRemaining = std::max(0.0, m_trackGapRemaining - deltaSeconds);
+            if (m_trackGapRemaining > 0.0) return;
+            m_trackState = TrackState::Idle;
+        }
+        if (m_trackState == TrackState::Idle) {
             StartNextGameplayTrack();
         }
 
-        if (!m_trackPlaying || m_currentTrackIndex < 0 ||
+        if (m_trackState == TrackState::Gap || m_currentTrackIndex < 0 ||
             m_currentTrackIndex >= static_cast<int>(m_playlist.size())) {
-            m_trackEnvelope = 0.0f;
             return;
         }
 
         const MusicTrack& track = m_playlist[static_cast<std::size_t>(m_currentTrackIndex)];
         m_trackElapsedSeconds += deltaSeconds;
 
-        const float fadeIn = track.durationSeconds > 0.0
-            ? std::clamp(static_cast<float>(m_trackElapsedSeconds / kTrackFadeInSeconds), 0.0f, 1.0f)
-            : 1.0f;
-        float fadeOut = 1.0f;
-        if (track.durationSeconds > 0.0) {
+        if (m_trackState == TrackState::FadingIn && m_trackElapsedSeconds >= kTrackFadeInSeconds) {
+            m_trackState = TrackState::Playing;
+        }
+        if (m_trackState == TrackState::Playing && track.durationSeconds > 0.0) {
             const double remaining = track.durationSeconds - m_trackElapsedSeconds;
-            if (remaining <= 0.0) {
-                m_trackPlaying = false;
-                m_trackGapRemaining = kTrackGapSeconds;
-                m_trackEnvelope = 0.0f;
-                return;
-            }
-            if (remaining < kTrackFadeOutSeconds) {
-                fadeOut = std::clamp(static_cast<float>(remaining / kTrackFadeOutSeconds), 0.0f, 1.0f);
+            if (remaining <= kTrackFadeOutSeconds) {
+                if (remaining > 0.0) m_audio.GetMixer().SetVoiceEnvelope(m_currentVoice, 0.0f, static_cast<float>(remaining));
+                m_trackState = TrackState::FadingOut;
             }
         }
-        m_trackEnvelope = std::clamp(std::min(fadeIn, fadeOut), 0.0f, 1.0f);
+        if (m_trackState == TrackState::FadingOut && m_trackElapsedSeconds >= track.durationSeconds) {
+            m_trackState = TrackState::Gap;
+            m_trackGapRemaining = kTrackGapSeconds;
+        }
     }
 
     void ApplyGains() {
-        const float menuMusicGain = m_musicVolume * m_menuMix;
-        const float gameplayMusicGain = m_musicVolume * m_gameplayMix * m_trackEnvelope;
-        const float ambienceGain = std::clamp(gameplayMusicGain, 0.0f, 1.0f);
-        m_audio.ApplyVolumes(m_masterVolume, std::clamp(menuMusicGain, 0.0f, 1.0f), m_sfxVolume, ambienceGain);
+        m_audio.ApplyVolumes(m_masterVolume, m_musicVolume, m_sfxVolume, 0.7f);
     }
 
     voxels::AudioEngine& m_audio;
     std::unordered_map<std::string, voxels::SoundHandle>& m_soundBank;
     std::filesystem::path m_audioRoot;
 
+    enum class TrackState : std::uint8_t { Idle, FadingIn, Playing, FadingOut, Gap };
     voxels::MusicHandle m_menuTrack{};
-    bool m_menuPlaying = false;
+    voxels::VoiceHandle m_menuVoice{};
+    voxels::VoiceHandle m_currentVoice{};
     std::vector<MusicTrack> m_playlist;
     std::mt19937_64 m_rng{};
     int m_lastTrackIndex = -1;
     int m_currentTrackIndex = -1;
-    bool m_trackPlaying = false;
+    TrackState m_trackState = TrackState::Idle;
+    bool m_gameplayActive = false;
     double m_trackElapsedSeconds = 0.0;
     double m_trackGapRemaining = 0.0;
-    float m_trackEnvelope = 0.0f;
 
     float m_masterVolume = 1.0f;
     float m_musicVolume = 1.0f;
     float m_sfxVolume = 1.0f;
-    float m_menuMix = 1.0f;
-    float m_gameplayMix = 0.0f;
 };
 
 std::array<std::uint8_t, 3> PreviewColor(voxels::Biome biome) {

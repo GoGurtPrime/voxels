@@ -21,6 +21,12 @@ namespace voxels {
 
 struct SoundHandle { std::uint32_t id = 0; [[nodiscard]] bool IsValid() const noexcept { return id != 0; } };
 struct MusicHandle { std::uint32_t id = 0; [[nodiscard]] bool IsValid() const noexcept { return id != 0; } };
+struct VoiceHandle {
+    static constexpr std::uint32_t kInvalidSlot = UINT32_MAX;
+    std::uint32_t slot = kInvalidSlot;
+    std::uint32_t generation = 0;
+    [[nodiscard]] bool IsValid() const noexcept { return slot != kInvalidSlot && generation != 0; }
+};
 struct PcmBuffer { std::vector<std::int16_t> samples; std::uint32_t sampleRate = 44100; std::uint8_t channels = 1; };
 enum class AudioCategory : std::uint8_t { Sfx, Music, Ambience, Ui };
 struct AudioSpatialParams { float gain = 1.0f; float pan = 0.0f; bool audible = true; };
@@ -36,28 +42,36 @@ class AudioMixer final {
 public:
     static constexpr std::size_t kMaxVoices = 32;
     SoundHandle AddClip(PcmBuffer clip, AudioCategory category);
-    void Play(SoundHandle sound, float gain = 1.0f, float pitch = 1.0f, float pan = 0.0f, bool loop = false) noexcept;
+    [[nodiscard]] VoiceHandle Play(SoundHandle sound, float gain = 1.0f, float pitch = 1.0f, float pan = 0.0f, bool loop = false) noexcept;
+    void SetVoiceEnvelope(VoiceHandle voice, float targetGain, float durationSeconds) noexcept;
+    void StopVoice(VoiceHandle voice, float fadeOutSeconds = 0.1f) noexcept;
     void Mix(float* stereoOutput, std::size_t frames) noexcept;
     void SetCategoryGain(AudioCategory category, float gain) noexcept;
     void SetMasterGain(float gain) noexcept;
+    void SetOutputSampleRate(std::uint32_t sampleRate) noexcept;
     [[nodiscard]] std::size_t ActiveVoiceCount() const noexcept;
     [[nodiscard]] const PcmBuffer* GetClip(SoundHandle sound) const noexcept;
 
 private:
     struct Clip { PcmBuffer pcm; AudioCategory category = AudioCategory::Sfx; };
-    struct Voice { std::uint32_t clipId = 0; float cursor = 0.0f; float gain = 0.0f; float pitch = 1.0f; float pan = 0.0f; bool loop = false; bool active = false; };
-    struct Command { std::uint32_t clipId = 0; float gain = 1.0f; float pitch = 1.0f; float pan = 0.0f; bool loop = false; };
+    struct Voice { std::uint32_t clipId = 0; std::uint32_t generation = 0; float cursor = 0.0f; float gain = 0.0f; float targetGain = 0.0f; std::uint32_t envelopeFramesRemaining = 0; float pitch = 1.0f; float pan = 0.0f; bool loop = false; bool active = false; };
+    enum class CommandType : std::uint8_t { Play, Envelope };
+    struct Command { CommandType type = CommandType::Play; std::uint32_t slot = 0; std::uint32_t generation = 0; std::uint32_t clipId = 0; float gain = 1.0f; float pitch = 1.0f; float pan = 0.0f; bool loop = false; std::uint32_t envelopeFrames = 0; };
     static constexpr std::size_t kCommandCapacity = 128;
     void DrainCommands() noexcept;
-    [[nodiscard]] Voice& SelectVoice() noexcept;
     [[nodiscard]] float CategoryGain(AudioCategory category) const noexcept;
     std::vector<Clip> m_clips;
     std::array<Voice, kMaxVoices> m_voices{};
     std::array<Command, kCommandCapacity> m_commands{};
+    std::array<std::atomic<std::uint32_t>, kMaxVoices> m_voiceGenerations{};
+    std::array<std::atomic<bool>, kMaxVoices> m_voiceReserved{};
+    std::array<std::atomic<std::uint8_t>, kMaxVoices> m_voiceCategories{};
+    std::atomic<std::size_t> m_nextVoiceSlot{0};
     std::atomic<std::size_t> m_commandRead{0};
     std::atomic<std::size_t> m_commandWrite{0};
     std::atomic<float> m_masterGain{1.0f};
     std::array<std::atomic<float>, 4> m_categoryGains{{1.0f, 1.0f, 1.0f, 1.0f}};
+    std::atomic<std::uint32_t> m_outputSampleRate{44100};
 };
 
 class IAudioDevice { public: virtual ~IAudioDevice() = default; virtual bool Open(AudioMixer& mixer, std::string& error) = 0; virtual void Close() noexcept = 0; [[nodiscard]] virtual bool IsOpen() const noexcept = 0; };
@@ -81,7 +95,7 @@ public:
     SoundHandle LoadSound(const std::filesystem::path& path, AudioCategory category = AudioCategory::Sfx);
     MusicHandle LoadMusic(const std::filesystem::path& path, AudioCategory category = AudioCategory::Music);
     void PlaySound(SoundHandle sound, float gain, float pitch, const glm::vec3& position, bool loop = false) noexcept;
-    void PlayMusic(MusicHandle music, bool loop = true) noexcept;
+    [[nodiscard]] VoiceHandle PlayMusic(MusicHandle music, bool loop = true, float initialGain = 1.0f) noexcept;
     void SetListener(const glm::vec3& position, const glm::vec3& forward) noexcept;
     void ApplyVolumes(float master, float music, float sfx, float ambience) noexcept;
     void Shutdown() noexcept;
