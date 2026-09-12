@@ -263,6 +263,7 @@ sequenceDiagram
     participant Phy as PhysicsSystem
     participant BI as BlockInteraction
     participant W as World
+    participant Drop as ItemDropSimulation
     participant CR as ChunkRenderer
     participant Snd as AudioMixer
 
@@ -282,9 +283,14 @@ sequenceDiagram
         BI->>W: SetBlock (break → Air, place → held block)
         W->>W: refresh edited skylight column across resident sections
         W->>CR: mark edited chunk and touched boundaries dirty
+        W->>Drop: squeeze overlapping drops through<br/>nearest collision-free block face
         W->>Snd: queue block break/place sound event
         Srv->>Cli: S2C_BlockEdit broadcast
     end
+    Srv->>Drop: swept collision + bounded recovery<br/>8-block magnet toward nearest eligible player
+    Cli->>Srv: C2S_InventoryState (fixed 36 slots)
+    Drop->>Srv: insert only into available inventory capacity
+    Srv->>Cli: S2C_ItemPickup (accepted stack only)
     Srv->>Cli: S2C_EntityState (authoritative transform)
     Cli->>Cli: reconcile prediction against authoritative state
     Phy->>Snd: footstep event on ground-contact cadence
@@ -548,6 +554,9 @@ sequenceDiagram
     end
     C->>S: C2S_BlockModify {position, blockId}
     S-->>C: S2C_BlockUpdate (broadcast after reach validation)
+    C->>S: C2S_InventoryState {36 bounded slots}
+    Note over S: server-owned drops collide, recover,<br/>and magnetize on fixed ticks
+    S-->>C: S2C_ItemPickup {blockId, accepted count}<br/>only after server inventory insertion
     C->>S: C2S_KeepAlive (every 2 s)
     S-->>C: S2C_KeepAliveAck
     C->>S: C2S_Disconnect
