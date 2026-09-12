@@ -165,7 +165,8 @@ public:
         const graphics::CelestialLighting lighting =
             graphics::EvaluateCelestialLighting(graphics::kDayDurationSeconds * 0.30f, true);
         m_chunkRenderer->SetCelestialLighting(lighting);
-        m_chunkRenderer->SetFogRange(graphics::FogRangeForRenderDistance(m_options.renderDistanceChunks));
+        m_chunkRenderer->SetFogRange(graphics::FogRangeForRenderDistance(
+            std::max(m_options.renderDistanceChunks, 8)));
         m_skyRenderer->Render(m_camera, lighting);
         m_chunkRenderer->Render(m_camera);
     }

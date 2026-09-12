@@ -52,7 +52,6 @@ void CenterNextWindow() {
 }
 
 bool BeginMenuFrame(AppContext* context, PlayerUIRoute route) {
-    RenderMainMenuBackdrop();
     if (context == nullptr || context->ui == nullptr || !context->ui->UsesNativeRoutePresentation(route)) return false;
     return true;
 }

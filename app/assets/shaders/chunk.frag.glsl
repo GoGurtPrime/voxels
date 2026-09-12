@@ -38,6 +38,6 @@ void main() {
     vec3 blockLighting = blockFactor * vec3(1.0, 0.58, 0.28);
     vec3 lit = baseColor * aoFactor * max(skyLighting + blockLighting, vec3(0.015));
 
-    float fog = smoothstep(uFogStart, uFogEnd, length(vWorldPos - uCameraPos));
+    float fog = smoothstep(uFogStart, uFogEnd, length(vWorldPos.xz - uCameraPos.xz));
     FragColor = vec4(mix(lit, uSkyColor, fog), texColor.a);
 }

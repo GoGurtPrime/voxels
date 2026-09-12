@@ -133,7 +133,7 @@ void main() {
     vec3 blockLighting = blockFactor * vec3(1.0, 0.58, 0.28);
     vec3 lit = baseColor * aoFactor * max(skyLighting + blockLighting, vec3(0.015));
 
-    float fog = smoothstep(uFogStart, uFogEnd, length(vWorldPos - uCameraPos));
+    float fog = smoothstep(uFogStart, uFogEnd, length(vWorldPos.xz - uCameraPos.xz));
     FragColor = vec4(mix(lit, uSkyColor, fog), texColor.a);
 })";
 
@@ -401,6 +401,7 @@ cbuffer FrameConstants : register(b0) {
     float4 sunColor;
     float4 ambientColor;
     float4 skyColor;
+    float4 fogRange;
 };
 struct VSInput {
     uint4 packedPosition : POSITION;
@@ -453,6 +454,7 @@ cbuffer FrameConstants : register(b0) {
     float4 sunColor;
     float4 ambientColor;
     float4 skyColor;
+    float4 fogRange;
 };
 struct PSInput {
     float4 position : SV_POSITION;
@@ -475,7 +477,8 @@ float4 main(PSInput input) : SV_TARGET {
     float3 skyLighting = skyFactor * (ambientColor.rgb + sunColor.rgb * input.sunTerm);
     float3 blockLighting = blockFactor * float3(1.0, 0.58, 0.28);
     float3 lit = base * aoFactor * max(skyLighting + blockLighting, 0.015);
-    float fog = clamp((distance(input.worldPosition, cameraPosition.xyz) - 24.0) / 48.0, 0.0, 1.0);
+    float fog = smoothstep(fogRange.x, fogRange.y,
+                           distance(input.worldPosition.xz, cameraPosition.xz));
     return float4(lerp(lit, skyColor.rgb, fog), texel.a);
 })";
 
@@ -520,7 +523,7 @@ float4 main(PSInput input) : SV_TARGET {
                                          &state->inputLayout))) return false;
 
     D3D11_BUFFER_DESC constantDesc{};
-    constantDesc.ByteWidth = 176;
+    constantDesc.ByteWidth = 192;
     constantDesc.Usage = D3D11_USAGE_DYNAMIC;
     constantDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     constantDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -888,7 +891,9 @@ void ChunkRenderer::RenderDX11(const voxels::Camera& camera) {
         glm::vec4 sunColor;
         glm::vec4 ambientColor;
         glm::vec4 skyColor;
+        glm::vec4 fogRange;
     };
+    static_assert(sizeof(FrameConstants) == 192);
     const glm::mat4 viewProjection = camera.ViewProjection();
     context->IASetInputLayout(m_dx11->inputLayout.Get());
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -915,13 +920,15 @@ void ChunkRenderer::RenderDX11(const voxels::Camera& camera) {
         D3D11_MAPPED_SUBRESOURCE mapped{};
         if (SUCCEEDED(context->Map(m_dx11->constants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
             const glm::vec3 origin = ChunkOrigin(coordinate, m_chunkSize);
+            const glm::vec3 fogColor = SkyHorizonColor(m_celestialLighting);
             const FrameConstants constants{viewProjection, glm::vec4(origin, 0.0f),
                                            glm::vec4(camera.position, 0.0f),
                                            glm::vec4(0.45f, 0.75f, 0.35f, 0.0f),
                                            glm::vec4(m_celestialLighting.sunDirection, 0.0f),
                                            glm::vec4(m_celestialLighting.sunColor, 0.0f),
                                            glm::vec4(m_celestialLighting.ambientColor, 0.0f),
-                                           glm::vec4(m_celestialLighting.skyColor, 0.0f)};
+                                           glm::vec4(fogColor, 0.0f),
+                                           glm::vec4(m_fogRange.startBlocks, m_fogRange.endBlocks, 0.0f, 0.0f)};
             std::memcpy(mapped.pData, &constants, sizeof(constants));
             context->Unmap(m_dx11->constants.Get(), 0);
         }
