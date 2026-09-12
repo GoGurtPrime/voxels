@@ -4,15 +4,23 @@
  *
  * @details Scans columns top-down for the highest solid support with air headroom. The chunk
  *          overload searches a single chunk in local coordinates (offset to world space by
- *          the chunk origin); the world overload rings outward from a world-space center,
- *          requiring a 3x3 flat surface of terrain-support blocks with two clear blocks
- *          above. IsSafePlayerSpawn verifies a player-sized block volume is entirely air.
+ *          the chunk origin); TryFindSafeSpawn rings outward from a world-space center,
+ *          requiring a 3x3 flat surface of terrain-support blocks with two clear blocks above,
+ *          further verified against the actual player AABB. FindAnyLoadedDrySpawn falls back to
+ *          an exhaustive scan of every loaded chunk when the ring search area is entirely wet
+ *          (e.g. an ocean spawn), so a caller never needs to accept an unsafe position purely
+ *          because the initial radius missed dry land. FindSafeSpawn composes both for callers
+ *          that must always receive a position (dedicated server bootstrap, back-compat tests);
+ *          interactive loading instead calls the two fallible functions directly and surfaces a
+ *          visible error rather than reaching FindSafeSpawn's last, explicitly unsafe resort.
+ *          IsSafePlayerSpawn verifies a player-sized block volume is entirely air.
  */
 
 #include "voxels/world/spawn_calculator.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "voxels/world/world.hpp"
 
@@ -98,18 +106,80 @@ Vec3I FindSafeSpawn(const Chunk& chunk, int chunkOriginX, int chunkOriginZ) {
 }
 
 Vec3I FindSafeSpawn(const World& world, int centerX, int centerZ, int searchRadius) {
+    if (const auto found = TryFindSafeSpawn(world, centerX, centerZ, searchRadius)) {
+        return *found;
+    }
+    if (const auto loaded = FindAnyLoadedDrySpawn(world, centerX, centerZ)) {
+        return *loaded;
+    }
+    // No dry ground anywhere currently loaded: an explicitly unsafe last resort. Interactive
+    // loading paths must not reach this - they check TryFindSafeSpawn/FindAnyLoadedDrySpawn
+    // directly and surface a visible error instead (see LoadingScreenState::Update).
+    return {centerX, MaximumLoadedY(world) + 1, centerZ};
+}
+
+std::optional<Vec3I> TryFindSafeSpawn(const World& world, int centerX, int centerZ, int searchRadius) {
     const int maximumY = MaximumLoadedY(world);
     for (int radius = 0; radius <= std::max(0, searchRadius); ++radius) {
         for (int z = centerZ - radius; z <= centerZ + radius; ++z) {
             for (int x = centerX - radius; x <= centerX + radius; ++x) {
-                if (radius != 0 && x != centerX - radius && x != centerX + radius && z != centerZ - radius && z != centerZ + radius) continue;
+                if (radius != 0 && x != centerX - radius && x != centerX + radius && z != centerZ - radius &&
+                    z != centerZ + radius) {
+                    continue;
+                }
                 for (int y = maximumY; y >= 0; --y) {
-                    if (IsTerrainSupport(world.GetBlock({x, y, z})) && HasFlatClearSurface(world, x, y, z)) return {x, y, z};
+                    if (!IsTerrainSupport(world.GetBlock({x, y, z})) || !HasFlatClearSurface(world, x, y, z)) {
+                        continue;
+                    }
+                    const Vec3 candidateCenter{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 1.9f,
+                                               static_cast<float>(z) + 0.5f};
+                    if (IsSafePlayerSpawn(world, candidateCenter)) {
+                        return Vec3I{x, y, z};
+                    }
                 }
             }
         }
     }
-    return {centerX, maximumY + 1, centerZ};
+    return std::nullopt;
+}
+
+std::optional<Vec3I> FindAnyLoadedDrySpawn(const World& world, int centerX, int centerZ) {
+    const int chunkSize = static_cast<int>(world.GetChunkSize());
+    std::optional<Vec3I> best;
+    long long bestDistanceSquared = std::numeric_limits<long long>::max();
+    for (const auto& [coordinate, chunk] : world.GetChunks()) {
+        (void)chunk;
+        const int originX = coordinate.x * chunkSize;
+        const int originZ = coordinate.z * chunkSize;
+        for (int localZ = 0; localZ < chunkSize; ++localZ) {
+            for (int localX = 0; localX < chunkSize; ++localX) {
+                const int x = originX + localX;
+                const int z = originZ + localZ;
+                const int columnTop = (coordinate.y + 1) * chunkSize - 1;
+                const int columnBottom = coordinate.y * chunkSize;
+                for (int y = columnTop; y >= columnBottom; --y) {
+                    if (!IsTerrainSupport(world.GetBlock({x, y, z})) || !IsAir(world, x, y + 1, z) ||
+                        !IsAir(world, x, y + 2, z)) {
+                        continue;
+                    }
+                    const Vec3 candidateCenter{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 1.9f,
+                                               static_cast<float>(z) + 0.5f};
+                    if (!IsSafePlayerSpawn(world, candidateCenter)) {
+                        continue;
+                    }
+                    const long long dx = x - centerX;
+                    const long long dz = z - centerZ;
+                    const long long distanceSquared = dx * dx + dz * dz;
+                    if (distanceSquared < bestDistanceSquared) {
+                        bestDistanceSquared = distanceSquared;
+                        best = Vec3I{x, y, z};
+                    }
+                    break; // Only the topmost dry surface of this column matters.
+                }
+            }
+        }
+    }
+    return best;
 }
 
 bool IsSafePlayerSpawn(const World& world, const Vec3& playerCenter) noexcept {

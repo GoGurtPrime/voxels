@@ -628,7 +628,17 @@ void LoadingScreenState::Update(double) {
     }
     const Vec3 savedSpawn{save.spawnX, save.spawnY, save.spawnZ};
     if (save.spawnY <= 0.0f || !IsSafePlayerSpawn(*m_world, savedSpawn)) {
-        m_spawnPosition = FindSafeSpawn(*m_world);
+        auto found = TryFindSafeSpawn(*m_world);
+        if (!found) {
+            found = FindAnyLoadedDrySpawn(*m_world);
+        }
+        if (!found) {
+            m_context->requestTransition(std::make_unique<ErrorState>(
+                m_context, "World Generation Failed",
+                "No dry spawn location could be found near the world origin. Try a different seed."));
+            return;
+        }
+        m_spawnPosition = *found;
         save.spawnX = static_cast<float>(m_spawnPosition.x) + 0.5f;
         save.spawnY = static_cast<float>(m_spawnPosition.y) + 1.9f;
         save.spawnZ = static_cast<float>(m_spawnPosition.z) + 0.5f;
