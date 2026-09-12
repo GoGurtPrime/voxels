@@ -126,8 +126,11 @@ InteractionResult BlockInteraction::PlaceBlock(World& world, const Player& playe
     if (blockId == static_cast<BlockId>(BlockType::Air)) return {};
     const BlockDefinition* heldDefinition = registry.GetDefinition(blockId);
     if (heldDefinition == nullptr || !heldDefinition->isPlaceable) return {};
-    if (world.GetBlock(placement) != static_cast<BlockId>(BlockType::Air)) {
-        return {};
+
+    const BlockId existing = world.GetBlock(placement);
+    if (existing != static_cast<BlockId>(BlockType::Air)) {
+        const BlockDefinition* existingDefinition = registry.GetDefinition(existing);
+        if (existingDefinition == nullptr || !existingDefinition->isReplaceable) return {};
     }
     if (OverlapsPlayer(player, placement)) {
         return {};

@@ -28,6 +28,7 @@ constexpr const char* kEmbeddedLaunchBlocksJson = R"({
       "solid": false,
       "opaque": false,
       "liquid": false,
+      "replaceable": true,
       "hardness": 0.0,
       "light_emission": 0,
       "textures": {},
@@ -375,6 +376,7 @@ void BlockRegistry::LoadFromJsonString(std::string_view jsonContent, std::string
         def.isTransparent = !def.isOpaque;
         def.isLiquid = blockJson.value("liquid", false);
         def.isPlaceable = blockJson.value("placeable", true);
+        def.isReplaceable = blockJson.value("replaceable", def.isLiquid);
         def.hardness = blockJson.value("hardness", 1.0f);
         def.lightEmission = static_cast<std::uint8_t>(blockJson.value("light_emission", 0));
         def.renderType = blockJson.value("render_type", "cube");
