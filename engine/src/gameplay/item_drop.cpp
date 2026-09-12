@@ -231,28 +231,28 @@ bool OutsideWorld(const ItemDrop& drop) noexcept {
 
 bool ApplyMagnet(ItemDrop& drop, const Vec3& target, float deltaSeconds) {
     if (drop.pickupDelay > 0.0f) return false;
-    const Vec3 offset{target.x - drop.position.x, target.y - drop.position.y, target.z - drop.position.z};
-    if (std::abs(offset.x) > ItemDropSimulation::kMagnetRadius ||
-        std::abs(offset.y) > ItemDropSimulation::kMagnetRadius ||
-        std::abs(offset.z) > ItemDropSimulation::kMagnetRadius) return false;
-    const float distanceSquared = offset.x * offset.x + offset.y * offset.y + offset.z * offset.z;
-    if (distanceSquared <= 0.000001f ||
-        distanceSquared >= ItemDropSimulation::kMagnetRadius * ItemDropSimulation::kMagnetRadius) return false;
+    const float offsetX = target.x - drop.position.x;
+    const float offsetZ = target.z - drop.position.z;
+    if (std::abs(offsetX) > ItemDropSimulation::kMagnetRadius ||
+        std::abs(offsetZ) > ItemDropSimulation::kMagnetRadius) return false;
+    const float distanceSquared = offsetX * offsetX + offsetZ * offsetZ;
+    if (distanceSquared >= ItemDropSimulation::kMagnetRadius * ItemDropSimulation::kMagnetRadius) return false;
+
     const float distance = std::sqrt(distanceSquared);
-    const float strength = 1.0f - distance / ItemDropSimulation::kMagnetRadius;
-    const float acceleration = ItemDropSimulation::kMagnetAcceleration * strength * strength;
-    drop.velocity.x += offset.x / distance * acceleration * deltaSeconds;
-    drop.velocity.y += offset.y / distance * acceleration * deltaSeconds;
-    drop.velocity.z += offset.z / distance * acceleration * deltaSeconds;
-    const float speedSquared = drop.velocity.x * drop.velocity.x + drop.velocity.y * drop.velocity.y +
-                               drop.velocity.z * drop.velocity.z;
-    if (speedSquared > ItemDropSimulation::kMaximumMagnetSpeed * ItemDropSimulation::kMaximumMagnetSpeed) {
-        const float scale = ItemDropSimulation::kMaximumMagnetSpeed / std::sqrt(speedSquared);
-        drop.velocity.x *= scale;
-        drop.velocity.y *= scale;
-        drop.velocity.z *= scale;
+    float desiredVelocityX = 0.0f;
+    float desiredVelocityZ = 0.0f;
+    if (distance > 0.000001f) {
+        const float ramp = std::clamp((ItemDropSimulation::kMagnetRadius - distance) /
+                                      ItemDropSimulation::kMagnetRampDistance, 0.0f, 1.0f);
+        const float strength = ramp * ramp * (3.0f - 2.0f * ramp);
+        const float arrival = std::min(1.0f, distance / ItemDropSimulation::kPickupRadius);
+        const float desiredSpeed = ItemDropSimulation::kMaximumMagnetSpeed * strength * arrival;
+        desiredVelocityX = offsetX / distance * desiredSpeed;
+        desiredVelocityZ = offsetZ / distance * desiredSpeed;
     }
-    drop.grounded = false;
+    const float response = 1.0f - std::exp(-ItemDropSimulation::kMagnetResponse * deltaSeconds);
+    drop.velocity.x += (desiredVelocityX - drop.velocity.x) * response;
+    drop.velocity.z += (desiredVelocityZ - drop.velocity.z) * response;
     return true;
 }
 
@@ -302,10 +302,11 @@ void ItemDropSimulation::Update(const World& world, const BlockRegistry* registr
         float nearestDistanceSquared = kMagnetRadius * kMagnetRadius;
         for (const Vec3& target : magnetTargets) {
             const float dx = target.x - drop.position.x;
-            const float dy = target.y - drop.position.y;
             const float dz = target.z - drop.position.z;
-            if (std::abs(dx) > kMagnetRadius || std::abs(dy) > kMagnetRadius || std::abs(dz) > kMagnetRadius) continue;
-            const float distanceSquared = dx * dx + dy * dy + dz * dz;
+            const float targetFeetY = target.y - Physics::kPlayerHalfHeight + kDropRadius;
+            if (std::abs(dx) > kMagnetRadius || std::abs(targetFeetY - drop.position.y) > kMagnetRadius ||
+                std::abs(dz) > kMagnetRadius) continue;
+            const float distanceSquared = dx * dx + dz * dz;
             if (distanceSquared < nearestDistanceSquared) {
                 nearestDistanceSquared = distanceSquared;
                 nearestTarget = &target;
@@ -314,16 +315,28 @@ void ItemDropSimulation::Update(const World& world, const BlockRegistry* registr
         const bool magnetized = nearestTarget != nullptr && ApplyMagnet(drop, *nearestTarget, deltaSeconds);
 
         const bool movedHorizontally = drop.velocity.x != 0.0f || drop.velocity.z != 0.0f;
-        SweepAxis(world, registry, drop.position, drop.velocity, 0, drop.velocity.x * deltaSeconds,
-                  m_metrics.collisionQueries);
-        SweepAxis(world, registry, drop.position, drop.velocity, 2, drop.velocity.z * deltaSeconds,
-                  m_metrics.collisionQueries);
+        const bool hitX = SweepAxis(world, registry, drop.position, drop.velocity, 0,
+                                    drop.velocity.x * deltaSeconds, m_metrics.collisionQueries);
+        const bool hitZ = SweepAxis(world, registry, drop.position, drop.velocity, 2,
+                                    drop.velocity.z * deltaSeconds, m_metrics.collisionQueries);
+        const bool climbingObstacle = magnetized && (hitX || hitZ);
+        const float targetFeetY = nearestTarget == nullptr
+            ? drop.position.y
+            : nearestTarget->y - Physics::kPlayerHalfHeight + kDropRadius;
+        const bool liftingFromBelow = magnetized && nearestDistanceSquared <= kPickupRadius * kPickupRadius &&
+                                      drop.position.y + kCollisionEpsilon < targetFeetY;
+        if (climbingObstacle || liftingFromBelow) drop.grounded = false;
         if (drop.grounded && movedHorizontally &&
             !IsSupported(world, registry, drop.position, m_metrics.collisionQueries)) {
             drop.grounded = false;
         }
         if (!drop.grounded) {
-            if (!magnetized) {
+            if (climbingObstacle) {
+                drop.velocity.y = std::max(drop.velocity.y, kObstacleClimbSpeed);
+            } else if (liftingFromBelow) {
+                drop.velocity.y = std::min(kObstacleClimbSpeed,
+                                           (targetFeetY - drop.position.y) / deltaSeconds);
+            } else {
                 drop.velocity.y = std::max(drop.velocity.y - ItemDropSimulation::kGravity * deltaSeconds,
                                            -ItemDropSimulation::kTerminalVelocity);
             }

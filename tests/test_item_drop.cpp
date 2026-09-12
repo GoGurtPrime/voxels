@@ -156,7 +156,7 @@ TEST_CASE("ItemDropSimulation.MagnetStrengthIncreasesWithProximityAfterDelay",
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
     voxels::gameplay::ItemDropSimulation drops;
     drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1}, {2.0f, 4.0f, 0.0f}, {}, 0.5f);
-    drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1}, {5.0f, 4.0f, 0.0f}, {});
+    drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1}, {2.1f, 4.0f, 0.0f}, {});
     drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1}, {2.0f, 4.0f, 0.0f}, {});
     const voxels::Vec3 player{0.0f, 4.0f, 0.0f};
 
@@ -168,7 +168,7 @@ TEST_CASE("ItemDropSimulation.MagnetStrengthIncreasesWithProximityAfterDelay",
     REQUIRE(std::abs(drops.Drops()[2].velocity.x) > std::abs(drops.Drops()[1].velocity.x));
 }
 
-TEST_CASE("ItemDropSimulation.MagnetLiftsDropsAlongBlockingWallsWithinReducedRadius",
+TEST_CASE("ItemDropSimulation.ShortRangeMagnetClimbsWallsWithoutFreeSpaceLevitation",
           "[gameplay][item_drop][magnet][collision]") {
     voxels::World world;
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
@@ -178,6 +178,7 @@ TEST_CASE("ItemDropSimulation.MagnetLiftsDropsAlongBlockingWallsWithinReducedRad
     world.SetBlock({1, 1, 0}, stone);
     world.SetBlock({1, 2, 0}, stone);
     world.SetBlock({-3, 0, 0}, stone);
+    world.SetBlock({2, 0, 1}, stone);
 
     voxels::gameplay::ItemDropSimulation drops;
     drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1},
@@ -186,7 +187,9 @@ TEST_CASE("ItemDropSimulation.MagnetLiftsDropsAlongBlockingWallsWithinReducedRad
                 {-2.5f, 1.18f, 0.5f}, {});
     drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1},
                 {3.0f, 7.0f, 0.5f}, {});
-    const voxels::Vec3 player{3.0f, 4.0f, 0.5f};
+    drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1},
+                {2.5f, 1.18f, 1.5f}, {});
+    const voxels::Vec3 player{2.5f, 1.9f, 0.5f};
 
     for (int step = 0; step < 45; ++step) {
         drops.Update(world, &registry, 1.0f / 60.0f, &player);
@@ -196,12 +199,34 @@ TEST_CASE("ItemDropSimulation.MagnetLiftsDropsAlongBlockingWallsWithinReducedRad
     REQUIRE(drops.Drops()[0].position.y > 1.35f);
     REQUIRE(drops.Drops()[1].position.x == Catch::Approx(-2.5f).margin(0.01f));
     REQUIRE(drops.Drops()[2].position.y < 7.0f);
+    REQUIRE(drops.Drops()[3].position.y == Catch::Approx(1.18f).margin(0.02f));
 
     for (int step = 0; step < 90; ++step) {
         drops.Update(world, &registry, 1.0f / 60.0f, &player);
     }
 
     REQUIRE(drops.Drops()[0].position.x > 1.0f + voxels::gameplay::ItemDropSimulation::kDropRadius);
+    REQUIRE(drops.Drops()[0].position.x <= player.x + 0.1f);
+    REQUIRE(drops.Drops()[0].position.y < player.y + 0.5f);
+}
+
+TEST_CASE("ItemDropSimulation.MagnetRaisesDropDirectlyBelowOnlyToPlayerFeet",
+          "[gameplay][item_drop][magnet]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::gameplay::ItemDropSimulation drops;
+    drops.Spawn({static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1},
+                {0.0f, 1.0f, 0.0f}, {});
+    const voxels::Vec3 player{0.0f, 3.0f, 0.0f};
+    const float targetFeetY = player.y - voxels::gameplay::Physics::kPlayerHalfHeight +
+                              voxels::gameplay::ItemDropSimulation::kDropRadius;
+
+    for (int step = 0; step < 120; ++step) {
+        drops.Update(world, &registry, 1.0f / 60.0f, &player);
+    }
+
+    REQUIRE(drops.Drops().front().position.y == Catch::Approx(targetFeetY).margin(0.1f));
+    REQUIRE(drops.Drops().front().position.y < player.y);
 }
 
 TEST_CASE("ItemDropSimulation.FullInventoryRetainsOriginalDropWithoutDuplication",

@@ -287,7 +287,7 @@ sequenceDiagram
         W->>Snd: queue block break/place sound event
         Srv->>Cli: S2C_BlockEdit broadcast
     end
-    Srv->>Drop: swept collision + bounded recovery<br/>5.33-block 3D magnet toward nearest eligible player
+    Srv->>Drop: swept collision + bounded recovery<br/>2.25-block horizontal magnet + obstacle climb
     Cli->>Srv: C2S_InventoryState (fixed 36 slots)
     Drop->>Srv: insert only into available inventory capacity
     Srv->>Cli: S2C_ItemPickup (accepted stack only)
