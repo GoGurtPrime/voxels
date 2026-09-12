@@ -55,6 +55,7 @@ add_library(voxels_engine
     src/render/chunk_mesher.cpp
     src/render/chunk_renderer.cpp
     src/render/model_registry.cpp
+    src/render/item_drop_renderer.cpp
     src/render/gameplay_hud.cpp
     src/render/remote_player_renderer.cpp
     src/graphics/gl_renderer.cpp

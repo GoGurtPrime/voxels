@@ -763,10 +763,30 @@ void ChunkRenderer::Render(const voxels::Camera& camera) {
         RenderDX11(camera);
         return;
     }
+    RenderOpenGLPass(camera, true, true, true);
+}
+
+void ChunkRenderer::RenderOpaque(const voxels::Camera& camera) {
+    if (m_renderer != nullptr && m_renderer->GetBackend() == RendererBackend::Direct3D11) {
+        RenderDX11(camera);
+        return;
+    }
+    RenderOpenGLPass(camera, true, false, true);
+}
+
+void ChunkRenderer::RenderTransparent(const voxels::Camera& camera) {
+    if (m_renderer != nullptr && m_renderer->GetBackend() == RendererBackend::Direct3D11) return;
+    RenderOpenGLPass(camera, false, true, false);
+}
+
+void ChunkRenderer::RenderOpenGLPass(const voxels::Camera& camera, bool drawOpaque,
+                                     bool drawTransparent, bool resetMetrics) {
     if (m_program == 0 || m_meshes.empty()) {
-        m_metrics.visibleChunks = 0;
-        m_metrics.drawCalls = 0;
-        m_metrics.triangles = 0;
+        if (resetMetrics) {
+            m_metrics.visibleChunks = 0;
+            m_metrics.drawCalls = 0;
+            m_metrics.triangles = 0;
+        }
         return;
     }
 
@@ -779,10 +799,10 @@ void ChunkRenderer::Render(const voxels::Camera& camera) {
         if (!frustum.Intersects(mesh.aabb)) {
             continue;
         }
-        if (mesh.opaqueIndexCount > 0) {
+        if (drawOpaque && mesh.opaqueIndexCount > 0) {
             visibleOpaque.emplace_back(&coordinate, &mesh);
         }
-        if (mesh.transparentIndexCount > 0) {
+        if (drawTransparent && mesh.transparentIndexCount > 0) {
             visibleTransparent.emplace_back(&coordinate, &mesh);
         }
     }
@@ -813,8 +833,8 @@ void ChunkRenderer::Render(const voxels::Camera& camera) {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D_ARRAY, m_atlas.GetTextureHandle());
 
-    std::size_t drawCalls = 0;
-    std::size_t triangles = 0;
+    std::size_t drawCalls = resetMetrics ? 0 : m_metrics.drawCalls;
+    std::size_t triangles = resetMetrics ? 0 : m_metrics.triangles;
 
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
@@ -844,7 +864,8 @@ void ChunkRenderer::Render(const voxels::Camera& camera) {
     glEnable(GL_CULL_FACE);
     glBindVertexArray(0);
 
-    m_metrics.visibleChunks = visibleOpaque.size() + visibleTransparent.size();
+    m_metrics.visibleChunks = (resetMetrics ? 0 : m_metrics.visibleChunks) +
+                              visibleOpaque.size() + visibleTransparent.size();
     m_metrics.drawCalls = drawCalls;
     m_metrics.triangles = triangles;
     m_metrics.loadedChunks = m_meshes.size();

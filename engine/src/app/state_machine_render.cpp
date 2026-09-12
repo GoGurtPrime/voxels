@@ -691,6 +691,9 @@ void InGameState::OnEnter() {
             m_chunkRenderer->SetBackgroundMeshQueueLimit(1);
         }
         if (m_skyRenderer == nullptr) m_skyRenderer = std::make_unique<graphics::SkyRenderer>();
+        if (m_itemDropRenderer == nullptr) {
+            m_itemDropRenderer = std::make_unique<graphics::ItemDropRenderer>(*m_registry, *m_atlas);
+        }
         if (m_hudRenderer == nullptr) m_hudRenderer = std::make_unique<graphics::GameplayHudRenderer>();
         if (m_remotePlayerRenderer == nullptr) m_remotePlayerRenderer = std::make_unique<graphics::RemotePlayerRenderer>();
     }
@@ -780,10 +783,12 @@ void InGameState::OnExit() {
         m_chunkRenderer->Shutdown();
     }
     if (m_skyRenderer) m_skyRenderer->Shutdown();
+    if (m_itemDropRenderer) m_itemDropRenderer->Shutdown();
     if (m_hudRenderer) m_hudRenderer->Shutdown();
     if (m_remotePlayerRenderer) m_remotePlayerRenderer->Shutdown();
     m_chunkRenderer.reset();
     m_skyRenderer.reset();
+    m_itemDropRenderer.reset();
     m_hudRenderer.reset();
     m_remotePlayerRenderer.reset();
     m_jobSystem.reset();
@@ -1378,7 +1383,7 @@ void InGameState::Render() {
         m_chunkRenderer->SetCelestialLighting(celestial);
         m_chunkRenderer->SetFogRange(graphics::FogRangeForRenderDistance(m_options.renderDistanceChunks));
         if (m_skyRenderer) m_skyRenderer->Render(camera, celestial);
-        m_chunkRenderer->Render(camera);
+        m_chunkRenderer->RenderOpaque(camera);
     }
     if (m_remotePlayerRenderer && m_context != nullptr && m_context->networkClient != nullptr) {
         const networking::GameClient& client = *m_context->networkClient;
@@ -1392,6 +1397,11 @@ void InGameState::Render() {
         }
         m_remotePlayerRenderer->Render(camera, visuals, 1.0f / 60.0f);
     }
+    if (m_itemDropRenderer) {
+        m_itemDropRenderer->SetCelestialLighting(celestial);
+        m_itemDropRenderer->Render(camera, m_session.GetItemDrops());
+    }
+    if (m_chunkRenderer) m_chunkRenderer->RenderTransparent(camera);
     CompletePendingPreviewCapture();
     if (m_hudRenderer) {
         const bool drawNativeScreenHud =
@@ -1399,7 +1409,7 @@ void InGameState::Render() {
             m_context->ui->UsesNativeRoutePresentation(PlayerUIRoute::Hud);
         m_hudRenderer->Render(camera, m_session.GetTarget(), m_session.GetBreakProgress(), m_session.GetPlayer().state.inventory,
                               m_session.GetSelectedItemLabel(), m_session.GetSelectedItemLabelAge(),
-                              m_session.GetParticleBursts(), m_session.GetItemDrops(), drawNativeScreenHud);
+                              m_session.GetParticleBursts(), drawNativeScreenHud);
         m_session.ClearParticleBursts();
     }
 }

@@ -101,10 +101,10 @@ Ensure one intended track is audible at a time and eliminate the end-of-track fa
 - Platform and dependencies: WAV remains supported; content gaps for longer tracks remain registered in `ASSET_REQUESTS.md`.
 
 ### Acceptance Criteria
-- [ ] A track's gain is monotonic during fade-out and reaches silence before its voice is reclaimed.
-- [ ] Starting the next track cannot revive or alter the previous voice.
-- [ ] Menu/gameplay transitions do not mute unrelated SFX or ambience.
-- [ ] A synthetic two-track mixer test detects any overlapping nonzero envelopes outside an explicitly configured crossfade.
+- [x] A track's gain is monotonic during fade-out and reaches silence before its voice is reclaimed.
+- [x] Starting the next track cannot revive or alter the previous voice.
+- [x] Menu/gameplay transitions do not mute unrelated SFX or ambience.
+- [x] A synthetic two-track mixer test detects any overlapping nonzero envelopes outside an explicitly configured crossfade.
 - [ ] Default build, full CTest, and a non-headless two-transition listening smoke are green.
 
 ### Verification Commands
@@ -116,9 +116,9 @@ build/app/Debug/voxels_app.exe
 ```
 
 ### Completion Evidence
-- Changed: voice API, director ownership/state machine, tests, docs, and asset ledger.
-- Observed: listen through at least two complete transitions and menu/gameplay changes.
-- Results: record envelope assertions, callback metrics, and smoke notes.
+- Changed: generation-safe voice handles, callback-side per-voice envelope ramps, explicit music director ownership/state machine, tests, and audio flow documentation.
+- Observed: non-headless `voxels_app` startup initialized OpenGL, loaded the stereo menu track, and served the current UI assets. A human listening pass through two complete transitions was not completed in this session.
+- Results: focused mixer assertions cover stale commands, silence-before-reclaim, sequential two-track isolation, and existing callback/category behavior; full CTest passed 224/224.
 - Known gaps: Ogg streaming remains separately scoped content/audio work.
 
 ## WI-09.04: Render dropped items through the material pipeline
@@ -139,11 +139,11 @@ expected camera angles.
 - Platform and dependencies: OpenGL 3.3; missing item art uses a visible atlas-derived fallback and logs once.
 
 ### Acceptance Criteria
-- [ ] Stone, grass, glass, water, and an inventory-only item render with recognizable material treatment.
-- [ ] Front/back-face GPU tests catch flipped winding, missing depth, and orange fallback regressions.
-- [ ] Bobbing/spinning remains stable and does not alter simulation positions.
-- [ ] The HUD renderer no longer owns dropped-item world geometry.
-- [ ] Default build, full CTest, asset ledger, and non-headless inspection are green.
+- [x] Stone, grass, glass, water, and an inventory-only item render with recognizable material treatment.
+- [x] Front/back-face GPU tests catch flipped winding, missing depth, and orange fallback regressions.
+- [x] Bobbing/spinning remains stable and does not alter simulation positions.
+- [x] The HUD renderer no longer owns dropped-item world geometry.
+- [x] Default build, full CTest, asset ledger, and non-headless inspection are green.
 
 ### Verification Commands
 ```text
@@ -154,9 +154,9 @@ build/app/Debug/voxels_app.exe
 ```
 
 ### Completion Evidence
-- Changed: item render pass/material resolution, removed placeholder cube path, tests, and assets.
-- Observed: inspect representative opaque, transparent, and inventory-only drops.
-- Results: record pixel hashes/screenshots, draw calls, and GPU time.
+- Changed: dedicated atlas-backed item entity pass with cube/model/crossed-icon selection, alpha-mode batching, outward winding, presentation-only bob/spin, and removal of the HUD placeholder geometry.
+- Observed: launched the OpenGL 3.3 desktop app, loaded `New World6`, and inspected stone, grass, glass, water, and an inventory-only drop from multiple angles; all were textured, lit, and recognizable before a clean exit after 19,250 frames.
+- Results: Debug build and docs passed; focused CPU/GPU regressions passed 4/4 for five representative catalogue materials, front/back visibility, depth occlusion, one-draw 256-drop batching, and the 0.5 ms GPU timer budget; full CTest passed 230/230.
 - Known gaps: animal-sourced item definitions arrive in WI-13.05.
 
 ## WI-09.05: Add robust dropped-item collision and magnetic pickup

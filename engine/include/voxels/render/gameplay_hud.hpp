@@ -14,7 +14,6 @@
 
 #include <imstb_truetype.h>
 #include "voxels/gameplay/inventory.hpp"
-#include "voxels/gameplay/item_drop.hpp"
 #include "voxels/render/camera.hpp"
 #include "voxels/world/world.hpp"
 
@@ -28,12 +27,11 @@ public:
     ~GameplayHudRenderer();
     /// `breakProgress` in [0,1] selects one of the ten crack overlay stages on the targeted
     /// block; `selectedItemLabelAge` is seconds since the hotbar selection changed (hold/fade);
-    /// `particleBursts` are world block coords to draw break particles at this frame;
-    /// `itemDrops` are ground item entities drawn as small bobbing, spinning cubes.
+    /// `particleBursts` are world block coords to draw break particles at this frame.
     void Render(const Camera& camera, const RaycastHit& target, float breakProgress,
                 const gameplay::Inventory& inventory, const std::string& selectedItemLabel,
                 float selectedItemLabelAge, const std::vector<Vec3I>& particleBursts,
-                const std::vector<gameplay::ItemDrop>& itemDrops, bool drawScreenSpaceHud = true);
+                bool drawScreenSpaceHud = true);
     void Shutdown();
 
 private:

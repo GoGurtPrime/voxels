@@ -40,7 +40,7 @@ struct ItemDrop {
 class ItemDropSimulation {
 public:
     static constexpr float kPickupRadius = 1.4f;        ///< Blocks; matches the player's reach for casual pickup.
-    static constexpr float kDespawnSeconds = 300.0f;     ///< Ground items vanish after 5 minutes, like Minecraft.
+    static constexpr float kDespawnSeconds = 300.0f;     ///< Ground items vanish after 5 minutes.
     static constexpr float kGravity = 18.0f;             ///< Blocks/s^2, slightly gentler than player gravity.
     static constexpr float kTerminalVelocity = 30.0f;
     static constexpr float kGroundFriction = 6.0f;       ///< Exponential horizontal velocity decay once grounded.

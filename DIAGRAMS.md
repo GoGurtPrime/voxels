@@ -300,7 +300,7 @@ flowchart LR
     CAMU --> SKY["Pass 1: procedural sky<br/>camera-relative zenith/horizon + sun<br/>from replicated world time"]
     SKY --> FRUS["Build frustum, cull chunk meshes"]
     FRUS --> OPAQUE["Pass 2: opaque chunk meshes<br/>atlas texture, depth write on<br/>fog ends one chunk inside render boundary"]
-    OPAQUE --> MODELS["Pass 3: sub-voxel models + entities<br/>.vmdl instances, players"]
+    OPAQUE --> MODELS["Pass 3: sub-voxel models + entities<br/>.vmdl instances, players, atlas-backed item drops<br/>opaque/cutout batches then back-to-front transparent items"]
     MODELS --> WATER["Pass 4: transparent<br/>water, leaves, glass — sorted back to front, depth write off"]
     WATER --> DEBUG["Pass 5: debug lines<br/>targeted block outline, chunk bounds if enabled"]
     DEBUG --> HUD["Pass 6: HUD primitives<br/>crosshair, hotbar, held item"]
@@ -566,7 +566,7 @@ flowchart LR
     RING --> CB["SDL audio callback thread<br/>mix voices → device buffer"]
     CB --> OUT([Speakers])
     LIS["Camera transform → listener position/orientation"] --> MIX
-    MUS["Music loop — preloaded PCM; OGG streaming pending"] --> MIX
+    MUS["Music director owns generation-safe voice handles;<br/>Playing → FadingOut → Gap → FadingIn;<br/>per-voice envelopes reach silence before reclaim;<br/>OGG streaming pending"] --> MIX
 ```
 
 The audio callback never allocates, never locks, and never touches game state directly.

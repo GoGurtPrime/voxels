@@ -617,7 +617,7 @@ TEST_CASE("GameplayHud.HotbarAndLabelRemainVisibleDuringMining", "[render][hud][
     camera.aspect = static_cast<float>(kFramebufferWidth) / static_cast<float>(kFramebufferHeight);
     const voxels::RaycastHit target{true, {0, 0, 0}, voxels::Face::PosZ, 2.0f};
     voxels::gameplay::Inventory inventory;
-    hudRenderer.Render(camera, target, 0.5f, inventory, "Stone", 0.0f, {}, {});
+    hudRenderer.Render(camera, target, 0.5f, inventory, "Stone", 0.0f, {});
 
     std::vector<std::uint8_t> pixels(static_cast<std::size_t>(kFramebufferWidth * kFramebufferHeight * 4), 0);
     glReadPixels(0, 0, kFramebufferWidth, kFramebufferHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());

@@ -95,6 +95,10 @@ public:
     /// Frustum-culls resident meshes against `camera` and draws opaque front-to-back, then
     /// transparent back-to-front.
     void Render(const voxels::Camera& camera);
+    /// Draws only opaque terrain, allowing entity passes to run before transparent terrain.
+    void RenderOpaque(const voxels::Camera& camera);
+    /// Draws only transparent terrain after entity passes.
+    void RenderTransparent(const voxels::Camera& camera);
     void SetCelestialLighting(const CelestialLighting& lighting) noexcept { m_celestialLighting = lighting; }
     /// Sets camera-relative block distances for the shared opaque/transparent fog treatment.
     void SetFogRange(FogRange fogRange) noexcept { m_fogRange = fogRange; }
@@ -144,6 +148,8 @@ private:
     bool EnsureDX11Resources();
     void UploadDX11Mesh(GpuChunkMesh& mesh, const ChunkMeshData& data);
     void RenderDX11(const voxels::Camera& camera);
+    void RenderOpenGLPass(const voxels::Camera& camera, bool drawOpaque, bool drawTransparent,
+                          bool resetMetrics);
     void UploadMesh(const voxels::ChunkCoordinate& coordinate, ChunkMeshData&& data);
     static void ReleaseMesh(GpuChunkMesh& mesh);
     static void ConfigureVertexAttributes();
