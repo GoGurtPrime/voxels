@@ -156,7 +156,7 @@ build/app/Debug/voxels_app.exe
 ### Completion Evidence
 - Changed: dedicated atlas-backed item entity pass with cube/model/crossed-icon selection, alpha-mode batching, outward winding, presentation-only bob/spin, and removal of the HUD placeholder geometry.
 - Observed: launched the OpenGL 3.3 desktop app, loaded `New World6`, and inspected stone, grass, glass, water, and an inventory-only drop from multiple angles; all were textured, lit, and recognizable before a clean exit after 19,250 frames.
-- Results: Debug build and docs passed; focused CPU/GPU regressions passed 4/4 for five representative catalogue materials, front/back visibility, depth occlusion, one-draw 256-drop batching, and the 0.5 ms GPU timer budget; full CTest passed 230/230.
+- Results: Debug build and docs passed; focused CPU/GPU regressions passed 4/4 for five representative catalogue materials, front/back visibility, depth occlusion, one-draw 256-drop batching, and the 0.5 ms GPU timer budget; full CTest passed 230/230. The generated `build/tests/item_drop_gpu.png` regression image has SHA-256 `36ca8c32777d224092a092adba669ef9e253953c5329bb97b126f64deb4737bf`.
 - Known gaps: animal-sourced item definitions arrive in WI-13.05.
 
 ## WI-09.05: Add robust dropped-item collision and magnetic pickup

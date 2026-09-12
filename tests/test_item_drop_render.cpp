@@ -14,6 +14,7 @@
 #include <glm/glm.hpp>
 
 #include "voxels/assets/asset_manager.hpp"
+#include "voxels/assets/texture_loader.hpp"
 #include "voxels/core/paths.hpp"
 #include "voxels/graphics/gl_renderer.hpp"
 #include "voxels/render/item_drop_renderer.hpp"
@@ -195,6 +196,15 @@ TEST_CASE("ItemDropRenderer.GpuFrontAndBackViewsSampleAtlasMaterial",
     REQUIRE(itemRenderer.GetMetrics().visibleDrops == 256U);
     REQUIRE(itemRenderer.GetMetrics().drawCalls == 1U);
     REQUIRE(elapsedNanoseconds <= 500'000ULL);
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(kSize * kSize * 4));
+    std::vector<std::uint8_t> flipped(pixels.size());
+    glReadPixels(0, 0, kSize, kSize, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    for (int y = 0; y < kSize; ++y) {
+        std::copy_n(pixels.begin() + static_cast<std::ptrdiff_t>((kSize - 1 - y) * kSize * 4),
+                    kSize * 4, flipped.begin() + static_cast<std::ptrdiff_t>(y * kSize * 4));
+    }
+    REQUIRE(voxels::TextureLoader::WritePngToFile(
+        "item_drop_gpu.png", kSize, kSize, 4, flipped.data()));
 
     itemRenderer.Shutdown();
     atlas.Shutdown();
