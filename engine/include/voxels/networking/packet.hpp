@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <span>
 #include <vector>
 
@@ -36,10 +37,12 @@ enum class PacketId : std::uint16_t {
     S2C_Reject,
     S2C_Disconnect,
     C2S_ChunkAck,
-    S2C_WorldTime
+    S2C_WorldTime,
+    C2S_InventoryState,
+    S2C_ItemPickup
 };
 
-inline constexpr std::uint16_t kProtocolVersion = 4;
+inline constexpr std::uint16_t kProtocolVersion = 5;
 inline constexpr std::size_t kMaximumPacketPayloadBytes = 1200;
 /// Upper bound accepted for a reassembled RLE chunk payload (a 16^3 section is far smaller).
 inline constexpr std::uint32_t kMaximumChunkTransferBytes = 512u * 1024u;
@@ -73,6 +76,22 @@ struct EntityState {
 struct BlockModify {
     Vec3I position{};
     BlockId blockId = 0;
+};
+
+inline constexpr std::size_t kNetworkInventorySlotCount = 36;
+
+struct InventorySlotState {
+    BlockId blockId = static_cast<BlockId>(BlockType::Air);
+    std::uint16_t count = 0;
+};
+
+struct InventoryState {
+    std::array<InventorySlotState, kNetworkInventorySlotCount> slots{};
+};
+
+struct ItemPickup {
+    BlockId blockId = static_cast<BlockId>(BlockType::Air);
+    std::uint16_t count = 0;
 };
 
 /// World identity the server hands a joining client so both simulate the same rules.
@@ -116,6 +135,10 @@ struct Packet {
 [[nodiscard]] bool DeserializeEntityState(std::span<const std::uint8_t> bytes, EntityState& state);
 [[nodiscard]] std::vector<std::uint8_t> SerializeBlockModify(const BlockModify& modify);
 [[nodiscard]] bool DeserializeBlockModify(std::span<const std::uint8_t> bytes, BlockModify& modify);
+[[nodiscard]] std::vector<std::uint8_t> SerializeInventoryState(const InventoryState& inventory);
+[[nodiscard]] bool DeserializeInventoryState(std::span<const std::uint8_t> bytes, InventoryState& inventory);
+[[nodiscard]] std::vector<std::uint8_t> SerializeItemPickup(const ItemPickup& pickup);
+[[nodiscard]] bool DeserializeItemPickup(std::span<const std::uint8_t> bytes, ItemPickup& pickup);
 [[nodiscard]] std::vector<std::uint8_t> SerializeConnectAccept(const ConnectAccept& accept);
 [[nodiscard]] bool DeserializeConnectAccept(std::span<const std::uint8_t> bytes, ConnectAccept& accept);
 [[nodiscard]] std::vector<std::uint8_t> SerializeChunkFragment(const ChunkFragment& fragment);

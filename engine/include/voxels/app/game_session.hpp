@@ -61,6 +61,8 @@ public:
     void SetInputManager(InputManager* inputManager) noexcept;
     /// When connected, block edits and player movement are replicated to this client.
     void SetNetworkClient(networking::GameClient* client) noexcept { m_networkClient = client; }
+    /// Borrows the hosted server's authoritative drop set. Null restores session-local ownership.
+    void SetAuthoritativeItemDrops(gameplay::ItemDropSimulation* itemDrops) noexcept;
     /// Remote worlds are streamed from the host server: no local generation or eviction.
     void SetRemoteWorld(bool remote) noexcept { m_remoteWorld = remote; }
     void SetBlockRegistry(const BlockRegistry* registry) noexcept;
@@ -116,7 +118,12 @@ public:
     void SetPreferences(const GamePreferences& preferences) noexcept { m_preferences = preferences; }
     /// Ground item entities (spawned by block breaks or manual drops); the render layer draws
     /// these as small bobbing cubes and the HUD does not otherwise track them.
-    [[nodiscard]] const std::vector<gameplay::ItemDrop>& GetItemDrops() const noexcept { return m_itemDrops.Drops(); }
+    [[nodiscard]] const std::vector<gameplay::ItemDrop>& GetItemDrops() const noexcept { return m_itemDrops->Drops(); }
+    [[nodiscard]] const gameplay::ItemDropSimulationMetrics& GetItemDropMetrics() const noexcept {
+        return m_itemDrops->GetMetrics();
+    }
+    /// Applies an authoritative terrain edit to the bounded item-drop recovery query.
+    void ResolveItemDropsAfterBlockEdit(const Vec3I& editedBlock);
     /// Removes up to `count` items from inventory `slot` and spawns them as a ground item drop
     /// tossed a short distance in front of the player. Returns the count actually dropped (0 when
     /// the slot is empty, out of range, or `count` is not positive).
@@ -164,7 +171,9 @@ private:
     std::vector<Vec3I> m_editedBlocks;
     std::vector<GameplaySoundEvent> m_soundEvents;
     std::vector<Vec3I> m_particleBursts;
-    gameplay::ItemDropSimulation m_itemDrops;
+    gameplay::ItemDropSimulation m_ownedItemDrops;
+    gameplay::ItemDropSimulation* m_itemDrops = &m_ownedItemDrops;
+    bool m_itemDropsAdvancedExternally = false;
     bool m_dropItemHeldLastFrame = false;
     gameplay::ItemStack m_lastSelectedStack{};
     std::string m_selectedItemLabel;

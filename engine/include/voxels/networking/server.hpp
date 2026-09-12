@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "voxels/gameplay/item_drop.hpp"
 #include "voxels/networking/packet.hpp"
 #include "voxels/world/world.hpp"
 
@@ -42,6 +43,8 @@ public:
     void SetWorldReady(const WorldOptions& options, const Vec3& spawn, WorldTick worldTick = kInitialWorldTick);
     /// Ends the hosted session: remote peers are disconnected and the world is dropped.
     void ClearWorld();
+    /// Supplies the data-driven drop table used when remote players break blocks.
+    void SetBlockRegistry(const BlockRegistry* registry) noexcept;
     [[nodiscard]] bool IsWorldReady() const noexcept;
     [[nodiscard]] WorldTick GetWorldTick() const noexcept;
 
@@ -50,6 +53,8 @@ public:
     [[nodiscard]] std::size_t PeerCount() const noexcept;
     [[nodiscard]] World& GetWorld() noexcept;
     [[nodiscard]] const World& GetWorld() const noexcept;
+    [[nodiscard]] gameplay::ItemDropSimulation& GetItemDrops() noexcept;
+    [[nodiscard]] const gameplay::ItemDropSimulation& GetItemDrops() const noexcept;
     [[nodiscard]] const std::unordered_map<std::uint32_t, EntityState>& GetPlayerStates() const noexcept;
     /// Chunks generated server-side for remote peers since the last call; the in-process host
     /// drains these so its renderer learns about terrain it did not generate itself.

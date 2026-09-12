@@ -884,6 +884,12 @@ int main(int argc, char** argv) {
             debugMetrics.worldTick = inGame->GetWorldTick();
             debugMetrics.worldDay = voxels::WorldDayIndex(debugMetrics.worldTick);
             debugMetrics.worldDayFraction = voxels::WorldDayFraction(debugMetrics.worldTick);
+            const auto& dropMetrics = inGame->GetItemDropMetrics();
+            debugMetrics.activeItemDrops = dropMetrics.activeDrops;
+            debugMetrics.itemDropCollisionQueries = dropMetrics.collisionQueries;
+            debugMetrics.recoveredItemDrops = dropMetrics.recoveredDrops;
+            debugMetrics.despawnedItemDrops = dropMetrics.despawnedDrops;
+            debugMetrics.itemDropUpdateMicroseconds = dropMetrics.updateMicroseconds;
             if (const auto* chunkRenderer = inGame->GetChunkRenderer()) {
                 const auto& metrics = chunkRenderer->GetMetrics();
                 debugMetrics.loadedChunks = metrics.loadedChunks;

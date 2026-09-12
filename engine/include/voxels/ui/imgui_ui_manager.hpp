@@ -30,6 +30,11 @@ struct UIDebugMetrics {
     std::size_t drawCalls = 0;
     std::size_t triangles = 0;
     std::size_t meshQueueDepth = 0;
+    std::size_t activeItemDrops = 0;
+    std::size_t itemDropCollisionQueries = 0;
+    std::size_t recoveredItemDrops = 0;
+    std::size_t despawnedItemDrops = 0;
+    double itemDropUpdateMicroseconds = 0.0;
     std::uint64_t worldTick = 0;
     std::uint64_t worldDay = 0;
     float worldDayFraction = 0.0f;

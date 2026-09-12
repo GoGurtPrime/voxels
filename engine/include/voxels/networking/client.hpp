@@ -37,6 +37,7 @@ public:
     void Tick();
     void SendPlayerMove(const PlayerMove& movement);
     void SendBlockModify(const BlockModify& modify);
+    void SendInventoryState(const InventoryState& inventory);
 
     [[nodiscard]] bool IsConnected() const noexcept;
     [[nodiscard]] bool HasReceivedConnectAck() const noexcept;
@@ -45,6 +46,8 @@ public:
     [[nodiscard]] const std::vector<BlockModify>& ReceivedBlockUpdates() const noexcept;
     /// Drains block updates so each authoritative edit is applied to the local world exactly once.
     [[nodiscard]] std::vector<BlockModify> TakeReceivedBlockUpdates();
+    /// Drains authoritative pickup grants; each event is queued from one accepted server transaction.
+    [[nodiscard]] std::vector<ItemPickup> TakeReceivedItemPickups();
     /// Drains chunks whose fragments have all arrived and been acknowledged.
     [[nodiscard]] std::vector<NetworkChunk> TakeCompletedChunks();
     /// Drains ids of players the server reported as departed; they are removed from the entity map.

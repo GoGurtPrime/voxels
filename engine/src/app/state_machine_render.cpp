@@ -624,6 +624,7 @@ void InGameState::OnEnter() {
         if (m_hasRemoteSpawn) m_session.SetPlayerSpawn(m_remoteSpawn);
     } else if (m_context != nullptr && m_context->networkServer != nullptr) {
         World& authoritativeWorld = m_context->networkServer->GetWorld();
+        m_context->networkServer->SetBlockRegistry(m_registry);
         authoritativeWorld.Clear();
         authoritativeWorld.Initialize(m_options);
         if (m_preparedWorld != nullptr) {
@@ -633,6 +634,7 @@ void InGameState::OnEnter() {
             m_preparedWorld.reset();
         }
         m_session.SetWorld(&authoritativeWorld);
+        m_session.SetAuthoritativeItemDrops(&m_context->networkServer->GetItemDrops());
     } else if (m_preparedWorld != nullptr) {
         m_session.AdoptWorld(std::move(m_preparedWorld));
     }
@@ -1170,6 +1172,7 @@ void InGameState::ApplyNetworkedBlockUpdates() {
     World& world = m_session.GetWorld();
     const int chunkSize = static_cast<int>(world.GetChunkSize());
     const auto relightAndRemesh = [this, &world, chunkSize](const Vec3I& position) {
+        m_session.ResolveItemDropsAfterBlockEdit(position);
         const LightingUpdate lighting = world.RebuildLightingAround(position, *m_registry);
         if (m_chunkRenderer == nullptr) return;
         for (const ChunkCoordinate& dirty : lighting.dirtyChunks) m_chunkRenderer->MarkChunkDirty(dirty);

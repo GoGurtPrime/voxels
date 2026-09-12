@@ -58,6 +58,8 @@ public:
     std::chrono::steady_clock::time_point lastKeepAlive = std::chrono::steady_clock::now();
     std::unordered_map<std::uint32_t, EntityState> receivedEntityStates;
     std::vector<BlockModify> receivedBlockUpdates;
+    std::vector<ItemPickup> receivedItemPickups;
+    std::unordered_set<std::uint32_t> receivedItemPickupSequences;
     std::vector<std::uint32_t> departedPlayers;
     std::unordered_map<Vec3I, ChunkReassembly, Vec3IHash> reassembly;
     std::unordered_set<Vec3I, Vec3IHash> acknowledgedChunks;
@@ -121,6 +123,8 @@ void GameClient::Disconnect() {
     m_impl->playerId = 0;
     m_impl->receivedEntityStates.clear();
     m_impl->receivedBlockUpdates.clear();
+    m_impl->receivedItemPickups.clear();
+    m_impl->receivedItemPickupSequences.clear();
     m_impl->departedPlayers.clear();
     m_impl->reassembly.clear();
     m_impl->acknowledgedChunks.clear();
@@ -178,6 +182,12 @@ void GameClient::Tick() {
             WorldTick worldTick = 0;
             if (DeserializeWorldTime(packet.payload, worldTick)) {
                 m_impl->worldInfo.worldTick = worldTick;
+            }
+        } else if (packet.header.id == PacketId::S2C_ItemPickup) {
+            ItemPickup pickup;
+            if (DeserializeItemPickup(packet.payload, pickup) &&
+                m_impl->receivedItemPickupSequences.insert(packet.header.sequenceNum).second) {
+                m_impl->receivedItemPickups.push_back(pickup);
             }
         } else if (packet.header.id == PacketId::S2C_ChunkData) {
             ChunkFragment fragment;
@@ -242,6 +252,12 @@ void GameClient::SendBlockModify(const BlockModify& modify) {
     }
 }
 
+void GameClient::SendInventoryState(const InventoryState& inventory) {
+    if (m_impl->connected && m_impl->receivedConnectAck) {
+        SendPacket(*m_impl, PacketId::C2S_InventoryState, SerializeInventoryState(inventory));
+    }
+}
+
 bool GameClient::IsConnected() const noexcept { return m_impl->connected; }
 
 bool GameClient::HasReceivedConnectAck() const noexcept { return m_impl->receivedConnectAck; }
@@ -260,6 +276,12 @@ std::vector<BlockModify> GameClient::TakeReceivedBlockUpdates() {
     std::vector<BlockModify> updates;
     updates.swap(m_impl->receivedBlockUpdates);
     return updates;
+}
+
+std::vector<ItemPickup> GameClient::TakeReceivedItemPickups() {
+    std::vector<ItemPickup> pickups;
+    pickups.swap(m_impl->receivedItemPickups);
+    return pickups;
 }
 
 std::vector<NetworkChunk> GameClient::TakeCompletedChunks() {

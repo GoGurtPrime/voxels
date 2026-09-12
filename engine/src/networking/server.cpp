@@ -39,7 +39,10 @@ public:
         std::uint32_t playerId = 0;
         bool inProcess = false;
         bool hasMoved = false;
+        bool inventoryReady = false;
+        std::uint32_t lastInventorySequence = 0;
         int rejectStreak = 0;
+        gameplay::Inventory inventory;
         std::unordered_set<ChunkCoordinate, ChunkCoordinateHash> syncedChunks;
         std::unordered_map<ChunkCoordinate, InFlightChunk, ChunkCoordinateHash> inFlightChunks;
     };
@@ -47,6 +50,8 @@ public:
     asio::io_context ioContext;
     asio::ip::udp::socket socket{ioContext};
     World world;
+    gameplay::ItemDropSimulation itemDrops;
+    const BlockRegistry* blockRegistry = nullptr;
     WorldOptions worldOptions{};
     Vec3 worldSpawn{};
     WorldTick worldTick = kInitialWorldTick;
@@ -268,6 +273,7 @@ void GameServer::Stop() {
     m_impl->playerStates.clear();
     m_impl->newlyGeneratedChunks.clear();
     m_impl->remoteBlockEdits.clear();
+    m_impl->itemDrops.Clear();
     m_impl->worldReady = false;
     m_impl->running = false;
 }
@@ -291,6 +297,10 @@ void GameServer::SetWorldReady(const WorldOptions& options, const Vec3& spawn, W
     }
 }
 
+void GameServer::SetBlockRegistry(const BlockRegistry* registry) noexcept {
+    m_impl->blockRegistry = registry;
+}
+
 void GameServer::ClearWorld() {
     std::vector<std::uint32_t> departedIds;
     for (auto peer = m_impl->peers.begin(); peer != m_impl->peers.end();) {
@@ -310,6 +320,7 @@ void GameServer::ClearWorld() {
         BroadcastPlayerLeft(*m_impl, playerId);
     }
     m_impl->world.Clear();
+    m_impl->itemDrops.Clear();
     m_impl->newlyGeneratedChunks.clear();
     m_impl->worldReady = false;
 }
@@ -375,7 +386,7 @@ void GameServer::Tick(bool advanceWorldTime) {
                     }
                 }
                 const std::uint32_t playerId = m_impl->nextPlayerId++;
-                Impl::Peer peer{sender, now, playerId, inProcess, false, 0, {}, {}};
+                Impl::Peer peer{sender, now, playerId, inProcess, false, false, 0, 0, {}, {}, {}};
                 m_impl->peers.emplace(key, std::move(peer));
                 EntityState initialState{playerId, {}};
                 if (m_impl->worldReady) initialState.movement.position = m_impl->worldSpawn;
@@ -415,13 +426,40 @@ void GameServer::Tick(bool advanceWorldTime) {
                     !IsEditInReach(m_impl->playerStates.at(peer->second.playerId).movement, modify)) {
                     continue;
                 }
-                m_impl->world.SetBlock(modify.position, modify.blockId);
+                const BlockId replacedBlock = m_impl->world.GetBlock(modify.position);
+                if (!m_impl->world.SetBlock(modify.position, modify.blockId)) continue;
+                m_impl->itemDrops.ResolveAfterBlockEdit(m_impl->world, m_impl->blockRegistry, modify.position);
+                if (!peer->second.inProcess && modify.blockId == static_cast<BlockId>(BlockType::Air) &&
+                    m_impl->blockRegistry != nullptr) {
+                    const BlockDefinition* definition = m_impl->blockRegistry->GetDefinition(replacedBlock);
+                    if (definition != nullptr) {
+                        const Vec3 origin{static_cast<float>(modify.position.x) + 0.5f,
+                                          static_cast<float>(modify.position.y) + 0.5f,
+                                          static_cast<float>(modify.position.z) + 0.5f};
+                        for (const BlockDrop& drop : definition->drops) {
+                            const BlockDefinition* dropped = m_impl->blockRegistry->GetDefinition(drop.item);
+                            if (dropped != nullptr) {
+                                m_impl->itemDrops.Spawn({dropped->id, drop.count}, origin, {0.0f, 2.2f, 0.0f});
+                            }
+                        }
+                    }
+                }
                 if (!peer->second.inProcess) m_impl->remoteBlockEdits.push_back(modify);
                 const std::vector<std::uint8_t> payload = SerializeBlockModify(modify);
                 for (const auto& [peerKey, connectedPeer] : m_impl->peers) {
                     (void)peerKey;
                     SendPacket(*m_impl, connectedPeer.endpoint, PacketId::S2C_BlockUpdate, payload);
                 }
+            } else if (packet.header.id == PacketId::C2S_InventoryState) {
+                if (packet.header.sequenceNum <= peer->second.lastInventorySequence) continue;
+                InventoryState inventoryState;
+                if (!DeserializeInventoryState(packet.payload, inventoryState)) continue;
+                for (std::size_t slot = 0; slot < inventoryState.slots.size(); ++slot) {
+                    const InventorySlotState& source = inventoryState.slots[slot];
+                    peer->second.inventory.GetSlot(slot) = {source.blockId, static_cast<int>(source.count)};
+                }
+                peer->second.inventoryReady = true;
+                peer->second.lastInventorySequence = packet.header.sequenceNum;
             } else if (packet.header.id == PacketId::C2S_ChunkAck) {
                 Vec3I coordinate;
                 if (!DeserializeVec3I(packet.payload, coordinate)) continue;
@@ -450,6 +488,31 @@ void GameServer::Tick(bool advanceWorldTime) {
         BroadcastPlayerLeft(*m_impl, playerId);
     }
     if (m_impl->worldReady) {
+        std::vector<Vec3> playerPositions;
+        playerPositions.reserve(m_impl->playerStates.size());
+        for (const auto& [playerId, state] : m_impl->playerStates) {
+            (void)playerId;
+            playerPositions.push_back(state.movement.position);
+        }
+        m_impl->itemDrops.Update(m_impl->world, m_impl->blockRegistry, 1.0f / 60.0f, playerPositions);
+        std::vector<Impl::Peer*> pickupOrder;
+        pickupOrder.reserve(m_impl->peers.size());
+        for (auto& [key, peer] : m_impl->peers) {
+            (void)key;
+            if (peer.inventoryReady) pickupOrder.push_back(&peer);
+        }
+        std::sort(pickupOrder.begin(), pickupOrder.end(), [](const Impl::Peer* left, const Impl::Peer* right) {
+            return left->playerId < right->playerId;
+        });
+        for (Impl::Peer* peer : pickupOrder) {
+            const auto state = m_impl->playerStates.find(peer->playerId);
+            if (state == m_impl->playerStates.end()) continue;
+            for (const gameplay::ItemStack& stack :
+                 m_impl->itemDrops.CollectPickups(state->second.movement.position, peer->inventory)) {
+                SendPacket(*m_impl, peer->endpoint, PacketId::S2C_ItemPickup,
+                           SerializeItemPickup({stack.blockId, static_cast<std::uint16_t>(stack.count)}));
+            }
+        }
         if (advanceWorldTime && !m_impl->worldOptions.alwaysSunny) {
             ++m_impl->worldTick;
         }
@@ -482,6 +545,10 @@ std::size_t GameServer::PeerCount() const noexcept { return m_impl->peers.size()
 World& GameServer::GetWorld() noexcept { return m_impl->world; }
 
 const World& GameServer::GetWorld() const noexcept { return m_impl->world; }
+
+gameplay::ItemDropSimulation& GameServer::GetItemDrops() noexcept { return m_impl->itemDrops; }
+
+const gameplay::ItemDropSimulation& GameServer::GetItemDrops() const noexcept { return m_impl->itemDrops; }
 
 const std::unordered_map<std::uint32_t, EntityState>& GameServer::GetPlayerStates() const noexcept {
     return m_impl->playerStates;

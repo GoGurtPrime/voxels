@@ -74,6 +74,11 @@ void GameSession::SetInputManager(InputManager* inputManager) noexcept {
     m_input = inputManager;
 }
 
+void GameSession::SetAuthoritativeItemDrops(gameplay::ItemDropSimulation* itemDrops) noexcept {
+    m_itemDrops = itemDrops == nullptr ? &m_ownedItemDrops : itemDrops;
+    m_itemDropsAdvancedExternally = itemDrops != nullptr;
+}
+
 void GameSession::SetBlockRegistry(const BlockRegistry* registry) noexcept {
     m_registry = registry;
 }
@@ -237,6 +242,15 @@ void GameSession::Update(float deltaSeconds) {
     }
     EnsureChunkResidentAroundPlayer();
 
+    if (m_networkClient != nullptr) {
+        for (const networking::ItemPickup& pickup : m_networkClient->TakeReceivedItemPickups()) {
+            const int overflow = m_player.state.inventory.AddItem(pickup.blockId, static_cast<int>(pickup.count));
+            if (overflow > 0) {
+                m_itemDrops->Spawn({pickup.blockId, overflow}, m_player.state.position, {}, 0.25f);
+            }
+        }
+    }
+
     if (m_input != nullptr) {
         const InputState input = m_input->GetInputState();
         const bool wasGrounded = m_player.state.onGround;
@@ -295,6 +309,7 @@ void GameSession::Update(float deltaSeconds) {
                     if (m_breakProgress >= 1.0f) {
                         const gameplay::InteractionResult result = m_blockInteraction.BreakBlock(*m_world, m_target, *m_registry);
                         if (result.success) {
+                            m_itemDrops->ResolveAfterBlockEdit(*m_world, m_registry, result.targetPosition);
                             static std::mt19937 scatterRng{std::random_device{}()};
                             std::uniform_real_distribution<float> scatter(-1.2f, 1.2f);
                             const Vec3 dropOrigin{static_cast<float>(result.targetPosition.x) + 0.5f,
@@ -303,8 +318,10 @@ void GameSession::Update(float deltaSeconds) {
                             for (const BlockDrop& drop : definition->drops) {
                                 const BlockDefinition* dropDefinition = m_registry->GetDefinition(drop.item);
                                 if (dropDefinition != nullptr) {
-                                    m_itemDrops.Spawn({dropDefinition->id, drop.count}, dropOrigin,
-                                                      {scatter(scatterRng), 2.2f, scatter(scatterRng)});
+                                    if (!m_remoteWorld) {
+                                        m_itemDrops->Spawn({dropDefinition->id, drop.count}, dropOrigin,
+                                                           {scatter(scatterRng), 2.2f, scatter(scatterRng)});
+                                    }
                                 }
                             }
                             m_editedBlocks.push_back(result.targetPosition);
@@ -330,6 +347,7 @@ void GameSession::Update(float deltaSeconds) {
             if (input.placeBlock && m_target.hit && m_placeCooldown <= 0.0f) {
                 const gameplay::InteractionResult result = m_blockInteraction.PlaceBlock(*m_world, m_player, m_target, *m_registry);
                 if (result.success) {
+                    m_itemDrops->ResolveAfterBlockEdit(*m_world, m_registry, result.adjacentPosition);
                     if (!m_worldOptions.sandboxMode) {
                         const bool removed = m_player.state.inventory.RemoveItem(
                             static_cast<std::size_t>(m_player.state.inventory.GetSelectedSlot()), 1);
@@ -367,14 +385,9 @@ void GameSession::Update(float deltaSeconds) {
         m_hasBreakTarget = false;
     }
 
-    m_itemDrops.Update(*m_world, m_registry, deltaSeconds);
-    for (const gameplay::ItemStack& pickedUp : m_itemDrops.CollectPickups(m_player.state.position)) {
-        const int overflow = m_player.state.inventory.AddItem(pickedUp.blockId, pickedUp.count);
-        if (overflow > 0) {
-            // Inventory is full: leave the remainder on the ground with a short delay so it
-            // doesn't repeatedly bounce in and out every frame.
-            m_itemDrops.Spawn({pickedUp.blockId, overflow}, m_player.state.position, Vec3{0.0f, 1.0f, 0.0f}, 1.0f);
-        }
+    if (!m_itemDropsAdvancedExternally) {
+        m_itemDrops->Update(*m_world, m_registry, deltaSeconds, &m_player.state.position);
+        (void)m_itemDrops->CollectPickups(m_player.state.position, m_player.state.inventory);
     }
 
     m_camera.position = glm::vec3(m_player.state.position.x,
@@ -383,6 +396,12 @@ void GameSession::Update(float deltaSeconds) {
     m_camera.yaw = m_player.state.yaw;
     m_camera.pitch = m_player.state.pitch;
     if (m_networkClient != nullptr && m_networkClient->HasReceivedConnectAck()) {
+        networking::InventoryState inventoryState;
+        for (std::size_t slot = 0; slot < gameplay::Inventory::kSlotCount; ++slot) {
+            const gameplay::ItemStack& stack = m_player.state.inventory.GetSlot(slot);
+            inventoryState.slots[slot] = {stack.blockId, static_cast<std::uint16_t>(std::max(0, stack.count))};
+        }
+        m_networkClient->SendInventoryState(inventoryState);
         m_networkClient->SendPlayerMove({m_player.state.position,
                                          {m_player.state.yaw, m_player.state.pitch, 0.0f},
                                          m_player.state.velocity});
@@ -390,7 +409,7 @@ void GameSession::Update(float deltaSeconds) {
 }
 
 int GameSession::DropInventorySlot(std::size_t slot, int count) {
-    if (slot >= gameplay::Inventory::kSlotCount || count <= 0) return 0;
+    if (m_remoteWorld || slot >= gameplay::Inventory::kSlotCount || count <= 0) return 0;
     gameplay::ItemStack& stack = m_player.state.inventory.GetSlot(slot);
     if (stack.IsEmpty()) return 0;
     const BlockId droppedBlockId = stack.blockId;
@@ -401,8 +420,8 @@ int GameSession::DropInventorySlot(std::size_t slot, int count) {
     const Vec3 tossOrigin{m_player.state.position.x + forward.x * 0.4f,
                           m_player.state.position.y + 0.2f,
                           m_player.state.position.z + forward.z * 0.4f};
-    m_itemDrops.Spawn({droppedBlockId, toDrop}, tossOrigin,
-                      {forward.x * 0.6f, 2.0f, forward.z * 0.6f}, 0.75f);
+    m_itemDrops->Spawn({droppedBlockId, toDrop}, tossOrigin,
+                       {forward.x * 0.6f, 2.0f, forward.z * 0.6f}, 0.75f);
     return toDrop;
 }
 
@@ -419,7 +438,15 @@ void GameSession::Shutdown() noexcept {
     m_world = nullptr;
     m_ownedWorld.reset();
     m_player = Player{};
+    m_itemDrops->Clear();
+    m_ownedItemDrops.Clear();
+    m_itemDrops = &m_ownedItemDrops;
+    m_itemDropsAdvancedExternally = false;
     m_playerStateRestored = false;
+}
+
+void GameSession::ResolveItemDropsAfterBlockEdit(const Vec3I& editedBlock) {
+    if (m_world != nullptr) m_itemDrops->ResolveAfterBlockEdit(*m_world, m_registry, editedBlock);
 }
 
 World& GameSession::GetWorld() noexcept {

@@ -154,6 +154,43 @@ bool DeserializeBlockModify(std::span<const std::uint8_t> bytes, BlockModify& mo
            offset == bytes.size();
 }
 
+std::vector<std::uint8_t> SerializeInventoryState(const InventoryState& inventory) {
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(kNetworkInventorySlotCount * 6);
+    for (const InventorySlotState& slot : inventory.slots) {
+        WriteUnsigned(bytes, slot.blockId);
+        WriteUnsigned(bytes, slot.count);
+    }
+    return bytes;
+}
+
+bool DeserializeInventoryState(std::span<const std::uint8_t> bytes, InventoryState& inventory) {
+    std::size_t offset = 0;
+    for (InventorySlotState& slot : inventory.slots) {
+        if (!ReadUnsigned(bytes, offset, slot.blockId) || !ReadUnsigned(bytes, offset, slot.count) ||
+            slot.count > 64 ||
+            ((slot.count == 0) != (slot.blockId == static_cast<BlockId>(BlockType::Air)))) {
+            return false;
+        }
+    }
+    return offset == bytes.size();
+}
+
+std::vector<std::uint8_t> SerializeItemPickup(const ItemPickup& pickup) {
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(6);
+    WriteUnsigned(bytes, pickup.blockId);
+    WriteUnsigned(bytes, pickup.count);
+    return bytes;
+}
+
+bool DeserializeItemPickup(std::span<const std::uint8_t> bytes, ItemPickup& pickup) {
+    std::size_t offset = 0;
+    return ReadUnsigned(bytes, offset, pickup.blockId) && ReadUnsigned(bytes, offset, pickup.count) &&
+           pickup.blockId != static_cast<BlockId>(BlockType::Air) && pickup.count > 0 &&
+           pickup.count <= 64 && offset == bytes.size();
+}
+
 std::vector<std::uint8_t> SerializeConnectAccept(const ConnectAccept& accept) {
     std::vector<std::uint8_t> bytes;
     bytes.reserve(72);

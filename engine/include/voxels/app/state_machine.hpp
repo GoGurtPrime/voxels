@@ -318,6 +318,9 @@ class InGameState final : public IAppState {public:
     [[nodiscard]] const Player& GetPlayer() const noexcept { return m_session.GetPlayer(); }
     [[nodiscard]] Player& GetPlayer() noexcept { return m_session.GetPlayer(); }
     [[nodiscard]] graphics::ChunkRenderer* GetChunkRenderer() const noexcept { return m_chunkRenderer.get(); }
+    [[nodiscard]] const gameplay::ItemDropSimulationMetrics& GetItemDropMetrics() const noexcept {
+        return m_session.GetItemDropMetrics();
+    }
     [[nodiscard]] bool IsRemoteSession() const noexcept { return m_remoteSession; }
     [[nodiscard]] const GameSave& GetActiveSave() const noexcept { return m_activeSave; }
     [[nodiscard]] WorldTick GetWorldTick() const noexcept;

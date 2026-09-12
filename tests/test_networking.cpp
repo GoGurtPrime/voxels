@@ -43,6 +43,22 @@ TEST_CASE("Packet.Serialization", "[networking][packet]") {
     REQUIRE(voxels::networking::DeserializeBlockModify(packet.payload, decoded));
     REQUIRE(decoded.position == source.position);
     REQUIRE(decoded.blockId == source.blockId);
+
+    voxels::networking::InventoryState inventory;
+    inventory.slots[0] = {static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 17};
+    const auto inventoryBytes = voxels::networking::SerializeInventoryState(inventory);
+    voxels::networking::InventoryState decodedInventory;
+    REQUIRE(voxels::networking::DeserializeInventoryState(inventoryBytes, decodedInventory));
+    REQUIRE(decodedInventory.slots[0].blockId == inventory.slots[0].blockId);
+    REQUIRE(decodedInventory.slots[0].count == 17);
+
+    const voxels::networking::ItemPickup pickup{
+        static_cast<voxels::BlockId>(voxels::BlockType::Coal), 3};
+    const auto pickupBytes = voxels::networking::SerializeItemPickup(pickup);
+    voxels::networking::ItemPickup decodedPickup;
+    REQUIRE(voxels::networking::DeserializeItemPickup(pickupBytes, decodedPickup));
+    REQUIRE(decodedPickup.blockId == pickup.blockId);
+    REQUIRE(decodedPickup.count == pickup.count);
 }
 
 TEST_CASE("Packet.VersionMismatchAndOversizedPayloadAreRejected", "[networking][packet]") {
@@ -419,6 +435,78 @@ TEST_CASE("Connection.ClosingHostedWorldDisconnectsRemotePeers", "[networking]")
     REQUIRE(server.PeerCount() == 1);
     // The remaining host learned the remote player left.
     REQUIRE_FALSE(host.TakeDepartedPlayers().empty());
+}
+
+TEST_CASE("ItemDrop.RemoteBreakSpawnsOnceAndHostedWorldTeardownClearsIt",
+          "[networking][item_drop]") {
+    voxels::networking::GameServer server;
+    REQUIRE(server.Start("127.0.0.1", 0));
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    server.SetBlockRegistry(&registry);
+    const voxels::Vec3I target{0, 1, 0};
+    REQUIRE(server.GetWorld().SetBlock(target,
+        static_cast<voxels::BlockId>(voxels::BlockType::Stone)));
+    server.SetWorldReady({}, {0.5f, 1.9f, 0.5f});
+
+    voxels::networking::GameClient remote;
+    REQUIRE(remote.Connect("127.0.0.1", server.Port(), voxels::networking::ClientKind::Remote));
+    server.Tick();
+    remote.Tick();
+    REQUIRE(remote.HasReceivedConnectAck());
+
+    remote.SendBlockModify({target, static_cast<voxels::BlockId>(voxels::BlockType::Air)});
+    server.Tick();
+    REQUIRE(server.GetItemDrops().Drops().size() == 1);
+    const std::uint32_t authoritativeDropId = server.GetItemDrops().Drops().front().id;
+
+    remote.SendBlockModify({target, static_cast<voxels::BlockId>(voxels::BlockType::Air)});
+    server.Tick();
+    REQUIRE(server.GetItemDrops().Drops().size() == 1);
+    REQUIRE(server.GetItemDrops().Drops().front().id == authoritativeDropId);
+
+    server.ClearWorld();
+    REQUIRE(server.GetItemDrops().Drops().empty());
+}
+
+TEST_CASE("ItemDrop.ServerPickupWaitsForCapacityAndGrantsClientOnce",
+          "[networking][item_drop][inventory]") {
+    voxels::networking::GameServer server;
+    REQUIRE(server.Start("127.0.0.1", 0));
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    server.SetBlockRegistry(&registry);
+    server.SetWorldReady({}, {0.5f, 1.18f, 0.5f});
+    server.GetWorld().SetBlock({0, 0, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+
+    voxels::networking::GameClient client;
+    REQUIRE(client.Connect("127.0.0.1", server.Port(), voxels::networking::ClientKind::Remote));
+    Service(server, client);
+    REQUIRE(client.HasReceivedConnectAck());
+
+    voxels::networking::InventoryState fullInventory;
+    for (auto& slot : fullInventory.slots) {
+        slot = {static_cast<voxels::BlockId>(voxels::BlockType::Stone), 64};
+    }
+    client.SendInventoryState(fullInventory);
+    Service(server, client);
+    const std::uint32_t dropId = server.GetItemDrops().Spawn(
+        {static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 5}, {0.5f, 1.18f, 0.5f}, {});
+
+    Service(server, client);
+    REQUIRE(server.GetItemDrops().Drops().size() == 1);
+    REQUIRE(server.GetItemDrops().Drops().front().id == dropId);
+    REQUIRE(client.TakeReceivedItemPickups().empty());
+
+    fullInventory.slots[0] = {};
+    client.SendInventoryState(fullInventory);
+    Service(server, client);
+    const auto pickups = client.TakeReceivedItemPickups();
+    REQUIRE(pickups.size() == 1);
+    REQUIRE(pickups.front().blockId == static_cast<voxels::BlockId>(voxels::BlockType::Dirt));
+    REQUIRE(pickups.front().count == 5);
+    REQUIRE(server.GetItemDrops().Drops().empty());
+
+    Service(server, client);
+    REQUIRE(client.TakeReceivedItemPickups().empty());
 }
 
 TEST_CASE("Connection.DisconnectBroadcastsPlayerLeft", "[networking]") {

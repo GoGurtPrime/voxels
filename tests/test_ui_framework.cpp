@@ -596,6 +596,8 @@ TEST_CASE("DebugOverlay.RetainsLiveFrameStats", "[ui]") {
     metrics.frameMilliseconds = 16.67f;
     metrics.framesPerSecond = 60.0f;
     metrics.loadedChunks = 49;
+    metrics.activeItemDrops = 12;
+    metrics.itemDropUpdateMicroseconds = 87.5;
     metrics.glVendor = "Test Vendor";
     metrics.glRenderer = "Test Renderer";
     metrics.glVersion = "3.3";
@@ -605,6 +607,8 @@ TEST_CASE("DebugOverlay.RetainsLiveFrameStats", "[ui]") {
     REQUIRE(retained.frameMilliseconds == Catch::Approx(16.67f));
     REQUIRE(retained.framesPerSecond == Catch::Approx(60.0f));
     REQUIRE(retained.loadedChunks == 49);
+    REQUIRE(retained.activeItemDrops == 12);
+    REQUIRE(retained.itemDropUpdateMicroseconds == Catch::Approx(87.5));
     REQUIRE(retained.glVendor == "Test Vendor");
     REQUIRE(retained.glRenderer == "Test Renderer");
     REQUIRE(retained.glVersion == "3.3");
