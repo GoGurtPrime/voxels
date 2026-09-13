@@ -24,6 +24,13 @@
 namespace voxels {
 
 namespace {
+/// Splash-event hysteresis/cooldown: without these, bodyFraction hovering right at the tread
+/// ceiling or a swim-climb step edge crosses the bare `>0` boundary almost every tick, spamming
+/// the splash sound dozens of times a second instead of once per real entry/exit.
+constexpr float kSplashEnterFraction = 0.05f;
+constexpr float kSplashExitFraction = 0.01f;
+constexpr float kSplashCooldownSeconds = 0.35f;
+
 /// Counts orthogonally-adjacent solid blocks around `position` (6-connectivity, excluding
 /// `position` itself). Used as a cheap, real-geometry proxy for "this placement joined an
 /// existing structure" rather than a bare placed-block counter.
@@ -241,6 +248,7 @@ void GameSession::Update(float deltaSeconds) {
         return;
     }
     EnsureChunkResidentAroundPlayer();
+    m_splashCooldownSeconds = std::max(0.0f, m_splashCooldownSeconds - deltaSeconds);
 
     if (m_networkClient != nullptr) {
         for (const networking::ItemPickup& pickup : m_networkClient->TakeReceivedItemPickups()) {
@@ -282,10 +290,12 @@ void GameSession::Update(float deltaSeconds) {
         if (!wasGrounded && m_player.state.onGround && fallVelocity < -4.0f) {
             m_soundEvents.push_back({GameplaySoundEventType::Land, playerBlock, standingBlock});
         }
-        const bool inWater = submersion.bodyFraction > 0.0f;
-        if (inWater != m_wasInWater) {
+        const bool inWater = m_wasInWater ? submersion.bodyFraction > kSplashExitFraction
+                                          : submersion.bodyFraction > kSplashEnterFraction;
+        if (inWater != m_wasInWater && m_splashCooldownSeconds <= 0.0f) {
             m_soundEvents.push_back({GameplaySoundEventType::Splash, playerBlock, static_cast<BlockId>(BlockType::Water)});
             m_wasInWater = inWater;
+            m_splashCooldownSeconds = kSplashCooldownSeconds;
         }
         // Zero sky light with a solid roof overhead means no line to the open sky: a real,
         // world-data-driven signal for "the player is underground/in a cave", not a Y threshold.

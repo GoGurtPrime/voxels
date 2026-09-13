@@ -173,6 +173,7 @@ private:
     float m_placeCooldown = 0.0f;
     float m_footstepSeconds = 0.0f;
     bool m_wasInWater = false;
+    float m_splashCooldownSeconds = 0.0f;
     bool m_eyeSubmerged = false;
     float m_submersionFraction = 0.0f;
     std::vector<Vec3I> m_editedBlocks;

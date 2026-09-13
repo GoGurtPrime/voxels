@@ -106,6 +106,40 @@ TEST_CASE("Input.RebindingMoveForwardChangesResultingIntent", "[player][input]")
     REQUIRE_FALSE(rebound.moveBackward);
 }
 
+TEST_CASE("GameSession.HoldingSwimUpAtTheSurfaceDoesNotSpamSplashSounds", "[player][audio][swimming]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    for (int x = -3; x <= 3; ++x) {
+        for (int z = -3; z <= 3; ++z) {
+            world.SetBlock({x, 0, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+            for (int y = 1; y <= 6; ++y) {
+                world.SetBlock({x, y, z}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+            }
+        }
+    }
+    voxels::InputManager input;
+    input.BindAction("Jump", voxels::InputBinding{"", static_cast<int>(' '), 0, voxels::InputDeviceType::Keyboard});
+
+    voxels::GameSession session(&world);
+    session.SetBlockRegistry(&registry);
+    session.SetInputManager(&input);
+    session.SetPlayerSpawn(voxels::Vec3{0.5f, 2.5f, 0.5f});
+    session.Initialize();
+
+    input.InjectKeyEvent(static_cast<int>(' '), true);
+    for (int i = 0; i < 600; ++i) { // 10s at 60Hz: reaches and holds the tread ceiling
+        session.Update(1.0f / 60.0f);
+    }
+
+    int splashCount = 0;
+    for (const auto& event : session.GetSoundEvents()) {
+        if (event.type == voxels::GameplaySoundEventType::Splash) ++splashCount;
+    }
+    // Bare bodyFraction>0 crossings right at the tread ceiling used to fire dozens of splash
+    // events per second; hysteresis + a cooldown should keep this to at most one real transition.
+    REQUIRE(splashCount <= 1);
+}
+
 TEST_CASE("GameSession.SelectedItemLabelTracksSelectedSlotContents", "[player][inventory]") {
     voxels::World world;
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
