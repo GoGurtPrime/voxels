@@ -76,7 +76,7 @@ TEST_CASE("Save.PlayerStateRoundTripsIncludingInventory", "[persistence]") {
     source.yaw = 91.0f;
     source.pitch = -18.0f;
     source.health = 13;
-    source.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Stone), 23};
+    source.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Stone), 23, 87};
     source.inventory.SetSelectedSlot(0);
 
     REQUIRE(voxels::SavePlayerState(file, source));

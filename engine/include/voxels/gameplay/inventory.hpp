@@ -20,6 +20,7 @@ namespace voxels::gameplay {
 struct ItemStack {
     BlockId blockId = static_cast<BlockId>(BlockType::Air);
     int count = 0;
+    std::uint16_t durability = 0; ///< Remaining tool uses; zero means full durability until its first use.
 
     [[nodiscard]] bool IsEmpty() const noexcept { return count <= 0 || blockId == static_cast<BlockId>(BlockType::Air); }
     [[nodiscard]] bool operator==(const ItemStack&) const noexcept = default;

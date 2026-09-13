@@ -24,6 +24,7 @@
       "opaque": true,
       "liquid": false,
       "hardness": 1.5,
+      "metadata": { "tool_tag": "stone" },
       "light_emission": 0,
       "textures": { "all": "blocks/stone" },
       "render_type": "cube",
@@ -39,6 +40,7 @@
       "opaque": true,
       "liquid": false,
       "hardness": 0.5,
+      "metadata": { "tool_tag": "dirt" },
       "light_emission": 0,
       "textures": { "all": "blocks/dirt" },
       "render_type": "cube",
@@ -54,6 +56,7 @@
       "opaque": true,
       "liquid": false,
       "hardness": 0.6,
+      "metadata": { "tool_tag": "dirt" },
       "light_emission": 0,
       "textures": {
         "top": "blocks/grass_top",
@@ -74,6 +77,7 @@
       "opaque": true,
       "liquid": false,
       "hardness": 0.5,
+      "metadata": { "tool_tag": "dirt" },
       "light_emission": 0,
       "textures": { "all": "blocks/sand" },
       "render_type": "cube",
@@ -89,6 +93,7 @@
       "opaque": true,
       "liquid": false,
       "hardness": 0.6,
+      "metadata": { "tool_tag": "dirt" },
       "light_emission": 0,
       "textures": { "all": "blocks/gravel" },
       "render_type": "cube",
@@ -119,6 +124,7 @@
       "opaque": true,
       "liquid": false,
       "hardness": 3.0,
+      "metadata": { "tool_tag": "stone" },
       "light_emission": 0,
       "textures": { "all": "blocks/coal_ore" },
       "render_type": "cube",
@@ -134,6 +140,7 @@
       "opaque": true,
       "liquid": false,
       "hardness": 3.0,
+      "metadata": { "tool_tag": "stone" },
       "light_emission": 0,
       "textures": { "all": "blocks/iron_ore" },
       "render_type": "cube",
@@ -149,6 +156,7 @@
       "opaque": true,
       "liquid": false,
       "hardness": 2.0,
+      "metadata": { "tool_tag": "wood" },
       "light_emission": 0,
       "textures": {
         "top": "blocks/wood_log_top",
@@ -184,6 +192,7 @@
       "opaque": true,
       "liquid": false,
       "hardness": 2.0,
+      "metadata": { "tool_tag": "wood" },
       "light_emission": 0,
       "textures": { "all": "blocks/planks" },
       "render_type": "cube",
@@ -214,6 +223,7 @@
       "opaque": true,
       "liquid": false,
       "hardness": -1.0,
+      "metadata": { "tool_tag": "unbreakable" },
       "light_emission": 0,
       "textures": { "all": "blocks/bedrock" },
       "render_type": "cube",
@@ -316,6 +326,55 @@
       "model_id": null,
       "sounds": {},
       "drops": []
+    },
+    {
+      "id": "iron_axe", "numeric_id": 20, "display_name": "Iron Axe", "solid": false, "opaque": false, "liquid": false, "placeable": false, "hardness": -1.0, "light_emission": 0,
+      "textures": { "all": "blocks/iron_ore" }, "render_type": "model", "model_id": "models/pickaxe.vmdl", "sounds": {}, "drops": []
+    },
+    {
+      "id": "stone_pickaxe", "numeric_id": 21, "display_name": "Stone Pickaxe", "solid": false, "opaque": false, "liquid": false, "placeable": false, "hardness": -1.0, "light_emission": 0,
+      "textures": { "all": "blocks/stone" }, "render_type": "model", "model_id": "models/pickaxe.vmdl", "sounds": {}, "drops": []
+    },
+    {
+      "id": "iron_pickaxe", "numeric_id": 22, "display_name": "Iron Pickaxe", "solid": false, "opaque": false, "liquid": false, "placeable": false, "hardness": -1.0, "light_emission": 0,
+      "textures": { "all": "blocks/iron_ore" }, "render_type": "model", "model_id": "models/pickaxe.vmdl", "sounds": {}, "drops": []
+    },
+    {
+      "id": "stone_shovel", "numeric_id": 23, "display_name": "Stone Shovel", "solid": false, "opaque": false, "liquid": false, "placeable": false, "hardness": -1.0, "light_emission": 0,
+      "textures": { "all": "blocks/stone" }, "render_type": "model", "model_id": "models/pickaxe.vmdl", "sounds": {}, "drops": []
+    },
+    {
+      "id": "iron_shovel", "numeric_id": 24, "display_name": "Iron Shovel", "solid": false, "opaque": false, "liquid": false, "placeable": false, "hardness": -1.0, "light_emission": 0,
+      "textures": { "all": "blocks/iron_ore" }, "render_type": "model", "model_id": "models/pickaxe.vmdl", "sounds": {}, "drops": []
+    },
+    {
+      "id": "stone_sledgehammer", "numeric_id": 25, "display_name": "Stone Sledgehammer", "solid": false, "opaque": false, "liquid": false, "placeable": false, "hardness": -1.0, "light_emission": 0,
+      "textures": { "all": "blocks/stone" }, "render_type": "model", "model_id": "models/pickaxe.vmdl", "sounds": {}, "drops": []
+    },
+    {
+      "id": "iron_sledgehammer", "numeric_id": 26, "display_name": "Iron Sledgehammer", "solid": false, "opaque": false, "liquid": false, "placeable": false, "hardness": -1.0, "light_emission": 0,
+      "textures": { "all": "blocks/iron_ore" }, "render_type": "model", "model_id": "models/pickaxe.vmdl", "sounds": {}, "drops": []
+    },
+    {
+      "id": "stone_sword", "numeric_id": 27, "display_name": "Stone Sword", "solid": false, "opaque": false, "liquid": false, "placeable": false, "hardness": -1.0, "light_emission": 0,
+      "textures": { "all": "blocks/stone" }, "render_type": "model", "model_id": "models/pickaxe.vmdl", "sounds": {}, "drops": []
+    },
+    {
+      "id": "iron_sword", "numeric_id": 28, "display_name": "Iron Sword", "solid": false, "opaque": false, "liquid": false, "placeable": false, "hardness": -1.0, "light_emission": 0,
+      "textures": { "all": "blocks/iron_ore" }, "render_type": "model", "model_id": "models/pickaxe.vmdl", "sounds": {}, "drops": []
+    },
+    {
+      "id": "stone_hoe", "numeric_id": 29, "display_name": "Stone Hoe", "solid": false, "opaque": false, "liquid": false, "placeable": false, "hardness": -1.0, "light_emission": 0,
+      "textures": { "all": "blocks/stone" }, "render_type": "model", "model_id": "models/pickaxe.vmdl", "sounds": {}, "drops": []
+    },
+    {
+      "id": "iron_hoe", "numeric_id": 30, "display_name": "Iron Hoe", "solid": false, "opaque": false, "liquid": false, "placeable": false, "hardness": -1.0, "light_emission": 0,
+      "textures": { "all": "blocks/iron_ore" }, "render_type": "model", "model_id": "models/pickaxe.vmdl", "sounds": {}, "drops": []
+    },
+    {
+      "id": "tilled_soil", "numeric_id": 31, "display_name": "Tilled Soil", "solid": true, "opaque": true, "liquid": false, "hardness": 0.5, "light_emission": 0,
+      "metadata": { "tool_tag": "dirt", "tilled": "true" }, "textures": { "all": "blocks/dirt" }, "render_type": "cube", "model_id": null,
+      "sounds": { "break": "sfx/break_dirt", "step": "sfx/step_dirt", "place": "sfx/place_dirt" }, "drops": [{ "item": "dirt", "count": 1 }]
     }
   ]
 }

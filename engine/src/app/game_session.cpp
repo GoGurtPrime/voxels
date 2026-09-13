@@ -343,10 +343,28 @@ void GameSession::Update(float deltaSeconds) {
                         m_hasBreakTarget = true;
                         m_breakProgress = 0.0f;
                     }
-                    m_breakProgress += m_worldOptions.sandboxMode ? 1.0f : deltaSeconds / std::max(0.05f, definition->hardness);
+                    float miningMultiplier = 1.0f;
+                    if (m_toolCatalogue != nullptr) {
+                        const gameplay::ItemStack& held = m_player.state.inventory.GetSelectedStack();
+                        if (const gameplay::ToolDefinition* tool = held.IsEmpty() ? nullptr : m_toolCatalogue->FindByItem(held.blockId);
+                            tool != nullptr) {
+                            const auto tag = definition->metadata.find("tool_tag");
+                            miningMultiplier = m_toolCatalogue->MiningSpeedMultiplier(*tool, tag == definition->metadata.end() ? "" : tag->second);
+                        }
+                    }
+                    m_breakProgress += m_worldOptions.sandboxMode ? 1.0f :
+                        deltaSeconds * miningMultiplier / std::max(0.05f, definition->hardness);
                     if (m_breakProgress >= 1.0f) {
                         const gameplay::InteractionResult result = m_blockInteraction.BreakBlock(*m_world, m_target, *m_registry);
                         if (result.success) {
+                            if (m_toolCatalogue != nullptr) {
+                                gameplay::ItemStack& held = m_player.state.inventory.GetSlot(
+                                    static_cast<std::size_t>(m_player.state.inventory.GetSelectedSlot()));
+                                if (const gameplay::ToolDefinition* tool = held.IsEmpty() ? nullptr : m_toolCatalogue->FindByItem(held.blockId);
+                                    tool != nullptr) {
+                                    (void)m_toolCatalogue->ConsumeDurability(held, *tool);
+                                }
+                            }
                             m_itemDrops->ResolveAfterBlockEdit(*m_world, m_registry, result.targetPosition);
                             static std::mt19937 scatterRng{std::random_device{}()};
                             std::uniform_real_distribution<float> scatter(-1.2f, 1.2f);
@@ -383,6 +401,27 @@ void GameSession::Update(float deltaSeconds) {
                 m_hasBreakTarget = false;
             }
             if (input.placeBlock && m_target.hit && m_placeCooldown <= 0.0f) {
+                gameplay::ItemStack& heldStack = m_player.state.inventory.GetSlot(
+                    static_cast<std::size_t>(m_player.state.inventory.GetSelectedSlot()));
+                const gameplay::ToolDefinition* tool = m_toolCatalogue == nullptr || heldStack.IsEmpty()
+                    ? nullptr : m_toolCatalogue->FindByItem(heldStack.blockId);
+                const BlockId targetBlockId = m_world->GetBlock(m_target.blockPosition);
+                const BlockDefinition* targetDefinition = m_registry->GetDefinition(targetBlockId);
+                if (tool != nullptr && tool->kind == gameplay::ToolKind::Hoe && targetDefinition != nullptr &&
+                    (targetDefinition->name == "dirt" || targetDefinition->name == "grass")) {
+                    const BlockDefinition* tilledSoil = m_registry->GetDefinition("tilled_soil");
+                    const Vec3I above{m_target.blockPosition.x, m_target.blockPosition.y + 1, m_target.blockPosition.z};
+                    const BlockDefinition* aboveDefinition = m_registry->GetDefinition(m_world->GetBlock(above));
+                    if (tilledSoil != nullptr && (m_world->GetBlock(above) == static_cast<BlockId>(BlockType::Air) ||
+                        (aboveDefinition != nullptr && aboveDefinition->isReplaceable)) &&
+                        m_world->SetBlock(m_target.blockPosition, tilledSoil->id)) {
+                        (void)m_toolCatalogue->ConsumeDurability(heldStack, *tool);
+                        m_itemDrops->ResolveAfterBlockEdit(*m_world, m_registry, m_target.blockPosition);
+                        m_editedBlocks.push_back(m_target.blockPosition);
+                        m_soundEvents.push_back({GameplaySoundEventType::Place, m_target.blockPosition, tilledSoil->id});
+                        m_placeCooldown = tool->swingIntervalSeconds;
+                    }
+                } else {
                 const gameplay::InteractionResult result = m_blockInteraction.PlaceBlock(*m_world, m_player, m_target, *m_registry);
                 if (result.success) {
                     m_itemDrops->ResolveAfterBlockEdit(*m_world, m_registry, result.adjacentPosition);
@@ -400,6 +439,7 @@ void GameSession::Update(float deltaSeconds) {
                     if (m_networkClient != nullptr && m_networkClient->HasReceivedConnectAck()) {
                         m_networkClient->SendBlockModify({result.adjacentPosition, result.blockId});
                     }
+                }
                 }
             }
             if (input.dropItem && !m_dropItemHeldLastFrame) {
@@ -440,7 +480,7 @@ void GameSession::Update(float deltaSeconds) {
         networking::InventoryState inventoryState;
         for (std::size_t slot = 0; slot < gameplay::Inventory::kSlotCount; ++slot) {
             const gameplay::ItemStack& stack = m_player.state.inventory.GetSlot(slot);
-            inventoryState.slots[slot] = {stack.blockId, static_cast<std::uint16_t>(std::max(0, stack.count))};
+            inventoryState.slots[slot] = {stack.blockId, static_cast<std::uint16_t>(std::max(0, stack.count)), stack.durability};
         }
         m_networkClient->SendInventoryState(inventoryState);
         m_networkClient->SendPlayerMove({m_player.state.position,

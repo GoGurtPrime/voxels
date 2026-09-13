@@ -1,0 +1,16 @@
+{
+  "tools": [
+    { "id": "stone_axe", "item": "stone_axe", "kind": "axe", "tier": "stone", "max_durability": 132, "base_damage": 3, "swing_interval_seconds": 0.55, "mining_speed_multipliers": { "wood": 3.0, "stone": 0.7, "dirt": 0.8 } },
+    { "id": "iron_axe", "item": "iron_axe", "kind": "axe", "tier": "iron", "max_durability": 251, "base_damage": 5, "swing_interval_seconds": 0.48, "mining_speed_multipliers": { "wood": 5.0, "stone": 0.8, "dirt": 1.0 } },
+    { "id": "stone_pickaxe", "item": "stone_pickaxe", "kind": "pickaxe", "tier": "stone", "max_durability": 132, "base_damage": 3, "swing_interval_seconds": 0.55, "mining_speed_multipliers": { "stone": 3.0, "wood": 0.7, "dirt": 0.8 } },
+    { "id": "iron_pickaxe", "item": "iron_pickaxe", "kind": "pickaxe", "tier": "iron", "max_durability": 251, "base_damage": 5, "swing_interval_seconds": 0.48, "mining_speed_multipliers": { "stone": 5.0, "wood": 0.8, "dirt": 1.0 } },
+    { "id": "stone_shovel", "item": "stone_shovel", "kind": "shovel", "tier": "stone", "max_durability": 132, "base_damage": 2, "swing_interval_seconds": 0.55, "mining_speed_multipliers": { "dirt": 3.0, "stone": 0.6, "wood": 0.8 } },
+    { "id": "iron_shovel", "item": "iron_shovel", "kind": "shovel", "tier": "iron", "max_durability": 251, "base_damage": 3, "swing_interval_seconds": 0.48, "mining_speed_multipliers": { "dirt": 5.0, "stone": 0.7, "wood": 1.0 } },
+    { "id": "stone_sledgehammer", "item": "stone_sledgehammer", "kind": "sledgehammer", "tier": "stone", "max_durability": 180, "base_damage": 5, "swing_interval_seconds": 0.85, "mining_speed_multipliers": { "stone": 2.4, "wood": 1.0, "dirt": 1.0 } },
+    { "id": "iron_sledgehammer", "item": "iron_sledgehammer", "kind": "sledgehammer", "tier": "iron", "max_durability": 320, "base_damage": 7, "swing_interval_seconds": 0.75, "mining_speed_multipliers": { "stone": 4.0, "wood": 1.2, "dirt": 1.2 } },
+    { "id": "stone_sword", "item": "stone_sword", "kind": "sword", "tier": "stone", "max_durability": 132, "base_damage": 5, "swing_interval_seconds": 0.55, "mining_speed_multipliers": { "wood": 0.9, "stone": 0.6, "dirt": 0.8 } },
+    { "id": "iron_sword", "item": "iron_sword", "kind": "sword", "tier": "iron", "max_durability": 251, "base_damage": 7, "swing_interval_seconds": 0.48, "mining_speed_multipliers": { "wood": 1.0, "stone": 0.7, "dirt": 1.0 } },
+    { "id": "stone_hoe", "item": "stone_hoe", "kind": "hoe", "tier": "stone", "max_durability": 132, "base_damage": 1, "swing_interval_seconds": 0.55, "mining_speed_multipliers": { "dirt": 1.5, "wood": 0.7, "stone": 0.5 } },
+    { "id": "iron_hoe", "item": "iron_hoe", "kind": "hoe", "tier": "iron", "max_durability": 251, "base_damage": 1, "swing_interval_seconds": 0.48, "mining_speed_multipliers": { "dirt": 2.0, "wood": 0.8, "stone": 0.6 } }
+  ]
+}

@@ -24,6 +24,7 @@
 #include "voxels/gameplay/item_drop.hpp"
 #include "voxels/gameplay/physics.hpp"
 #include "voxels/gameplay/player.hpp"
+#include "voxels/gameplay/tool_catalogue.hpp"
 #include "voxels/input/input_manager.hpp"
 #include "voxels/networking/client.hpp"
 #include "voxels/platform/platform_services.hpp"
@@ -66,6 +67,8 @@ public:
     /// Remote worlds are streamed from the host server: no local generation or eviction.
     void SetRemoteWorld(bool remote) noexcept { m_remoteWorld = remote; }
     void SetBlockRegistry(const BlockRegistry* registry) noexcept;
+    /// Borrows immutable tool data loaded before gameplay starts; null disables tool effects.
+    void SetToolCatalogue(const gameplay::ToolCatalogue* catalogue) noexcept { m_toolCatalogue = catalogue; }
     /// Chunk generation jobs are queued here; without one, no new chunks are generated.
     void SetJobSystem(JobSystem* jobSystem) noexcept { m_jobSystem = jobSystem; }
     /// Optional: when set, real break/place/exploration events unlock the matching launch
@@ -172,6 +175,7 @@ private:
     bool m_playerStateRestored = false;
     bool m_initialized = false;
     const BlockRegistry* m_registry = nullptr;
+    const gameplay::ToolCatalogue* m_toolCatalogue = nullptr;
     IPlatformServices* m_platformServices = nullptr;
     gameplay::BlockInteraction m_blockInteraction{};
     RaycastHit m_target{};

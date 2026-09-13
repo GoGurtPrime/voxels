@@ -283,6 +283,7 @@ sequenceDiagram
     Srv->>Srv: clamp half-heart health; death preserves inventory and respawns at verified spawn
     Srv->>BI: if break/place requested
     BI->>W: DDA raycast from eye, max 5 blocks
+    BI->>BI: resolve selected tool id + target tool tag<br/>apply multiplier; consume durability only after success
     alt hit and cooldown elapsed
         BI->>W: SetBlock (break → Air, place → held block)
         W->>W: refresh edited skylight column across resident sections
@@ -290,6 +291,9 @@ sequenceDiagram
         W->>Drop: squeeze overlapping drops through<br/>nearest empty, collision-free block face
         W->>Snd: queue block break/place sound event
         Srv->>Cli: S2C_BlockEdit broadcast
+    end
+    opt held hoe targets eligible dirt or grass
+        BI->>W: set target to tilled_soil when its above cell is replaceable
     end
     Srv->>Drop: swept collision + bounded recovery<br/>2.25-block horizontal magnet + obstacle climb
     Cli->>Srv: C2S_InventoryState (fixed 36 slots)

@@ -84,6 +84,7 @@ inline constexpr std::size_t kNetworkInventorySlotCount = 36;
 struct InventorySlotState {
     BlockId blockId = static_cast<BlockId>(BlockType::Air);
     std::uint16_t count = 0;
+    std::uint16_t durability = 0;
 };
 
 struct InventoryState {

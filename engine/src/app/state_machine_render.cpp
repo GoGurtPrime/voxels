@@ -571,6 +571,7 @@ void InGameState::OnEnter() {
     if (m_registry != nullptr) {
         try {
             m_craftingService.LoadFromFile(Paths::AssetsDir() / "data" / "recipes.json", *m_registry);
+            m_toolCatalogue.LoadFromFile(Paths::AssetsDir() / "data" / "tools.json", *m_registry);
         } catch (const std::runtime_error& error) {
             RenderStateLog().Error(error.what());
             if (m_context != nullptr && m_context->requestTransition) {
@@ -604,6 +605,7 @@ void InGameState::OnEnter() {
     m_session.SetInputManager(m_inputManager);
     if (m_context != nullptr) m_session.SetNetworkClient(m_context->networkClient);
     m_session.SetBlockRegistry(m_registry);
+    m_session.SetToolCatalogue(&m_toolCatalogue);
     m_session.SetJobSystem(m_jobSystem.get());
     if (m_context != nullptr) m_session.SetPlatformServices(m_context->platformServices);
     if (m_context != nullptr && m_context->preferences != nullptr) m_session.SetPreferences(*m_context->preferences);
@@ -1214,6 +1216,7 @@ void InGameState::PublishHudModel(bool forcePublish) {
             {"selected", inventory.GetSelectedSlot() == static_cast<int>(slot)},
             {"blockId", stack.IsEmpty() ? 0 : static_cast<int>(stack.blockId)},
             {"count", stack.IsEmpty() ? 0 : stack.count},
+            {"durability", stack.IsEmpty() ? 0 : stack.durability},
             {"name", stack.IsEmpty() ? std::string{} : DisplayNameForBlock(m_registry, stack.blockId)}
         });
     }
@@ -1227,6 +1230,7 @@ void InGameState::PublishHudModel(bool forcePublish) {
             {"selected", inventory.GetSelectedSlot() == static_cast<int>(slot)},
             {"blockId", stack.IsEmpty() ? 0 : static_cast<int>(stack.blockId)},
             {"count", stack.IsEmpty() ? 0 : stack.count},
+            {"durability", stack.IsEmpty() ? 0 : stack.durability},
             {"name", stack.IsEmpty() ? std::string{} : DisplayNameForBlock(m_registry, stack.blockId)}
         });
     }
@@ -1279,7 +1283,8 @@ void InGameState::PublishHudModel(bool forcePublish) {
         {"heldItem", {
             {"empty", held.IsEmpty()},
             {"name", held.IsEmpty() ? std::string{} : DisplayNameForBlock(m_registry, held.blockId)},
-            {"count", held.IsEmpty() ? 0 : held.count}
+            {"count", held.IsEmpty() ? 0 : held.count},
+            {"durability", held.IsEmpty() ? 0 : held.durability}
         }},
         {"target", {
             {"hit", target.hit},

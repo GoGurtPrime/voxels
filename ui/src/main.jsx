@@ -659,6 +659,7 @@ function InventorySlot({ slot, selectable, moveSourceSlot, setMoveSourceSlot, se
       {selectable ? <span className="hud-slot-number">{index + 1}</span> : null}
       <span className="hud-slot-name">{slot.name || ""}</span>
       {hasItem ? <span className="hud-slot-count">{slot.count}</span> : null}
+      {Number(slot.durability) > 0 ? <span className="hud-slot-durability" title={`Durability ${slot.durability}`} /> : null}
       {hasItem ? (
         <span
           role="button"

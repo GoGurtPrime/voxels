@@ -45,10 +45,11 @@ TEST_CASE("Packet.Serialization", "[networking][packet]") {
     REQUIRE(decoded.blockId == source.blockId);
 
     voxels::networking::InventoryState inventory;
-    inventory.slots[0] = {static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 17};
+    inventory.slots[0] = {static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 17, 87};
     const auto inventoryBytes = voxels::networking::SerializeInventoryState(inventory);
     voxels::networking::InventoryState decodedInventory;
     REQUIRE(voxels::networking::DeserializeInventoryState(inventoryBytes, decodedInventory));
+    REQUIRE(decodedInventory.slots[0].durability == 87);
     REQUIRE(decodedInventory.slots[0].blockId == inventory.slots[0].blockId);
     REQUIRE(decodedInventory.slots[0].count == 17);
 

@@ -1262,6 +1262,17 @@ input[type="range"] { height: 34px; accent-color: var(--ui-amber); }
   opacity: 0.55;
 }
 
+.hud-slot-durability {
+  position: absolute;
+  right: clamp(6px, 0.6vmin, 10px);
+  bottom: clamp(6px, 0.6vmin, 10px);
+  width: 42%;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--ui-lime);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
 .hud-slot.selected {
   border-color: var(--ui-amber);
   background: linear-gradient(180deg, rgba(95, 70, 29, 0.82), rgba(39, 30, 15, 0.82));

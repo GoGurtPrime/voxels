@@ -226,18 +226,18 @@ Notes:
 ```json
 {
   "hotbar": [
-    { "slot": 0, "selected": true, "blockId": 1, "count": 32, "name": "Stone" }
+    { "slot": 0, "selected": true, "blockId": 21, "count": 1, "durability": 131, "name": "Stone Pickaxe" }
   ],
   "selectedSlot": 0,
   "inputMethod": "keyboard",
   "inventory": {
     "slots": [
-      { "slot": 0, "hotbar": true, "selected": true, "blockId": 1, "count": 32, "name": "Stone" },
+      { "slot": 0, "hotbar": true, "selected": true, "blockId": 21, "count": 1, "durability": 131, "name": "Stone Pickaxe" },
       { "slot": 9, "hotbar": false, "selected": false, "blockId": 0, "count": 0, "name": "" }
     ]
   },
   "selectedSlot": 0,
-  "heldItem": { "empty": false, "name": "Stone", "count": 32 },
+  "heldItem": { "empty": false, "name": "Stone Pickaxe", "count": 1, "durability": 131 },
   "target": { "hit": true, "name": "Stone", "breakProgress": 0.35 },
   "status": { "health": 16, "heartColor": "#d94352", "remoteSession": false },
   "chat": { "open": false },

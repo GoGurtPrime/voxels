@@ -381,6 +381,7 @@ private:
 
     GameSession m_session;
     gameplay::CraftingService m_craftingService;
+    gameplay::ToolCatalogue m_toolCatalogue;
     std::unique_ptr<JobSystem> m_jobSystem;
     std::unique_ptr<graphics::ChunkRenderer> m_chunkRenderer;
     std::unique_ptr<graphics::SkyRenderer> m_skyRenderer;

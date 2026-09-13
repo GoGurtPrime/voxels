@@ -27,7 +27,7 @@ constexpr std::uint32_t kSectorSize = 4096;
 constexpr std::uint32_t kRegionWidth = 32;
 constexpr std::uint32_t kRegionEntryCount = kRegionWidth * kRegionWidth;
 constexpr std::uint32_t kRegionVersion = 1;
-constexpr std::uint32_t kPlayerVersion = 1;
+constexpr std::uint32_t kPlayerVersion = 2;
 
 struct RegionEntry { std::uint32_t offset = 0; std::uint32_t sectors = 0; std::uint32_t timestamp = 0; std::uint32_t crc = 0; };
 
@@ -196,7 +196,11 @@ bool SavePlayerState(const std::filesystem::path& playerFile, const PlayerState&
     Append(bytes, state.onGround); Append(bytes, state.health);
     const std::int32_t selectedSlot = state.inventory.GetSelectedSlot(); Append(bytes, selectedSlot);
     const std::uint32_t count = static_cast<std::uint32_t>(state.inventory.Slots().size()); Append(bytes, count);
-    for (const auto& stack : state.inventory.Slots()) { Append(bytes, stack.blockId); Append(bytes, stack.count); }
+    for (const auto& stack : state.inventory.Slots()) {
+        Append(bytes, stack.blockId);
+        Append(bytes, stack.count);
+        Append(bytes, stack.durability);
+    }
     return AtomicWrite(playerFile, bytes);
 }
 
@@ -212,7 +216,8 @@ bool LoadPlayerState(const std::filesystem::path& playerFile, PlayerState& outSt
         !Read(bytes, cursor, selectedSlot) || !Read(bytes, cursor, count) || count != result.inventory.Slots().size()) return false;
     for (std::size_t index = 0; index < count; ++index) {
         gameplay::ItemStack stack{};
-        if (!Read(bytes, cursor, stack.blockId) || !Read(bytes, cursor, stack.count)) return false;
+        if (!Read(bytes, cursor, stack.blockId) || !Read(bytes, cursor, stack.count) ||
+            (version >= 2 && !Read(bytes, cursor, stack.durability))) return false;
         result.inventory.GetSlot(index) = stack;
     }
     result.inventory.SetSelectedSlot(selectedSlot);

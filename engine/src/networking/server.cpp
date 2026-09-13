@@ -456,7 +456,7 @@ void GameServer::Tick(bool advanceWorldTime) {
                 if (!DeserializeInventoryState(packet.payload, inventoryState)) continue;
                 for (std::size_t slot = 0; slot < inventoryState.slots.size(); ++slot) {
                     const InventorySlotState& source = inventoryState.slots[slot];
-                    peer->second.inventory.GetSlot(slot) = {source.blockId, static_cast<int>(source.count)};
+                    peer->second.inventory.GetSlot(slot) = {source.blockId, static_cast<int>(source.count), source.durability};
                 }
                 peer->second.inventoryReady = true;
                 peer->second.lastInventorySequence = packet.header.sequenceNum;

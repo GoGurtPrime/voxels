@@ -162,10 +162,11 @@ bool DeserializeBlockModify(std::span<const std::uint8_t> bytes, BlockModify& mo
 
 std::vector<std::uint8_t> SerializeInventoryState(const InventoryState& inventory) {
     std::vector<std::uint8_t> bytes;
-    bytes.reserve(kNetworkInventorySlotCount * 6);
+    bytes.reserve(kNetworkInventorySlotCount * 8);
     for (const InventorySlotState& slot : inventory.slots) {
         WriteUnsigned(bytes, slot.blockId);
         WriteUnsigned(bytes, slot.count);
+        WriteUnsigned(bytes, slot.durability);
     }
     return bytes;
 }
@@ -174,6 +175,7 @@ bool DeserializeInventoryState(std::span<const std::uint8_t> bytes, InventorySta
     std::size_t offset = 0;
     for (InventorySlotState& slot : inventory.slots) {
         if (!ReadUnsigned(bytes, offset, slot.blockId) || !ReadUnsigned(bytes, offset, slot.count) ||
+            !ReadUnsigned(bytes, offset, slot.durability) ||
             slot.count > 64 ||
             ((slot.count == 0) != (slot.blockId == static_cast<BlockId>(BlockType::Air)))) {
             return false;

@@ -31,6 +31,50 @@
       "ingredients": [{ "item": "planks", "count": 1 }, { "item": "stick", "count": 2 }, { "item": "stone", "count": 3 }],
       "output_item": "stone_axe",
       "output_count": 1
+    },
+    {
+      "id": "recipe_iron_axe", "icon": "stone_axe", "category": "tools",
+      "ingredients": [{ "item": "planks", "count": 1 }, { "item": "stick", "count": 2 }, { "item": "iron_ore", "count": 3 }], "output_item": "iron_axe", "output_count": 1
+    },
+    {
+      "id": "recipe_stone_pickaxe", "icon": "stone_axe", "category": "tools",
+      "ingredients": [{ "item": "planks", "count": 1 }, { "item": "stick", "count": 2 }, { "item": "stone", "count": 3 }], "output_item": "stone_pickaxe", "output_count": 1
+    },
+    {
+      "id": "recipe_iron_pickaxe", "icon": "stone_axe", "category": "tools",
+      "ingredients": [{ "item": "planks", "count": 1 }, { "item": "stick", "count": 2 }, { "item": "iron_ore", "count": 3 }], "output_item": "iron_pickaxe", "output_count": 1
+    },
+    {
+      "id": "recipe_stone_shovel", "icon": "stone_axe", "category": "tools",
+      "ingredients": [{ "item": "stick", "count": 2 }, { "item": "stone", "count": 1 }], "output_item": "stone_shovel", "output_count": 1
+    },
+    {
+      "id": "recipe_iron_shovel", "icon": "stone_axe", "category": "tools",
+      "ingredients": [{ "item": "stick", "count": 2 }, { "item": "iron_ore", "count": 1 }], "output_item": "iron_shovel", "output_count": 1
+    },
+    {
+      "id": "recipe_stone_sledgehammer", "icon": "stone_axe", "category": "tools",
+      "ingredients": [{ "item": "stick", "count": 2 }, { "item": "stone", "count": 4 }], "output_item": "stone_sledgehammer", "output_count": 1
+    },
+    {
+      "id": "recipe_iron_sledgehammer", "icon": "stone_axe", "category": "tools",
+      "ingredients": [{ "item": "stick", "count": 2 }, { "item": "iron_ore", "count": 4 }], "output_item": "iron_sledgehammer", "output_count": 1
+    },
+    {
+      "id": "recipe_stone_sword", "icon": "stone_axe", "category": "tools",
+      "ingredients": [{ "item": "stick", "count": 1 }, { "item": "stone", "count": 2 }], "output_item": "stone_sword", "output_count": 1
+    },
+    {
+      "id": "recipe_iron_sword", "icon": "stone_axe", "category": "tools",
+      "ingredients": [{ "item": "stick", "count": 1 }, { "item": "iron_ore", "count": 2 }], "output_item": "iron_sword", "output_count": 1
+    },
+    {
+      "id": "recipe_stone_hoe", "icon": "stone_axe", "category": "tools",
+      "ingredients": [{ "item": "stick", "count": 2 }, { "item": "stone", "count": 2 }], "output_item": "stone_hoe", "output_count": 1
+    },
+    {
+      "id": "recipe_iron_hoe", "icon": "stone_axe", "category": "tools",
+      "ingredients": [{ "item": "stick", "count": 2 }, { "item": "iron_ore", "count": 2 }], "output_item": "iron_hoe", "output_count": 1
     }
   ]
 }
