@@ -49,7 +49,7 @@ TEST_CASE("PlayerSave.RoundTrip", "[runtime][save]") {
     state.pitch = -15.5f;
     state.onGround = true;
     state.inventory.SetSelectedSlot(7);
-    state.health = 72.5f;
+    state.health = 12;
     state.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Stone), 17};
     state.inventory.GetSlot(1) = {static_cast<voxels::BlockId>(voxels::BlockType::TreeTrunk), 3};
     state.inventory.GetSlot(2) = {static_cast<voxels::BlockId>(voxels::BlockType::Leaf), 64};

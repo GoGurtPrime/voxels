@@ -1460,3 +1460,25 @@ nav.hud-hotbar + .hud-control-hints {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+.hud-hearts {
+  position: absolute;
+  top: clamp(14px, 2vmin, 30px);
+  left: var(--hud-space);
+  display: grid;
+  grid-template-columns: repeat(8, clamp(22px, 2.2vmin, 34px));
+  gap: clamp(3px, 0.35vmin, 6px);
+  pointer-events: none;
+}
+
+.hud-heart {
+  width: 100%;
+  aspect-ratio: 1;
+  clip-path: polygon(50% 94%, 8% 55%, 2% 27%, 16% 8%, 36% 8%, 50% 23%, 64% 8%, 84% 8%, 98% 27%, 92% 55%);
+  background: rgba(8, 12, 14, 0.9);
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: -2px;
+}
+
+.hud-heart.full { background: var(--heart-color); }
+.hud-heart.half { background: linear-gradient(90deg, var(--heart-color) 50%, rgba(8, 12, 14, 0.9) 50%); }

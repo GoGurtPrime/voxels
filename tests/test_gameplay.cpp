@@ -16,7 +16,32 @@
 #include "voxels/gameplay/camera_controller.hpp"
 #include "voxels/gameplay/physics.hpp"
 #include "voxels/gameplay/player.hpp"
+#include "voxels/app/game_session.hpp"
 #include "voxels/world/world.hpp"
+
+TEST_CASE("Health.AuthoritativeDamageInvulnerabilityAndRespawn", "[gameplay][health][damage][death]") {
+    voxels::World world;
+    voxels::GameSession session(&world);
+    session.SetPlayerSpawn(voxels::Vec3{4.5f, 12.0f, -3.5f});
+    session.GetPlayer().state.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Stone), 7};
+    session.Initialize();
+
+    REQUIRE(session.ApplyDamage(3, voxels::DamageSource::Fall));
+    REQUIRE(session.GetPlayer().state.health == 13);
+    REQUIRE_FALSE(session.ApplyDamage(1, voxels::DamageSource::Drowning));
+    REQUIRE(session.GetHealthEvents().size() == 1);
+    REQUIRE(session.GetHealthEvents().front().source == voxels::DamageSource::Fall);
+
+    session.Update(1.0f);
+    REQUIRE(session.ApplyDamage(13, voxels::DamageSource::Drowning));
+    const voxels::HealthEvent& death = session.GetHealthEvents().back();
+    REQUIRE(death.died);
+    REQUIRE(death.respawned);
+    REQUIRE(session.GetPlayer().state.health == 16);
+    REQUIRE(session.GetPlayer().state.position == voxels::Vec3{4.5f, 12.0f, -3.5f});
+    REQUIRE(session.GetPlayer().state.inventory.GetSlot(0).count == 7);
+    session.Shutdown();
+}
 
 TEST_CASE("Physics.GravityAndGroundedStop", "[gameplay][physics]") {
     voxels::World world;

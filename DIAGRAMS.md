@@ -279,6 +279,8 @@ sequenceDiagram
     Phy->>Phy: while submerged/mid-climb: scale horizontal speed,<br/>converge onto tread-water/underwater-step/ledge-climb ceiling (no free float),<br/>unstick onto a blocked one-block step once within a small gap of it
     Phy->>W: query solid AABBs in swept region
     Phy->>Phy: resolve per axis X, Z, Y, set onGround
+    Phy->>Srv: fall impact / depleted eye-submersion oxygen → ApplyDamage
+    Srv->>Srv: clamp half-heart health; death preserves inventory and respawns at verified spawn
     Srv->>BI: if break/place requested
     BI->>W: DDA raycast from eye, max 5 blocks
     alt hit and cooldown elapsed
@@ -293,7 +295,7 @@ sequenceDiagram
     Cli->>Srv: C2S_InventoryState (fixed 36 slots)
     Drop->>Srv: insert only into available inventory capacity
     Srv->>Cli: S2C_ItemPickup (accepted stack only)
-    Srv->>Cli: S2C_EntityState (authoritative transform)
+    Srv->>Cli: S2C_EntityState (authoritative transform + half-heart health)
     Cli->>Cli: reconcile prediction against authoritative state
     Phy->>Snd: footstep event on ground-contact cadence
 ```
@@ -553,7 +555,7 @@ sequenceDiagram
     end
     loop each simulation tick
         C->>S: C2S_PlayerMove {position, rotation, velocity}
-        S-->>C: S2C_EntityState (broadcast, delta-validated)
+        S-->>C: S2C_EntityState (broadcast, delta-validated, half-heart health)
     end
     C->>S: C2S_BlockModify {position, blockId}
     S-->>C: S2C_BlockUpdate (broadcast after reach validation)

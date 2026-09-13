@@ -124,17 +124,23 @@ bool DeserializePlayerMove(std::span<const std::uint8_t> bytes, PlayerMove& move
 
 std::vector<std::uint8_t> SerializeEntityState(const EntityState& state) {
     std::vector<std::uint8_t> bytes;
-    bytes.reserve(40);
+    bytes.reserve(41);
     WriteUnsigned(bytes, state.entityId);
     const std::vector<std::uint8_t> movement = SerializePlayerMove(state.movement);
     bytes.insert(bytes.end(), movement.begin(), movement.end());
+    bytes.push_back(std::min<std::uint8_t>(state.health, 16));
     return bytes;
 }
 
 bool DeserializeEntityState(std::span<const std::uint8_t> bytes, EntityState& state) {
     std::size_t offset = 0;
     if (!ReadUnsigned(bytes, offset, state.entityId)) return false;
-    return DeserializePlayerMove(bytes.subspan(offset), state.movement);
+    constexpr std::size_t kPlayerMoveBytes = 36;
+    if (bytes.size() != sizeof(state.entityId) + kPlayerMoveBytes + sizeof(state.health) ||
+        !DeserializePlayerMove(bytes.subspan(offset, kPlayerMoveBytes), state.movement)) return false;
+    offset += kPlayerMoveBytes;
+    state.health = bytes[offset];
+    return state.health <= 16;
 }
 
 std::vector<std::uint8_t> SerializeBlockModify(const BlockModify& modify) {
@@ -212,7 +218,7 @@ std::vector<std::uint8_t> SerializeConnectAccept(const ConnectAccept& accept) {
 }
 
 bool DeserializeConnectAccept(std::span<const std::uint8_t> bytes, ConnectAccept& accept) {
-    constexpr std::size_t kEntityStateBytes = 40;
+    constexpr std::size_t kEntityStateBytes = 41;
     if (bytes.size() < kEntityStateBytes + 1 ||
         !DeserializeEntityState(bytes.first(kEntityStateBytes), accept.state)) {
         return false;

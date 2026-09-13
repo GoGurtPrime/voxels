@@ -239,7 +239,7 @@ Notes:
   "selectedSlot": 0,
   "heldItem": { "empty": false, "name": "Stone", "count": 32 },
   "target": { "hit": true, "name": "Stone", "breakProgress": 0.35 },
-  "status": { "health": 100.0, "remoteSession": false },
+  "status": { "health": 16, "heartColor": "#d94352", "remoteSession": false },
   "chat": { "open": false },
   "crafting": {
     "open": false,

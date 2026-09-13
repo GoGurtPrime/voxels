@@ -1076,6 +1076,17 @@ void InGameState::Update(double deltaSeconds) {
     ObserveRemotePlayerPresence();
 
     m_session.Update(static_cast<float>(deltaSeconds));
+    for (const HealthEvent& event : m_session.GetHealthEvents()) {
+        if (event.died) {
+            PushHudNotification("You died and respawned at the world spawn.");
+        } else if (event.source == DamageSource::Drowning) {
+            PushHudNotification("You are drowning.", 2.0f);
+        } else if (event.source == DamageSource::Fall) {
+            PushHudNotification("Fall damage: " + std::to_string(event.amount / 2) +
+                                (event.amount % 2 == 0 ? " hearts." : " and a half hearts."), 2.0f);
+        }
+    }
+    m_session.ClearHealthEvents();
     if (m_context != nullptr && m_context->audio != nullptr && m_registry != nullptr) {
         const Camera& listener = m_session.GetCamera();
         const float cosPitch = std::cos(listener.pitch);
@@ -1344,7 +1355,8 @@ void InGameState::PublishHudModel(bool forcePublish) {
             {"breakProgress", std::clamp(m_session.GetBreakProgress(), 0.0f, 1.0f)}
         }},
         {"status", {
-            {"health", std::clamp(player.health, 0.0f, 100.0f)},
+            {"health", static_cast<int>(player.health)},
+            {"heartColor", preferences.heartColor},
             {"remoteSession", m_remoteSession}
         }},
         {"chat", {{"open", m_chatOpen}}},

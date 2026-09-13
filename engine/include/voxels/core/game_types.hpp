@@ -71,6 +71,7 @@ struct GamePreferences {
     float crosshairSize = 1.0f;      ///< Scalar applied to HUD crosshair rendering.
     bool highContrastCrosshair = false;
     bool reducedMotion = false;
+    std::string heartColor = "#d94352"; ///< Validated opaque RGB hex color for the gameplay hearts.
     /// Persisted so the first-run controls card (work_items/18 §4) is shown exactly once.
     bool controlsCardSeen = false;
     std::map<std::string, std::string> keyBindings; ///< Action name -> key name.

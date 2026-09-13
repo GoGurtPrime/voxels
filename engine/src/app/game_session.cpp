@@ -30,6 +30,10 @@ namespace {
 constexpr float kSplashEnterFraction = 0.05f;
 constexpr float kSplashExitFraction = 0.01f;
 constexpr float kSplashCooldownSeconds = 0.35f;
+constexpr float kDamageInvulnerabilitySeconds = 0.65f;
+constexpr float kDrowningGraceSeconds = 10.0f;
+constexpr float kDrowningDamageIntervalSeconds = 1.0f;
+constexpr float kFallDamageVelocityThreshold = 10.0f;
 
 /// Counts orthogonally-adjacent solid blocks around `position` (6-connectivity, excluding
 /// `position` itself). Used as a cheap, real-geometry proxy for "this placement joined an
@@ -120,6 +124,7 @@ void GameSession::SetPlayerSpawn(const Vec3I& spawn) {
 
 void GameSession::RestorePlayerState(const PlayerState& state) noexcept {
     m_player.state = state;
+    m_player.state.health = std::min(m_player.state.health, kMaximumHealth);
     m_spawnPosition = state.position;
     m_playerStateRestored = true;
 }
@@ -249,6 +254,7 @@ void GameSession::Update(float deltaSeconds) {
     }
     EnsureChunkResidentAroundPlayer();
     m_splashCooldownSeconds = std::max(0.0f, m_splashCooldownSeconds - deltaSeconds);
+    m_damageInvulnerabilitySeconds = std::max(0.0f, m_damageInvulnerabilitySeconds - deltaSeconds);
 
     if (m_networkClient != nullptr) {
         for (const networking::ItemPickup& pickup : m_networkClient->TakeReceivedItemPickups()) {
@@ -289,6 +295,24 @@ void GameSession::Update(float deltaSeconds) {
         }
         if (!wasGrounded && m_player.state.onGround && fallVelocity < -4.0f) {
             m_soundEvents.push_back({GameplaySoundEventType::Land, playerBlock, standingBlock});
+            if (!submersion.feetSubmerged && fallVelocity < -kFallDamageVelocityThreshold) {
+                const float excessVelocity = -fallVelocity - kFallDamageVelocityThreshold;
+                (void)ApplyDamage(static_cast<std::uint8_t>(std::clamp(std::ceil(excessVelocity), 1.0f, 15.0f)),
+                                  DamageSource::Fall);
+            }
+        }
+        if (submersion.eyeSubmerged) {
+            m_drowningSeconds += deltaSeconds;
+            if (m_drowningSeconds >= kDrowningGraceSeconds) {
+                m_drowningDamageSeconds += deltaSeconds;
+                if (m_drowningDamageSeconds >= kDrowningDamageIntervalSeconds) {
+                    (void)ApplyDamage(1, DamageSource::Drowning);
+                    m_drowningDamageSeconds = 0.0f;
+                }
+            }
+        } else {
+            m_drowningSeconds = 0.0f;
+            m_drowningDamageSeconds = 0.0f;
         }
         const bool inWater = m_wasInWater ? submersion.bodyFraction > kSplashExitFraction
                                           : submersion.bodyFraction > kSplashEnterFraction;
@@ -422,6 +446,33 @@ void GameSession::Update(float deltaSeconds) {
                                          {m_player.state.yaw, m_player.state.pitch, 0.0f},
                                          m_player.state.velocity});
     }
+}
+
+bool GameSession::ApplyDamage(std::uint8_t amount, DamageSource source, std::uint32_t instigator) {
+    if (amount == 0 || m_player.state.health == 0 || m_damageInvulnerabilitySeconds > 0.0f) return false;
+    const std::uint8_t applied = std::min(amount, m_player.state.health);
+    m_player.state.health = static_cast<std::uint8_t>(m_player.state.health - applied);
+    HealthEvent event{source, applied, instigator};
+    if (m_player.state.health == 0) {
+        event.died = true;
+        // Death preserves the current inventory, then restores a verified session spawn.
+        m_player.state.position = m_spawnPosition;
+        m_player.state.velocity = Vec3{0.0f};
+        m_player.state.onGround = false;
+        m_player.state.health = kMaximumHealth;
+        event.respawned = true;
+    }
+    m_damageInvulnerabilitySeconds = kDamageInvulnerabilitySeconds;
+    m_healthEvents.push_back(event);
+    return true;
+}
+
+bool GameSession::ApplyHealing(std::uint8_t amount, DamageSource source, std::uint32_t instigator) {
+    if (amount == 0 || m_player.state.health >= kMaximumHealth) return false;
+    const std::uint8_t applied = std::min<std::uint8_t>(amount, kMaximumHealth - m_player.state.health);
+    m_player.state.health = static_cast<std::uint8_t>(m_player.state.health + applied);
+    m_healthEvents.push_back({source, applied, instigator});
+    return true;
 }
 
 int GameSession::DropInventorySlot(std::size_t slot, int count) {

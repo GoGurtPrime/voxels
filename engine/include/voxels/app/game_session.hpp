@@ -104,6 +104,14 @@ public:
     [[nodiscard]] bool IsEyeSubmerged() const noexcept { return m_eyeSubmerged; }
     /// 0..1 fraction of the player's AABB height currently occupied by liquid blocks.
     [[nodiscard]] float GetSubmersionFraction() const noexcept { return m_submersionFraction; }
+    /// Applies damage in half-heart units. Repeated non-lethal damage is gated by the
+    /// invulnerability window; lethal damage always emits a death followed by a respawn.
+    [[nodiscard]] bool ApplyDamage(std::uint8_t amount, DamageSource source, std::uint32_t instigator = 0);
+    /// Restores health in half-heart units, clamped to the eight-heart maximum.
+    [[nodiscard]] bool ApplyHealing(std::uint8_t amount, DamageSource source, std::uint32_t instigator = 0);
+    /// Returns frame-local health/death transitions for the HUD and event feed.
+    [[nodiscard]] const std::vector<HealthEvent>& GetHealthEvents() const noexcept { return m_healthEvents; }
+    void ClearHealthEvents() noexcept { m_healthEvents.clear(); }
     /// Block positions edited since the caller last cleared; drives chunk remeshing.
     [[nodiscard]] const std::vector<Vec3I>& GetEditedBlocks() const noexcept { return m_editedBlocks; }
     void ClearEditedBlocks() noexcept { m_editedBlocks.clear(); }
@@ -142,6 +150,7 @@ private:
     static constexpr std::size_t kMaxCompletedChunksPerFrame = 1;
     static constexpr int kTerrainSectionCount = 8;
     static constexpr int kStreamingHysteresisChunks = 2;
+    static constexpr std::uint8_t kMaximumHealth = 16;
 
     struct PendingChunkJob {
         ChunkCoordinate coordinate{};
@@ -176,6 +185,10 @@ private:
     float m_splashCooldownSeconds = 0.0f;
     bool m_eyeSubmerged = false;
     float m_submersionFraction = 0.0f;
+    float m_damageInvulnerabilitySeconds = 0.0f;
+    float m_drowningSeconds = 0.0f;
+    float m_drowningDamageSeconds = 0.0f;
+    std::vector<HealthEvent> m_healthEvents;
     std::vector<Vec3I> m_editedBlocks;
     std::vector<GameplaySoundEvent> m_soundEvents;
     std::vector<Vec3I> m_particleBursts;

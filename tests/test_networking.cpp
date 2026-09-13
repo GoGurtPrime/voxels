@@ -197,7 +197,7 @@ TEST_CASE("Multiplayer.HeadlessClientsReplicateMovementAndBlockEdits", "[network
 }
 
 TEST_CASE("Protocol.ConnectAcceptRoundTripsWorldInfo", "[networking][packet]") {
-    voxels::networking::ConnectAccept source{{7, {{1.5f, 40.0f, -3.5f}, {0.4f, -0.1f, 0.0f}, {}}}, true, {}};
+    voxels::networking::ConnectAccept source{{7, {{1.5f, 40.0f, -3.5f}, {0.4f, -0.1f, 0.0f}, {}}, 9}, true, {}};
     source.world.seed = 0xDEADBEEFCAFEF00Dull;
     source.world.generatorVersion = 2;
     source.world.sandboxMode = true;
@@ -209,6 +209,7 @@ TEST_CASE("Protocol.ConnectAcceptRoundTripsWorldInfo", "[networking][packet]") {
     voxels::networking::ConnectAccept decoded;
     REQUIRE(voxels::networking::DeserializeConnectAccept(bytes, decoded));
     REQUIRE(decoded.state.entityId == 7);
+    REQUIRE(decoded.state.health == 9);
     REQUIRE(decoded.worldReady);
     REQUIRE(decoded.world.seed == source.world.seed);
     REQUIRE(decoded.world.generatorVersion == 2);

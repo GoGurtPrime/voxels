@@ -135,6 +135,7 @@ std::string BuildSettingsPayload(const GamePreferences& preferences, RendererBac
         {"crosshairSize", preferences.crosshairSize},
         {"crosshairHighContrast", preferences.highContrastCrosshair},
         {"reducedMotion", preferences.reducedMotion},
+        {"heartColor", preferences.heartColor},
         {"rendererBackend", static_cast<int>(preferences.rendererBackend)},
         {"activeRenderer", static_cast<int>(activeRenderer)},
         {"restartRequired", preferences.rendererBackend != activeRenderer}

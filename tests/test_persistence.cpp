@@ -75,7 +75,7 @@ TEST_CASE("Save.PlayerStateRoundTripsIncludingInventory", "[persistence]") {
     source.velocity = {0.3f, -1.2f, 4.0f};
     source.yaw = 91.0f;
     source.pitch = -18.0f;
-    source.health = 73.0f;
+    source.health = 13;
     source.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Stone), 23};
     source.inventory.SetSelectedSlot(0);
 

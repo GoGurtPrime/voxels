@@ -12,6 +12,7 @@
 #include "voxels/core/preferences.hpp"
 
 #include <cctype>
+#include <algorithm>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -85,6 +86,13 @@ void WriteJsonString(std::ostringstream& out, std::string_view value) {
         }
     }
     out << '"';
+}
+
+bool IsRgbHexColor(const std::string& value) {
+    return value.size() == 7 && value.front() == '#' &&
+           std::all_of(value.begin() + 1, value.end(), [](unsigned char character) {
+               return std::isxdigit(character) != 0;
+           });
 }
 
 /// Minimal JSON DOM sufficient for the flat GamePreferences schema (objects, strings, numbers,
@@ -334,6 +342,9 @@ std::string PreferencesManager::ToJson(const GamePreferences& preferences) {
     out << "  \"crosshairSize\": " << preferences.crosshairSize << ",\n";
     out << "  \"highContrastCrosshair\": " << (preferences.highContrastCrosshair ? "true" : "false") << ",\n";
     out << "  \"reducedMotion\": " << (preferences.reducedMotion ? "true" : "false") << ",\n";
+    out << "  \"heartColor\": ";
+    WriteJsonString(out, IsRgbHexColor(preferences.heartColor) ? preferences.heartColor : "#d94352");
+    out << ",\n";
     out << "  \"controlsCardSeen\": " << (preferences.controlsCardSeen ? "true" : "false") << ",\n";
     out << "  \"keyBindings\": {\n";
     std::size_t index = 0;
@@ -377,6 +388,8 @@ GamePreferences PreferencesManager::FromJson(const std::string& json) {
     preferences.crosshairSize = root.GetFloat("crosshairSize", preferences.crosshairSize);
     preferences.highContrastCrosshair = root.GetBool("highContrastCrosshair", preferences.highContrastCrosshair);
     preferences.reducedMotion = root.GetBool("reducedMotion", preferences.reducedMotion);
+    const std::string heartColor = root.GetString("heartColor", preferences.heartColor);
+    preferences.heartColor = IsRgbHexColor(heartColor) ? heartColor : preferences.heartColor;
     preferences.controlsCardSeen = root.GetBool("controlsCardSeen", preferences.controlsCardSeen);
     if (const JsonValue* keyBindings = root.GetObject("keyBindings")) {
         for (const auto& [action, binding] : keyBindings->objectValue) {

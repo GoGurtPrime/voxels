@@ -94,6 +94,7 @@ TEST_CASE("Preferences.SaveAndLoad", "[core][preferences]") {
     preferences.masterVolume = 0.9f;
     preferences.musicVolume = 0.5f;
     preferences.sfxVolume = 0.6f;
+    preferences.heartColor = "#35c46a";
     preferences.keyBindings = {{"moveForward", "W"}, {"moveBack", "S"}};
 
     manager.Save(preferences);
@@ -103,6 +104,11 @@ TEST_CASE("Preferences.SaveAndLoad", "[core][preferences]") {
     REQUIRE(loaded == preferences);
 
     std::filesystem::remove(configPath);
+}
+
+TEST_CASE("Preferences.InvalidHeartColorUsesAccessibleDefault", "[core][preferences][health]") {
+    const voxels::GamePreferences preferences = voxels::PreferencesManager::FromJson(R"({"heartColor":"not-a-color"})");
+    REQUIRE(preferences.heartColor == "#d94352");
 }
 
 TEST_CASE("Preferences.PlatformConstraints", "[core][preferences]") {

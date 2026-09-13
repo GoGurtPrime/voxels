@@ -235,6 +235,13 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
                 context.preferences->crosshairSize = std::clamp(payload.value("crosshairSize", context.preferences->crosshairSize), 0.5f, 2.0f);
                 context.preferences->highContrastCrosshair = payload.value("crosshairHighContrast", context.preferences->highContrastCrosshair);
                 context.preferences->reducedMotion = payload.value("reducedMotion", context.preferences->reducedMotion);
+                const std::string heartColor = payload.value("heartColor", context.preferences->heartColor);
+                if (heartColor.size() == 7 && heartColor.front() == '#' &&
+                    std::all_of(heartColor.begin() + 1, heartColor.end(), [](unsigned char character) {
+                        return std::isxdigit(character) != 0;
+                    })) {
+                    context.preferences->heartColor = heartColor;
+                }
             } catch (const nlohmann::json::exception&) {
                 RequestError(context, "Settings data was malformed.");
                 return true;

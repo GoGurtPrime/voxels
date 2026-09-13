@@ -42,7 +42,7 @@ enum class PacketId : std::uint16_t {
     S2C_ItemPickup
 };
 
-inline constexpr std::uint16_t kProtocolVersion = 5;
+inline constexpr std::uint16_t kProtocolVersion = 6;
 inline constexpr std::size_t kMaximumPacketPayloadBytes = 1200;
 /// Upper bound accepted for a reassembled RLE chunk payload (a 16^3 section is far smaller).
 inline constexpr std::uint32_t kMaximumChunkTransferBytes = 512u * 1024u;
@@ -71,6 +71,7 @@ struct PlayerMove {
 struct EntityState {
     std::uint32_t entityId = 0;
     PlayerMove movement{};
+    std::uint8_t health = 16; ///< Authoritative health in half-heart units, [0, 16].
 };
 
 struct BlockModify {

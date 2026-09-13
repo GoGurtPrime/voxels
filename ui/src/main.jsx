@@ -516,7 +516,8 @@ function Settings({ model }) {
     particles: true,
     crosshairSize: 1,
     crosshairHighContrast: false,
-    reducedMotion: false
+    reducedMotion: false,
+    heartColor: "#d94352"
   });
   useEffect(() => {
     const payload = parseJson(model?.payload, null);
@@ -537,7 +538,8 @@ function Settings({ model }) {
       particles: typeof payload.particles === "boolean" ? payload.particles : previous.particles,
       crosshairSize: typeof payload.crosshairSize === "number" ? payload.crosshairSize : previous.crosshairSize,
       crosshairHighContrast: typeof payload.crosshairHighContrast === "boolean" ? payload.crosshairHighContrast : previous.crosshairHighContrast,
-      reducedMotion: typeof payload.reducedMotion === "boolean" ? payload.reducedMotion : previous.reducedMotion
+      reducedMotion: typeof payload.reducedMotion === "boolean" ? payload.reducedMotion : previous.reducedMotion,
+      heartColor: /^#[0-9a-fA-F]{6}$/.test(payload.heartColor) ? payload.heartColor : previous.heartColor
     }));
   }, [model?.revision, model?.payload]);
   const update = (key, value) => setSettings({ ...settings, [key]: value });
@@ -601,6 +603,7 @@ function Settings({ model }) {
         <p className="section-title">Controls</p>
         <SliderField label="Mouse sensitivity" value={settings.sensitivity} min={0.1} max={4} step={0.1} onChange={(value) => update("sensitivity", value)} format={(value) => value.toFixed(1)} />
         <SliderField label="Crosshair size" value={settings.crosshairSize} min={0.5} max={2} step={0.1} onChange={(value) => update("crosshairSize", value)} format={(value) => `${value.toFixed(1)}x`} />
+        <label className="field-row"><span className="field-label">Heart color</span><input type="color" value={settings.heartColor} onChange={(event) => update("heartColor", event.target.value)} /></label>
         <div className="toggle-grid" style={{ marginTop: 4 }}>
           <Chip checked={settings.invertY} onChange={(value) => update("invertY", value)}>Invert Y</Chip>
           <Chip checked={settings.particles} onChange={(value) => update("particles", value)}>Particles</Chip>
@@ -717,6 +720,8 @@ function HudRoute({ model }) {
   const crosshairSize = Math.max(0.5, Math.min(2, Number(payload?.crosshair?.size || 1)));
   const crosshairHighContrast = Boolean(payload?.crosshair?.highContrast);
   const reducedMotion = Boolean(payload?.crosshair?.reducedMotion);
+  const health = Math.max(0, Math.min(16, Math.trunc(Number(payload?.status?.health ?? 16))));
+  const heartColor = /^#[0-9a-fA-F]{6}$/.test(payload?.status?.heartColor) ? payload.status.heartColor : "#d94352";
   const targetName = payload?.target?.hit ? payload?.target?.name || "Target" : "";
   const orderedInventory = [...inventorySlots].sort((a, b) => Number(a.slot) - Number(b.slot));
   const mainSlots = orderedInventory.filter((slot) => !slot.hotbar);
@@ -779,6 +784,9 @@ function HudRoute({ model }) {
       ) : null}
 
       {!overlayOpen && targetName ? <div className="hud-target">{targetName}</div> : null}
+      {!overlayOpen ? <div className="hud-hearts" style={{ "--heart-color": heartColor }} aria-label={`${health} of 16 health`}>
+        {Array.from({ length: 8 }, (_, index) => <span className={`hud-heart ${health >= (index + 1) * 2 ? "full" : health === index * 2 + 1 ? "half" : "empty"}`} key={index} aria-hidden="true" />)}
+      </div> : null}
 
       {!overlayOpen ? (
         <aside className="hud-feed glass-panel" aria-label="Session events">

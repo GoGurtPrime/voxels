@@ -462,7 +462,7 @@ TEST_CASE("PlayerUI.DispatcherAppliesSettingsFromStructuredPayload", "[player-ui
     const voxels::PlayerUIAction action{
         .requestId = 77,
         .kind = voxels::PlayerUIActionKind::ApplySettings,
-        .secondary = R"({"settings":{"windowMode":"Fullscreen","resolutionWidth":1920,"resolutionHeight":1080,"fov":72.0,"renderDistance":16,"simulationDistance":12,"master":0.4,"music":0.5,"effects":0.6,"sensitivity":2.3,"invertY":true,"particles":false,"crosshairSize":1.7,"crosshairHighContrast":true,"reducedMotion":true}})"};
+        .secondary = R"({"settings":{"windowMode":"Fullscreen","resolutionWidth":1920,"resolutionHeight":1080,"fov":72.0,"renderDistance":16,"simulationDistance":12,"master":0.4,"music":0.5,"effects":0.6,"sensitivity":2.3,"invertY":true,"particles":false,"crosshairSize":1.7,"crosshairHighContrast":true,"reducedMotion":true,"heartColor":"#35c46a"}})"};
 
     REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Settings, action, context));
     REQUIRE(preferences.windowMode == voxels::WindowMode::Fullscreen);
@@ -480,6 +480,7 @@ TEST_CASE("PlayerUI.DispatcherAppliesSettingsFromStructuredPayload", "[player-ui
     REQUIRE(preferences.crosshairSize == Catch::Approx(1.7f));
     REQUIRE(preferences.highContrastCrosshair);
     REQUIRE(preferences.reducedMotion);
+    REQUIRE(preferences.heartColor == "#35c46a");
 }
 
 TEST_CASE("PlayerUI.HudActionsDriveGameplayState", "[player-ui][hud]") {
