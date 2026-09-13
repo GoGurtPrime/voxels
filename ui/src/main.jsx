@@ -624,7 +624,7 @@ const RECIPE_ICONS = {
 
 /** One inventory/hotbar cell: drag-and-drop reorder, click-to-select (hotbar only), and a
  * hover/focus-revealed drop control. Square at every viewport size instead of a squished bar. */
-function InventorySlot({ slot, selectable, dragSlot, setDragSlot }) {
+function InventorySlot({ slot, selectable, dragSlot, setDragSlot, moveSourceSlot, setMoveSourceSlot, craftingOpen }) {
   const hasItem = Number(slot.count) > 0;
   const index = Number(slot.slot);
   const isDragTarget = dragSlot !== null && dragSlot !== index;
@@ -650,7 +650,24 @@ function InventorySlot({ slot, selectable, dragSlot, setDragSlot }) {
         if (!Number.isFinite(from) || from === index) return;
         sendUiAction("move-item", { value: from, primary: String(index) });
       }}
-      onClick={() => { if (selectable) sendUiAction("hotbar", { value: index }); }}
+      onClick={() => {
+        if (craftingOpen) {
+          if (moveSourceSlot === null) {
+            if (hasItem) setMoveSourceSlot(index);
+          } else if (moveSourceSlot !== index) {
+            sendUiAction("move-item", { value: moveSourceSlot, primary: String(index) });
+            setMoveSourceSlot(null);
+          }
+          return;
+        }
+        if (selectable) sendUiAction("hotbar", { value: index });
+      }}
+      onKeyDown={(event) => {
+        if (!craftingOpen || event.key !== "Delete" || !hasItem) return;
+        event.preventDefault();
+        sendUiAction("drop-item", { value: index });
+        if (moveSourceSlot === index) setMoveSourceSlot(null);
+      }}
     >
       {selectable ? <span className="hud-slot-number">{index + 1}</span> : null}
       <span className="hud-slot-name">{slot.name || ""}</span>
@@ -670,7 +687,7 @@ function InventorySlot({ slot, selectable, dragSlot, setDragSlot }) {
           ×
         </span>
       ) : null}
-      {isDragTarget ? <span className="hud-slot-drag-hint" aria-hidden="true" /> : null}
+      {isDragTarget || moveSourceSlot === index ? <span className="hud-slot-drag-hint" aria-hidden="true" /> : null}
     </button>
   );
 }
@@ -715,6 +732,7 @@ function HudRoute({ model }) {
   const [chatDraft, setChatDraft] = useState("");
   const [recipeTab, setRecipeTab] = useState("all");
   const [dragSlot, setDragSlot] = useState(null);
+  const [moveSourceSlot, setMoveSourceSlot] = useState(null);
   const chatOpen = Boolean(payload?.chat?.open);
   const craftingOpen = Boolean(payload?.crafting?.open);
   const crosshairSize = Math.max(0.5, Math.min(2, Number(payload?.crosshair?.size || 1)));
@@ -856,13 +874,13 @@ function HudRoute({ model }) {
               <p className="section-title">Backpack</p>
               <div className="hud-inventory-grid">
                 {mainSlots.map((slot) => (
-                  <InventorySlot key={slot.slot} slot={slot} selectable={false} dragSlot={dragSlot} setDragSlot={setDragSlot} />
+                  <InventorySlot key={slot.slot} slot={slot} selectable={false} dragSlot={dragSlot} setDragSlot={setDragSlot} moveSourceSlot={moveSourceSlot} setMoveSourceSlot={setMoveSourceSlot} craftingOpen />
                 ))}
               </div>
               <p className="section-title">Hotbar</p>
               <nav className="hud-hotbar-overlay" aria-label="Hotbar">
                 {displayHotbar.map((slot) => (
-                  <InventorySlot key={slot.slot} slot={slot} selectable dragSlot={dragSlot} setDragSlot={setDragSlot} />
+                  <InventorySlot key={slot.slot} slot={slot} selectable dragSlot={dragSlot} setDragSlot={setDragSlot} moveSourceSlot={moveSourceSlot} setMoveSourceSlot={setMoveSourceSlot} craftingOpen />
                 ))}
               </nav>
               <ControlHints inputMethod={inputMethod} craftingOpen />
@@ -874,7 +892,7 @@ function HudRoute({ model }) {
       {!overlayOpen ? (
         <nav className="hud-hotbar" aria-label="Hotbar">
           {displayHotbar.map((slot) => (
-            <InventorySlot key={slot.slot} slot={slot} selectable dragSlot={dragSlot} setDragSlot={setDragSlot} />
+            <InventorySlot key={slot.slot} slot={slot} selectable dragSlot={dragSlot} setDragSlot={setDragSlot} moveSourceSlot={moveSourceSlot} setMoveSourceSlot={setMoveSourceSlot} craftingOpen={false} />
           ))}
         </nav>
       ) : null}

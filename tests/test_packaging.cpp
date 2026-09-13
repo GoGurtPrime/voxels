@@ -40,6 +40,15 @@ void WriteText(const std::filesystem::path& path, std::string_view text) {
     std::filesystem::create_directories(path.parent_path());
     std::ofstream(path, std::ios::binary) << text;
 }
+
+void WriteMinimalRecipeCatalogue(const std::filesystem::path& root) {
+    WriteText(root / "data" / "blocks.json", R"({"blocks":[
+        {"id":"air","numeric_id":0,"solid":false,"opaque":false,"model_id":null},
+        {"id":"wood_log","numeric_id":1,"solid":true,"opaque":true,"model_id":null},
+        {"id":"planks","numeric_id":2,"solid":true,"opaque":true,"model_id":null}
+    ]})");
+    WriteText(root / "data" / "recipes.json", R"({"recipes":[{"id":"recipe_planks","icon":"planks","category":"construction","ingredients":[{"item":"wood_log","count":1}],"output_item":"planks","output_count":4}]})");
+}
 } // namespace
 
 TEST_CASE("Version.IsConsistentAcrossExecutableLogAndSaveMetadata", "[packaging][version]") {
@@ -59,7 +68,7 @@ TEST_CASE("Version.IsConsistentAcrossExecutableLogAndSaveMetadata", "[packaging]
 
 TEST_CASE("Version.VpkManifestRecordsTheSameEngineVersion", "[packaging][version]") {
     const auto root = MakeTestDirectory("voxels_packaging_manifest_version");
-    WriteText(root / "data" / "example.json", "{\"value\":1}");
+    WriteMinimalRecipeCatalogue(root);
     voxels::AssetBundleReport report;
     std::string error;
     REQUIRE(voxels::AssetBundler::Bundle(root, root / "core.vpk", report, error));

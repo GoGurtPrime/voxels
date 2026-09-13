@@ -313,7 +313,10 @@ bool PlayerUIActionDispatcher::Dispatch(PlayerUIRoute activeRoute, const PlayerU
             return true;
         case PlayerUIActionKind::HudCraftRecipe:
             if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
-            return context.activeGame->CraftRecipe(action.primary);
+            // A missing ingredient or full inventory is a valid gameplay outcome that the state
+            // reports through the HUD; it is not an invalid web-route action.
+            static_cast<void>(context.activeGame->CraftRecipe(action.primary));
+            return true;
         case PlayerUIActionKind::HudDropItem:
             if (activeRoute != PlayerUIRoute::Hud || context.activeGame == nullptr) return false;
             return context.activeGame->DropSlot(static_cast<int>(std::round(action.value)));

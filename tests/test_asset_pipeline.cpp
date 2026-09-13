@@ -28,6 +28,15 @@ void WriteText(const std::filesystem::path& path, const std::string& value) {
     output << value;
 }
 
+void WriteMinimalCatalogue(const std::filesystem::path& root, const std::string& recipes) {
+    WriteText(root / "data" / "blocks.json", R"({"blocks":[
+        {"id":"air","numeric_id":0,"display_name":"Air","solid":false,"opaque":false,"liquid":false,"replaceable":true,"hardness":0.0,"light_emission":0,"textures":{},"render_type":"cube","model_id":null,"sounds":{},"drops":[]},
+        {"id":"wood_log","numeric_id":1,"display_name":"Wood Log","solid":true,"opaque":true,"liquid":false,"hardness":1.0,"light_emission":0,"textures":{},"render_type":"cube","model_id":null,"sounds":{},"drops":[]},
+        {"id":"planks","numeric_id":2,"display_name":"Planks","solid":true,"opaque":true,"liquid":false,"hardness":1.0,"light_emission":0,"textures":{},"render_type":"cube","model_id":null,"sounds":{},"drops":[]}
+    ]})");
+    WriteText(root / "data" / "recipes.json", recipes);
+}
+
 } // namespace
 
 TEST_CASE("Vpk.WriteReadRoundTripAndRejectsCorruption", "[assets]") {
@@ -53,7 +62,7 @@ TEST_CASE("Vpk.WriteReadRoundTripAndRejectsCorruption", "[assets]") {
 
 TEST_CASE("Bundler.OutputIsDeterministicAndHasManifest", "[assets]") {
     const auto root = MakeTestDirectory("voxels_bundle_deterministic");
-    WriteText(root / "data" / "example.json", "{\"value\":1}");
+    WriteMinimalCatalogue(root, R"({"recipes":[{"id":"recipe_planks","icon":"planks","category":"construction","ingredients":[{"item":"wood_log","count":1}],"output_item":"planks","output_count":4}]})");
     const auto outputRoot = MakeTestDirectory("voxels_bundle_deterministic_output");
     const auto first = outputRoot / "first.vpk";
     const auto second = outputRoot / "second.vpk";
@@ -79,6 +88,16 @@ TEST_CASE("Bundler.FailsOnMissingBlockTexture", "[assets]") {
     REQUIRE_FALSE(voxels::AssetBundler::Bundle(root, root / "out.vpk", report, error));
     REQUIRE(error.find("test") != std::string::npos);
     REQUIRE(error.find("missing") != std::string::npos);
+}
+
+TEST_CASE("Bundler rejects recipe content before it enters a pack", "[assets][Crafting]") {
+    const auto root = MakeTestDirectory("voxels_bundle_invalid_recipes");
+    WriteMinimalCatalogue(root, R"({"recipes":[{"id":"broken_recipe","icon":"planks","category":"construction","ingredients":[{"item":"missing","count":1}],"output_item":"planks","output_count":4}]})");
+    voxels::AssetBundleReport report;
+    std::string error;
+    REQUIRE_FALSE(voxels::AssetBundler::Bundle(root, root / "out.vpk", report, error));
+    REQUIRE(error.find("broken_recipe") != std::string::npos);
+    REQUIRE(error.find("ingredients.item") != std::string::npos);
 }
 
 TEST_CASE("AssetManager.ResolutionOrderAndCache", "[assets]") {

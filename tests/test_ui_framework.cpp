@@ -510,6 +510,10 @@ TEST_CASE("PlayerUI.HudActionsDriveGameplayState", "[player-ui][hud]") {
     REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Hud,
                                 {.requestId = 605, .kind = voxels::PlayerUIActionKind::HudSendChat, .primary = "hello"}, context));
 
+    REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Hud,
+                                {.requestId = 6051, .kind = voxels::PlayerUIActionKind::HudCraftRecipe,
+                                 .primary = "recipe_missing_ingredients"}, context));
+
     game.GetPlayer().state.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 3};
     game.GetPlayer().state.inventory.GetSlot(1) = {static_cast<voxels::BlockId>(voxels::BlockType::Stone), 2};
     REQUIRE(dispatcher.Dispatch(voxels::PlayerUIRoute::Hud,

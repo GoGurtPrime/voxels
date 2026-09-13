@@ -127,6 +127,9 @@ TEST_CASE("Editor project persists VMDL recovery and produces a pack", "[editor]
     std::ofstream blocks(root / "data" / "blocks.json");
     blocks << R"({"blocks":[{"id":"air","numeric_id":0,"solid":false,"opaque":false,"model_id":null},{"id":"editor_test","numeric_id":1,"solid":true,"opaque":true,"model_id":"models/editor_test.vmdl"}]})";
     blocks.close();
+    std::ofstream recipes(root / "data" / "recipes.json");
+    recipes << R"({"recipes":[{"id":"recipe_editor_test","icon":"editor_test","category":"furniture","ingredients":[{"item":"editor_test","count":1}],"output_item":"editor_test","output_count":1}]})";
+    recipes.close();
     voxels::AssetBundleReport report;
     REQUIRE(project.BuildPack(root / "editor_test.vpk", report, error));
     REQUIRE(report.archive.entryCount >= 3);

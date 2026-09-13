@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "entry_html": "browser/index.html",
-  "source_revision": "1871a51020442e8af96cc35b12e102485edc9a44",
-  "source_sha256": "6b7abb1f54d3be4cd15079b0686fc1e36998b844ccd059c2f9093f002832f8c4",
+  "source_revision": "ccefb9cde57aa52f52622551c7f3857577e320e5",
+  "source_sha256": "c6cebd3bc0dc7b7045f4a118d80de799a59da557a78abb74b6e2da3b4a55ddc9",
   "assets": {
     "browser/assets/bungee-regular-edNpEo0j.ttf": {
       "sha256": "ff0ad5d7496a911460625f9052ea50b05e289065be71a1cb21c71896585224d2",
       "bytes": 110456
     },
-    "browser/assets/index-B8rvLtic.js": {
-      "sha256": "9126d1f67449ec5562a32a8906d0f8d79a22987ebc975d4280e37f21cf2829c5",
-      "bytes": 176536
+    "browser/assets/index-BCTYeJs9.js": {
+      "sha256": "368f9fbe9d3ccc5cf921064ac1c44a71389369c426732a294806918f6ee4432e",
+      "bytes": 176982
     },
     "browser/assets/index-CCtdr9Y-.css": {
       "sha256": "007f5aa14047e74eacae29e2d8bfe0fa4cd3d1bd1403b86df796f99b54ac6cab",
@@ -29,7 +29,7 @@
       "bytes": 96272
     },
     "browser/index.html": {
-      "sha256": "07dd695dba70e77b3a91aa59df1db71dc18d67abd35b49af3c2ce5d5d44cd18e",
+      "sha256": "9165583f9589f295a5f7cb5a7cb9237e9484fbe902d17ee13cdd12aebba59d34",
       "bytes": 451
     }
   }

@@ -89,6 +89,7 @@ add_library(voxels_engine
     src/gameplay/physics.cpp
     src/gameplay/camera_controller.cpp
     src/gameplay/block_interaction.cpp
+    src/gameplay/crafting_service.cpp
     src/gameplay/item_drop.cpp
     src/app/cli_parser.cpp
     src/app/display_settings.cpp

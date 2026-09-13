@@ -16,6 +16,7 @@ add_executable(voxels_tests
     test_networking.cpp
     test_gameplay.cpp
     test_block_interaction.cpp
+    test_crafting_service.cpp
     test_item_drop.cpp
     test_item_drop_render.cpp
     test_runtime_integration.cpp

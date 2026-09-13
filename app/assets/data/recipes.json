@@ -1,0 +1,36 @@
+{
+  "recipes": [
+    {
+      "id": "recipe_planks",
+      "icon": "planks",
+      "category": "construction",
+      "ingredients": [{ "item": "wood_log", "count": 1 }],
+      "output_item": "planks",
+      "output_count": 4
+    },
+    {
+      "id": "recipe_stick",
+      "icon": "stick",
+      "category": "construction",
+      "ingredients": [{ "item": "planks", "count": 1 }],
+      "output_item": "stick",
+      "output_count": 4
+    },
+    {
+      "id": "recipe_garden_mix",
+      "icon": "garden_mix",
+      "category": "food",
+      "ingredients": [{ "item": "dirt", "count": 1 }, { "item": "stone", "count": 1 }],
+      "output_item": "garden_mix",
+      "output_count": 2
+    },
+    {
+      "id": "recipe_stone_axe",
+      "icon": "stone_axe",
+      "category": "tools",
+      "ingredients": [{ "item": "planks", "count": 1 }, { "item": "stick", "count": 2 }, { "item": "stone", "count": 3 }],
+      "output_item": "stone_axe",
+      "output_count": 1
+    }
+  ]
+}

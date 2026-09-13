@@ -28,6 +28,7 @@
 #include "voxels/app/network_sync.hpp"
 #include "voxels/app/save_manager.hpp"
 #include "voxels/core/job_system.hpp"
+#include "voxels/gameplay/crafting_service.hpp"
 #include "voxels/graphics/renderer.hpp"
 #include "voxels/input/input_manager.hpp"
 #include "voxels/platform/platform_services.hpp"
@@ -379,6 +380,7 @@ private:
     WorldOptions m_options{};
 
     GameSession m_session;
+    gameplay::CraftingService m_craftingService;
     std::unique_ptr<JobSystem> m_jobSystem;
     std::unique_ptr<graphics::ChunkRenderer> m_chunkRenderer;
     std::unique_ptr<graphics::SkyRenderer> m_skyRenderer;

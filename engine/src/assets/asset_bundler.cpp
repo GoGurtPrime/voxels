@@ -15,6 +15,8 @@
 #include "voxels/assets/texture_loader.hpp"
 #include "voxels/assets/vmdl_codec.hpp"
 #include "voxels/core/version.hpp"
+#include "voxels/gameplay/crafting_service.hpp"
+#include "voxels/world/block.hpp"
 
 namespace voxels {
 
@@ -76,6 +78,24 @@ namespace {
     return true;
 }
 
+[[nodiscard]] bool ValidateRecipes(const std::filesystem::path& root, std::string& error) {
+    const std::filesystem::path recipesPath = root / "data" / "recipes.json";
+    if (!std::filesystem::exists(recipesPath)) {
+        error = "missing required recipe catalogue " + recipesPath.generic_string();
+        return false;
+    }
+    try {
+        BlockRegistry registry;
+        registry.LoadFromFile(root / "data" / "blocks.json");
+        gameplay::CraftingService recipes;
+        recipes.LoadFromFile(recipesPath, registry);
+    } catch (const std::exception& exception) {
+        error = "invalid recipe catalogue: " + std::string(exception.what());
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 bool AssetBundler::Bundle(const std::filesystem::path& inputDirectory, const std::filesystem::path& outputPath,
@@ -83,6 +103,7 @@ bool AssetBundler::Bundle(const std::filesystem::path& inputDirectory, const std
     report = {};
     if (!std::filesystem::is_directory(inputDirectory)) { error = "bundle input is not a directory: " + inputDirectory.string(); return false; }
     if (!ValidateBlocks(inputDirectory, error)) return false;
+    if (!ValidateRecipes(inputDirectory, error)) return false;
     std::vector<AssetArchiveEntry> entries;
     std::error_code filesystemError;
     for (const auto& entry : std::filesystem::recursive_directory_iterator(inputDirectory, filesystemError)) {

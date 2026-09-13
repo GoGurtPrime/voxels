@@ -25,7 +25,7 @@ headers live under `engine/include/voxels/<module>/`.
 | **graphics** | `voxels/graphics/` | `IRenderer` RHI interface and backends: OpenGL 3.3 Core (shipping), Mock (tests), Vulkan/DX12/Metal/PVR (declared, ADR-001/ADR-013) |
 | **render** | `voxels/render/` | Engine-side rendering: camera, texture atlas + procedural texture forge, chunk vertex format, greedy mesher, chunk renderer, HUD, model registry, remote player rendering |
 | **world** | `voxels/world/` | Blocks and the block registry, chunks (storage, light, RLE), the `World` spatial hash, raycasting, noise, the generation pipeline, spawn calculation, serialization |
-| **gameplay** | `voxels/gameplay/` | Player entity, AABB physics, camera controller, block interaction, inventory |
+| **gameplay** | `voxels/gameplay/` | Player entity, AABB physics, camera controller, block interaction, inventory, validated transactional crafting |
 | **input** | `voxels/input/` | Action mapping, devices, and the input manager (platform events → gameplay actions) |
 | **ui** | `voxels/ui/` | UI scale/metrics management and the Dear ImGui integration layer |
 | **audio** | `voxels/audio/` | `IAudioEngine`, SDL audio playback, procedural tone synthesis, spatial attenuation |
