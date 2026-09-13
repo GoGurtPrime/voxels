@@ -81,30 +81,31 @@ bool FindNearbyLiquidSurfaceTopY(const World& world, const BlockRegistry* regist
     return false;
 }
 
-/// A ledge is climbable while swimming when solid ground begins at or within one block above the
-/// water surface (a flush shoreline, or a single step up) with two clear blocks of headroom above
-/// it to actually stand on; anything taller returns false so the player must break a block instead
-/// of swim-climbing an arbitrary wall.
-bool TryFindClimbableLedgeTop(const World& world, const BlockRegistry* registry, int x, int z,
-                              float surfaceTopY, float& outLedgeTopY) {
-    const int groundY = static_cast<int>(std::floor(surfaceTopY));
-    // Solid ground may start one block below the surface (a flush shore, the common case), right
-    // at the surface (a one-block step), or not at all within reach.
+/// Solid ground/obstruction is climbable while swimming when it begins at or within one block
+/// above `anchorY` with two clear blocks of headroom above it; anything taller returns false so
+/// the player must break a block instead of swim-climbing an arbitrary wall. Used both anchored to
+/// the water surface (shore ledges) and anchored to the player's current depth (a submerged bump),
+/// so a one-block obstacle can be swum over anywhere underwater, not only at the surface.
+bool TryFindClimbableStepTop(const World& world, const BlockRegistry* registry, int x, int z,
+                             float anchorY, float& outStepTopY) {
+    const int groundY = static_cast<int>(std::floor(anchorY));
+    // Solid ground may start one block below the anchor (flush with it, the common case), right
+    // at the anchor, or not at all within reach.
     int y = groundY - 1;
     while (y <= groundY + 1 && !Physics::IsSolidBlock(world.GetBlock(Vec3I{x, y, z}), registry)) {
         ++y;
     }
-    if (y > groundY + 1) return false; // no solid ground within reach of the surface
+    if (y > groundY + 1) return false; // no solid ground within reach of the anchor
 
     // Climb through any contiguous solid stack to find its true top.
     while (Physics::IsSolidBlock(world.GetBlock(Vec3I{x, y, z}), registry)) {
         ++y;
     }
-    const float ledgeTopY = static_cast<float>(y);
-    if (ledgeTopY > surfaceTopY + 1.0f + 1.0e-4f) return false; // too tall to swim-climb
+    const float stepTopY = static_cast<float>(y);
+    if (stepTopY > anchorY + 1.0f + 1.0e-4f) return false; // too tall to swim-climb
     if (Physics::IsSolidBlock(world.GetBlock(Vec3I{x, y + 1, z}), registry)) return false; // no headroom
 
-    outLedgeTopY = ledgeTopY;
+    outStepTopY = stepTopY;
     return true;
 }
 } // namespace
@@ -290,6 +291,8 @@ void Physics::Step(const World& world, Player& player, float deltaTime, const Bl
     // down mid-climb, oscillating forever instead of completing the exit.
     const bool swimAssistActive = swimming || (swimAscend && !player.state.onGround && nearLiquidSurface);
     float swimCeilingCenterY = 0.0f;
+    bool hasNearbyClimbStep = false;
+    float nearbyClimbStepTopY = 0.0f;
 
     if (swimAssistActive) {
         if (swimming) {
@@ -308,10 +311,22 @@ void Physics::Step(const World& world, Player& player, float deltaTime, const Bl
             const float invSpeed = 1.0f / std::sqrt(horizontalSpeedSq);
             const float probeX = player.state.position.x + player.state.velocity.x * invSpeed * (kPlayerHalfWidth + 0.15f);
             const float probeZ = player.state.position.z + player.state.velocity.z * invSpeed * (kPlayerHalfWidth + 0.15f);
-            float ledgeTopY = 0.0f;
-            if (TryFindClimbableLedgeTop(world, registry, static_cast<int>(std::floor(probeX)),
-                                         static_cast<int>(std::floor(probeZ)), surfaceTopY, ledgeTopY)) {
-                swimCeilingCenterY = std::max(swimCeilingCenterY, ledgeTopY + kPlayerHalfHeight);
+            const int probeColumnX = static_cast<int>(std::floor(probeX));
+            const int probeColumnZ = static_cast<int>(std::floor(probeZ));
+            float stepTopY = 0.0f;
+            // Anchored to the water surface: lets the player climb out onto a shore ledge.
+            if (TryFindClimbableStepTop(world, registry, probeColumnX, probeColumnZ, surfaceTopY, stepTopY)) {
+                swimCeilingCenterY = std::max(swimCeilingCenterY, stepTopY + kPlayerHalfHeight);
+                if (!hasNearbyClimbStep || stepTopY > nearbyClimbStepTopY) nearbyClimbStepTopY = stepTopY;
+                hasNearbyClimbStep = true;
+            }
+            // Anchored to the player's current depth: lets a submerged one-block obstruction be
+            // swum over anywhere underwater, not only near the surface.
+            if (TryFindClimbableStepTop(world, registry, probeColumnX, probeColumnZ,
+                                       player.state.position.y - kPlayerHalfHeight, stepTopY)) {
+                swimCeilingCenterY = std::max(swimCeilingCenterY, stepTopY + kPlayerHalfHeight);
+                if (!hasNearbyClimbStep || stepTopY > nearbyClimbStepTopY) nearbyClimbStepTopY = stepTopY;
+                hasNearbyClimbStep = true;
             }
         }
 
@@ -341,6 +356,8 @@ void Physics::Step(const World& world, Player& player, float deltaTime, const Bl
     const float stepY = player.state.velocity.y * deltaTime;
     const float stepZ = player.state.velocity.z * deltaTime;
 
+    const float positionXBeforeAxes = player.state.position.x;
+    const float positionZBeforeAxes = player.state.position.z;
     bool grounded = false;
     ResolveAxis(world, player, 0, stepX, player.state.position.x, grounded, registry);
     ResolveAxis(world, player, 1, stepY, player.state.position.y, grounded, registry);
@@ -349,6 +366,28 @@ void Physics::Step(const World& world, Player& player, float deltaTime, const Bl
     player.state.onGround = grounded || IsGrounded(world, player, registry);
     if (player.state.onGround && player.state.velocity.y < 0.0f) {
         player.state.velocity.y = 0.0f;
+    }
+
+    // If a climbable one-block step blocked this tick's horizontal swim-climb motion while the
+    // player is already nearly at its height, place their feet exactly on top of it instead of
+    // leaving them wedged against its underside - gradual vertical convergence alone can lose the
+    // race against horizontal approach for the last small gap and get the player physically stuck
+    // under the very step they are trying to climb. Bounded to a small remaining gap so this never
+    // teleports the player a large distance; the bulk of the climb still happens gradually.
+    if (swimAscend && hasNearbyClimbStep && !player.state.onGround) {
+        const float requiredFeetY = nearbyClimbStepTopY;
+        const float remainingGap = requiredFeetY - (player.state.position.y - kPlayerHalfHeight);
+        if (remainingGap > 0.01f && remainingGap <= 0.5f) {
+            const bool blockedX = std::abs(stepX) > 1.0e-4f &&
+                                  std::abs(player.state.position.x - positionXBeforeAxes) < std::abs(stepX) * 0.5f;
+            const bool blockedZ = std::abs(stepZ) > 1.0e-4f &&
+                                  std::abs(player.state.position.z - positionZBeforeAxes) < std::abs(stepZ) * 0.5f;
+            if (blockedX || blockedZ) {
+                player.state.position.y = requiredFeetY + kPlayerHalfHeight;
+                player.state.velocity.y = 0.0f;
+                player.state.onGround = true;
+            }
+        }
     }
 }
 

@@ -253,15 +253,21 @@ TEST_CASE("Physics.SwimClimbsOutOntoAOneBlockLedgeButNotATwoBlockWall", "[gamepl
         player.state.velocity = voxels::Vec3{0.0f};
 
         bool climbedOut = false;
+        float maxSingleTickRise = 0.0f;
         for (int step = 0; step < 500; ++step) {
             player.state.velocity.x = 2.0f;
+            const float yBefore = player.state.position.y;
             voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f, &registry, /*swimAscend=*/true);
+            maxSingleTickRise = std::max(maxSingleTickRise, player.state.position.y - yBefore);
             if (player.state.onGround && player.state.position.x > 1.0f) {
                 climbedOut = true;
                 break;
             }
         }
         REQUIRE(climbedOut);
+        // The final unstick-onto-the-ledge correction is bounded to a small residual gap, not a
+        // multi-block teleport - the bulk of the climb happens gradually.
+        REQUIRE(maxSingleTickRise < 0.6f);
     }
 
     SECTION("A two-block-high wall cannot be swim-climbed") {
@@ -348,6 +354,43 @@ TEST_CASE("Physics.FallingIntoDeepWaterSinksNaturallyWithoutTeleportingToTheSurf
     // that same single tick.
     REQUIRE(singleTickDrop < 0.3f);
     REQUIRE(singleTickDrop >= 0.0f);
+}
+
+TEST_CASE("Physics.SwimmingCrossesASubmergedOneBlockBumpAnywhereUnderwater", "[gameplay][physics][swimming]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    for (int x = -3; x <= 5; ++x) {
+        for (int z = -1; z <= 1; ++z) {
+            world.SetBlock(voxels::Vec3I{x, 0, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+            for (int y = 1; y <= 2; ++y) {
+                world.SetBlock(voxels::Vec3I{x, y, z}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+            }
+        }
+    }
+    // A one-block bump on the sea floor directly ahead, fully submerged (surface is at y=3).
+    for (int z = -1; z <= 1; ++z) {
+        world.SetBlock(voxels::Vec3I{2, 1, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+    }
+
+    voxels::Player player;
+    player.state.position = voxels::Vec3{0.5f, 2.0f, 0.5f};
+    player.state.velocity = voxels::Vec3{0.0f};
+
+    bool crossedBump = false;
+    float maxSingleTickRise = 0.0f;
+    for (int step = 0; step < 300; ++step) {
+        player.state.velocity.x = 2.0f;
+        const float yBefore = player.state.position.y;
+        voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f, &registry, /*swimAscend=*/true);
+        maxSingleTickRise = std::max(maxSingleTickRise, player.state.position.y - yBefore);
+        if (player.state.position.x > 2.5f) {
+            crossedBump = true;
+            break;
+        }
+    }
+
+    REQUIRE(crossedBump);
+    REQUIRE(maxSingleTickRise < 0.6f);
 }
 
 TEST_CASE("Physics.SubmersionSamplingCoversShallowWaterHeadOnlyAndShore", "[gameplay][physics][swimming]") {
