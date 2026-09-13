@@ -103,7 +103,11 @@ public:
 
     /// Casts a ray through the voxel grid starting at `origin` along `direction` (need not be
     /// normalized), up to `maxDistance` world units, returning the first solid block hit.
-    [[nodiscard]] RaycastHit Raycast(const Vec3& origin, const Vec3& direction, float maxDistance) const;
+    /// When `liquidSkipRegistry` is non-null, voxels whose definition is a liquid are treated as
+    /// passable within this single continuous traversal (never restarting the ray), so a hit's
+    /// face is always the true entry face even when the ray began or passed through liquid.
+    [[nodiscard]] RaycastHit Raycast(const Vec3& origin, const Vec3& direction, float maxDistance,
+                                     const BlockRegistry* liquidSkipRegistry = nullptr) const;
 
 private:
     WorldOptions m_options;

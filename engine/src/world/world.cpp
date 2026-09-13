@@ -354,7 +354,8 @@ LightingUpdate World::RebuildLightingAround(const Vec3I& center, const BlockRegi
     return update;
 }
 
-RaycastHit World::Raycast(const Vec3& origin, const Vec3& direction, float maxDistance) const {
+RaycastHit World::Raycast(const Vec3& origin, const Vec3& direction, float maxDistance,
+                          const BlockRegistry* liquidSkipRegistry) const {
     RaycastHit result;
 
     const float lengthSq = direction.x * direction.x + direction.y * direction.y + direction.z * direction.z;
@@ -400,7 +401,12 @@ RaycastHit World::Raycast(const Vec3& origin, const Vec3& direction, float maxDi
 
     while (traveled <= maxDistance) {
         const BlockId block = GetBlock(voxel);
-        if (block != static_cast<BlockId>(BlockType::Air)) {
+        const bool isSkippableLiquid = liquidSkipRegistry != nullptr && block != static_cast<BlockId>(BlockType::Air) &&
+                                       [&] {
+                                           const BlockDefinition* definition = liquidSkipRegistry->GetDefinition(block);
+                                           return definition != nullptr && definition->isLiquid;
+                                       }();
+        if (block != static_cast<BlockId>(BlockType::Air) && !isSkippableLiquid) {
             result.hit = true;
             result.blockPosition = voxel;
             result.face = hitFace;
