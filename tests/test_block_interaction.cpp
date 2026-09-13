@@ -57,6 +57,35 @@ TEST_CASE("Raycast.SkipsNonTargetableLiquids", "[interaction][raycast]") {
     REQUIRE(hit.blockPosition == voxels::Vec3I{2, 2, 0});
 }
 
+TEST_CASE("Raycast.ReportsTrueEntryFaceWhenEyeAndPathAreFullySubmerged", "[interaction][raycast][water]") {
+    // Regression: an eye position starting inside liquid (and a path through several more liquid
+    // voxels) must not report a bogus default face. Previously the liquid-skip re-launched the ray
+    // from a nudged origin already inside the next voxel, so the target's face silently defaulted
+    // to PosY instead of the true entry face - placing a new block on top instead of alongside it.
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    world.SetBlock({0, 2, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Water)); // contains the eye itself
+    world.SetBlock({1, 2, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+    world.SetBlock({2, 2, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+    world.SetBlock({3, 2, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+
+    voxels::Player player;
+    player.state.position = {0.5f, 1.28f, 0.5f}; // eye at y=2.0, submerged in the water column
+    player.state.yaw = -1.5707963f; // +X
+    player.state.inventory.GetSlot(0) = {static_cast<voxels::BlockId>(voxels::BlockType::Dirt), 1};
+    const voxels::gameplay::BlockInteraction interaction;
+    const voxels::RaycastHit target = interaction.Target(world, player, registry);
+    REQUIRE(target.hit);
+    REQUIRE(target.blockPosition == voxels::Vec3I{3, 2, 0});
+    REQUIRE(target.face == voxels::Face::NegX);
+
+    const auto placed = interaction.PlaceBlock(world, player, target, registry);
+    REQUIRE(placed.success);
+    REQUIRE(placed.adjacentPosition == voxels::Vec3I{2, 2, 0});
+    REQUIRE(world.GetBlock({2, 2, 0}) == static_cast<voxels::BlockId>(voxels::BlockType::Dirt));
+}
+
+
 TEST_CASE("BlockInteraction.BreakAndPlaceMutateWorld", "[interaction][break][place]") {
     voxels::World world;
     world.SetBlock({2, 2, -2}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
