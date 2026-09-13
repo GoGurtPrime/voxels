@@ -622,29 +622,25 @@ const RECIPE_ICONS = {
   stick: iconStick
 };
 
-/** One inventory/hotbar cell supporting pointer drag and controller-style lifted selection. */
-function InventorySlot({ slot, selectable, dragSourceSlot, setDragSourceSlot, moveSourceSlot, setMoveSourceSlot, suppressClickRef, craftingOpen }) {
+/** One inventory/hotbar cell supporting cursor-held and controller-style lifted selection. */
+function InventorySlot({ slot, selectable, moveSourceSlot, setMoveSourceSlot, setCursorPosition, craftingOpen }) {
   const hasItem = Number(slot.count) > 0;
   const index = Number(slot.slot);
-  const isDragTarget = dragSourceSlot !== null && dragSourceSlot !== index;
-  const isLifted = dragSourceSlot === index || moveSourceSlot === index;
+  const isLifted = moveSourceSlot === index;
   return (
     <button
       type="button"
-      className={`hud-slot ${slot.selected ? "selected" : ""} ${isLifted ? "lifted" : ""} ${isDragTarget ? "drag-target" : ""} ${hasItem ? "" : "empty"}`}
+      className={`hud-slot ${slot.selected ? "selected" : ""} ${isLifted ? "lifted" : ""} ${hasItem ? "" : "empty"}`}
       data-inventory-slot={index}
       aria-pressed={selectable ? Boolean(slot.selected) : undefined}
       aria-label={hasItem ? `${slot.name}, ${slot.count}${selectable ? ", press to select" : ""}` : "Empty slot"}
-      onPointerDown={(event) => {
-        if (!craftingOpen || !hasItem || event.button !== 0) return;
-        event.currentTarget.setPointerCapture?.(event.pointerId);
-        setDragSourceSlot(index);
-      }}
-      onClick={() => {
-        if (suppressClickRef.current) return;
+      onClick={(event) => {
         if (craftingOpen) {
           if (moveSourceSlot === null) {
-            if (hasItem) setMoveSourceSlot(index);
+            if (hasItem) {
+              setCursorPosition({ x: event.clientX, y: event.clientY });
+              setMoveSourceSlot(index);
+            }
           } else if (moveSourceSlot !== index) {
             sendUiAction("move-item", { value: moveSourceSlot, primary: String(index) });
             setMoveSourceSlot(null);
@@ -721,9 +717,8 @@ function HudRoute({ model }) {
   const inputMethod = payload.inputMethod === "gamepad" ? "gamepad" : "keyboard";
   const [chatDraft, setChatDraft] = useState("");
   const [recipeTab, setRecipeTab] = useState("all");
-  const [dragSourceSlot, setDragSourceSlot] = useState(null);
   const [moveSourceSlot, setMoveSourceSlot] = useState(null);
-  const suppressClickRef = useRef(false);
+  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
   const chatOpen = Boolean(payload?.chat?.open);
   const craftingOpen = Boolean(payload?.crafting?.open);
   const crosshairSize = Math.max(0.5, Math.min(2, Number(payload?.crosshair?.size || 1)));
@@ -760,25 +755,11 @@ function HudRoute({ model }) {
   }, [chatOpen, craftingOpen]);
 
   useEffect(() => {
-    if (dragSourceSlot === null) return undefined;
-    const finishPointerDrag = (event) => {
-      const destination = event.target instanceof Element
-        ? event.target.closest("[data-inventory-slot]")
-        : null;
-      const destinationSlot = Number(destination?.dataset.inventorySlot);
-      if (Number.isFinite(destinationSlot) && destinationSlot !== dragSourceSlot) {
-        sendUiAction("move-item", { value: dragSourceSlot, primary: String(destinationSlot) });
-        setMoveSourceSlot(null);
-      } else if (destinationSlot === dragSourceSlot) {
-        setMoveSourceSlot((current) => current === dragSourceSlot ? null : dragSourceSlot);
-      }
-      suppressClickRef.current = true;
-      setDragSourceSlot(null);
-      window.setTimeout(() => { suppressClickRef.current = false; }, 0);
-    };
-    window.addEventListener("pointerup", finishPointerDrag, { once: true });
-    return () => window.removeEventListener("pointerup", finishPointerDrag);
-  }, [dragSourceSlot]);
+    if (moveSourceSlot === null) return undefined;
+    const trackCursor = (event) => setCursorPosition({ x: event.clientX, y: event.clientY });
+    window.addEventListener("pointermove", trackCursor);
+    return () => window.removeEventListener("pointermove", trackCursor);
+  }, [moveSourceSlot]);
 
   const categories = [
     ["all", "All"],
@@ -803,9 +784,17 @@ function HudRoute({ model }) {
   };
 
   const overlayOpen = chatOpen || craftingOpen;
+  const cursorHeldStack = moveSourceSlot === null
+    ? null
+    : orderedInventory.find((slot) => Number(slot.slot) === moveSourceSlot && Number(slot.count) > 0);
 
   return (
     <main className={`hud-root ${craftingOpen ? "overlay-open" : ""}`} aria-live="polite">
+      {craftingOpen && cursorHeldStack ? (
+        <div className="hud-cursor-held-item" style={{ left: cursorPosition.x, top: cursorPosition.y }} aria-hidden="true">
+          <span>{cursorHeldStack.name}</span><strong>{cursorHeldStack.count}</strong>
+        </div>
+      ) : null}
       {!overlayOpen ? (
         <div className={`hud-crosshair ${crosshairHighContrast ? "high-contrast" : ""}`} style={{ "--crosshair-size": `${crosshairSize}` }} data-reduced-motion={reducedMotion ? "true" : "false"}>
           <span />
@@ -886,13 +875,13 @@ function HudRoute({ model }) {
               <p className="section-title">Backpack</p>
               <div className="hud-inventory-grid">
                 {mainSlots.map((slot) => (
-                  <InventorySlot key={slot.slot} slot={slot} selectable={false} dragSourceSlot={dragSourceSlot} setDragSourceSlot={setDragSourceSlot} moveSourceSlot={moveSourceSlot} setMoveSourceSlot={setMoveSourceSlot} suppressClickRef={suppressClickRef} craftingOpen />
+                  <InventorySlot key={slot.slot} slot={slot} selectable={false} moveSourceSlot={moveSourceSlot} setMoveSourceSlot={setMoveSourceSlot} setCursorPosition={setCursorPosition} craftingOpen />
                 ))}
               </div>
               <p className="section-title">Hotbar</p>
               <nav className="hud-hotbar-overlay" aria-label="Hotbar">
                 {displayHotbar.map((slot) => (
-                  <InventorySlot key={slot.slot} slot={slot} selectable dragSourceSlot={dragSourceSlot} setDragSourceSlot={setDragSourceSlot} moveSourceSlot={moveSourceSlot} setMoveSourceSlot={setMoveSourceSlot} suppressClickRef={suppressClickRef} craftingOpen />
+                  <InventorySlot key={slot.slot} slot={slot} selectable moveSourceSlot={moveSourceSlot} setMoveSourceSlot={setMoveSourceSlot} setCursorPosition={setCursorPosition} craftingOpen />
                 ))}
               </nav>
               <ControlHints inputMethod={inputMethod} craftingOpen />
@@ -904,7 +893,7 @@ function HudRoute({ model }) {
       {!overlayOpen ? (
         <nav className="hud-hotbar" aria-label="Hotbar">
           {displayHotbar.map((slot) => (
-            <InventorySlot key={slot.slot} slot={slot} selectable dragSourceSlot={dragSourceSlot} setDragSourceSlot={setDragSourceSlot} moveSourceSlot={moveSourceSlot} setMoveSourceSlot={setMoveSourceSlot} suppressClickRef={suppressClickRef} craftingOpen={false} />
+            <InventorySlot key={slot.slot} slot={slot} selectable moveSourceSlot={moveSourceSlot} setMoveSourceSlot={setMoveSourceSlot} setCursorPosition={setCursorPosition} craftingOpen={false} />
           ))}
         </nav>
       ) : null}
