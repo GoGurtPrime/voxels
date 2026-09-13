@@ -48,6 +48,42 @@ bool Physics::IsSolidBlock(BlockId block, const BlockRegistry* registry) noexcep
     return block != static_cast<BlockId>(BlockType::Air) && block != static_cast<BlockId>(BlockType::Water);
 }
 
+namespace {
+bool IsLiquidAt(const World& world, const BlockRegistry* registry, int x, float y, int z) {
+    const BlockId block = world.GetBlock(Vec3I{x, static_cast<int>(std::floor(y)), z});
+    if (registry != nullptr) {
+        const BlockDefinition* definition = registry->GetDefinition(block);
+        return definition != nullptr && definition->isLiquid;
+    }
+    return block == static_cast<BlockId>(BlockType::Water);
+}
+} // namespace
+
+SubmersionInfo Physics::SampleSubmersion(const World& world, const Player& player, const BlockRegistry* registry) noexcept {
+    SubmersionInfo info{};
+    const int x = static_cast<int>(std::floor(player.state.position.x));
+    const int z = static_cast<int>(std::floor(player.state.position.z));
+    const float feetY = player.state.position.y - kPlayerHalfHeight;
+    const float headY = player.state.position.y + kPlayerHalfHeight;
+    const float eyeY = player.state.position.y + kEyeOffsetFromCenter;
+
+    info.feetSubmerged = IsLiquidAt(world, registry, x, feetY + 0.05f, z);
+    info.eyeSubmerged = IsLiquidAt(world, registry, x, eyeY, z);
+
+    float submergedHeight = 0.0f;
+    const int startY = static_cast<int>(std::floor(feetY));
+    const int endY = static_cast<int>(std::floor(headY));
+    for (int y = startY; y <= endY; ++y) {
+        if (!IsLiquidAt(world, registry, x, static_cast<float>(y) + 0.5f, z)) continue;
+        const float cellMin = std::max(feetY, static_cast<float>(y));
+        const float cellMax = std::min(headY, static_cast<float>(y) + 1.0f);
+        if (cellMax > cellMin) submergedHeight += cellMax - cellMin;
+    }
+    const float totalHeight = headY - feetY;
+    info.bodyFraction = totalHeight > 0.0f ? std::clamp(submergedHeight / totalHeight, 0.0f, 1.0f) : 0.0f;
+    return info;
+}
+
 bool Physics::IsGrounded(const World& world, const Player& player, const BlockRegistry* registry) {
     return HasGroundBelow(world, player, registry);
 }
@@ -185,18 +221,36 @@ void Physics::ResolveAxis(const World& world, Player& player, int axis, float de
     }
 }
 
-void Physics::Step(const World& world, Player& player, float deltaTime, const BlockRegistry* registry) {
+void Physics::Step(const World& world, Player& player, float deltaTime, const BlockRegistry* registry,
+                    bool swimAscend) {
     if (deltaTime <= 0.0f) {
         return;
     }
 
-    if (player.state.onGround) {
-        player.state.velocity.y = std::max(0.0f, player.state.velocity.y);
-    }
+    const SubmersionInfo submersion = SampleSubmersion(world, player, registry);
+    const bool swimming = submersion.bodyFraction > 0.0f;
 
-    const float gravityStep = kGravity * deltaTime;
-    if (!player.state.onGround) {
-        player.state.velocity.y = std::max(-kTerminalVelocity, player.state.velocity.y - gravityStep);
+    if (swimming) {
+        const float speedScale = 1.0f - submersion.bodyFraction * (1.0f - kWaterHorizontalSpeedScale);
+        player.state.velocity.x *= speedScale;
+        player.state.velocity.z *= speedScale;
+
+        if (swimAscend) {
+            player.state.velocity.y = std::min(player.state.velocity.y + kWaterSwimAccel * deltaTime, kWaterSwimSpeed);
+        } else if (!player.state.onGround) {
+            player.state.velocity.y = std::max(player.state.velocity.y - kWaterGravity * deltaTime, -kWaterTerminalVelocity);
+        }
+        // Arrests any fall speed accumulated before entering the water immediately, rather than
+        // decaying it over several ticks - a real splash should visibly slow the player at once.
+        player.state.velocity.y = std::clamp(player.state.velocity.y, -kWaterTerminalVelocity, kWaterSwimSpeed);
+    } else {
+        if (player.state.onGround) {
+            player.state.velocity.y = std::max(0.0f, player.state.velocity.y);
+        }
+        const float gravityStep = kGravity * deltaTime;
+        if (!player.state.onGround) {
+            player.state.velocity.y = std::max(-kTerminalVelocity, player.state.velocity.y - gravityStep);
+        }
     }
 
     const float stepX = player.state.velocity.x * deltaTime;

@@ -160,13 +160,13 @@ void GameSession::Initialize() {
         m_player.state.velocity = Vec3{0.0f};
         m_player.state.onGround = true;
     }
-    const Vec3I initialPlayerBlock{static_cast<int>(std::floor(m_player.state.position.x)),
-                                   static_cast<int>(std::floor(m_player.state.position.y)),
-                                   static_cast<int>(std::floor(m_player.state.position.z))};
-    m_wasInWater = m_world->GetBlock(initialPlayerBlock) == static_cast<BlockId>(BlockType::Water);
+    const gameplay::SubmersionInfo initialSubmersion = gameplay::Physics::SampleSubmersion(*m_world, m_player, m_registry);
+    m_wasInWater = initialSubmersion.bodyFraction > 0.0f;
+    m_eyeSubmerged = initialSubmersion.eyeSubmerged;
+    m_submersionFraction = initialSubmersion.bodyFraction;
     m_lastSelectedStack = m_player.state.inventory.GetSelectedStack();
     m_camera.position = glm::vec3(m_player.state.position.x,
-                                  m_player.state.position.y + 0.72f,
+                                  m_player.state.position.y + gameplay::Physics::kEyeOffsetFromCenter,
                                   m_player.state.position.z);
     m_camera.yaw = m_player.state.yaw;
     m_camera.pitch = m_player.state.pitch;
@@ -261,7 +261,10 @@ void GameSession::Update(float deltaSeconds) {
                                      {static_cast<int>(std::floor(m_player.state.position.x)), static_cast<int>(std::floor(m_player.state.position.y)), static_cast<int>(std::floor(m_player.state.position.z))}});
         }
         const float fallVelocity = m_player.state.velocity.y;
-        gameplay::Physics::Step(*m_world, m_player, deltaSeconds, m_registry);
+        gameplay::Physics::Step(*m_world, m_player, deltaSeconds, m_registry, input.jump);
+        const gameplay::SubmersionInfo submersion = gameplay::Physics::SampleSubmersion(*m_world, m_player, m_registry);
+        m_eyeSubmerged = submersion.eyeSubmerged;
+        m_submersionFraction = submersion.bodyFraction;
         const Vec3I playerBlock{static_cast<int>(std::floor(m_player.state.position.x)),
                                 static_cast<int>(std::floor(m_player.state.position.y)),
                                 static_cast<int>(std::floor(m_player.state.position.z))};
@@ -279,7 +282,7 @@ void GameSession::Update(float deltaSeconds) {
         if (!wasGrounded && m_player.state.onGround && fallVelocity < -4.0f) {
             m_soundEvents.push_back({GameplaySoundEventType::Land, playerBlock, standingBlock});
         }
-        const bool inWater = m_world->GetBlock(playerBlock) == static_cast<BlockId>(BlockType::Water);
+        const bool inWater = submersion.bodyFraction > 0.0f;
         if (inWater != m_wasInWater) {
             m_soundEvents.push_back({GameplaySoundEventType::Splash, playerBlock, static_cast<BlockId>(BlockType::Water)});
             m_wasInWater = inWater;
@@ -381,6 +384,9 @@ void GameSession::Update(float deltaSeconds) {
         m_input->Update();
     } else {
         gameplay::Physics::Step(*m_world, m_player, deltaSeconds, m_registry);
+        const gameplay::SubmersionInfo submersion = gameplay::Physics::SampleSubmersion(*m_world, m_player, m_registry);
+        m_eyeSubmerged = submersion.eyeSubmerged;
+        m_submersionFraction = submersion.bodyFraction;
         m_breakProgress = 0.0f;
         m_hasBreakTarget = false;
     }
@@ -391,7 +397,7 @@ void GameSession::Update(float deltaSeconds) {
     }
 
     m_camera.position = glm::vec3(m_player.state.position.x,
-                                  m_player.state.position.y + 0.72f,
+                                  m_player.state.position.y + gameplay::Physics::kEyeOffsetFromCenter,
                                   m_player.state.position.z);
     m_camera.yaw = m_player.state.yaw;
     m_camera.pitch = m_player.state.pitch;

@@ -99,6 +99,11 @@ public:
     [[nodiscard]] const RaycastHit& GetTarget() const noexcept { return m_target; }
     /// 0..1 fraction of the current block-break hold; resets when the target changes.
     [[nodiscard]] float GetBreakProgress() const noexcept { return m_breakProgress; }
+    /// True when the camera eye (not just the feet) is inside a liquid block this frame; drives
+    /// the underwater render overlay without granting the UI layer any physics authority.
+    [[nodiscard]] bool IsEyeSubmerged() const noexcept { return m_eyeSubmerged; }
+    /// 0..1 fraction of the player's AABB height currently occupied by liquid blocks.
+    [[nodiscard]] float GetSubmersionFraction() const noexcept { return m_submersionFraction; }
     /// Block positions edited since the caller last cleared; drives chunk remeshing.
     [[nodiscard]] const std::vector<Vec3I>& GetEditedBlocks() const noexcept { return m_editedBlocks; }
     void ClearEditedBlocks() noexcept { m_editedBlocks.clear(); }
@@ -168,6 +173,8 @@ private:
     float m_placeCooldown = 0.0f;
     float m_footstepSeconds = 0.0f;
     bool m_wasInWater = false;
+    bool m_eyeSubmerged = false;
+    float m_submersionFraction = 0.0f;
     std::vector<Vec3I> m_editedBlocks;
     std::vector<GameplaySoundEvent> m_soundEvents;
     std::vector<Vec3I> m_particleBursts;
