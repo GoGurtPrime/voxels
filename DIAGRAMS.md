@@ -275,6 +275,8 @@ sequenceDiagram
     Srv->>Srv: advance persistent world tick unless local play is paused
     Srv->>Phy: apply intent → velocity
     Phy->>Phy: gravity, drag, jump impulse
+    Phy->>W: sample liquid occupancy at feet/eye/full AABB (SampleSubmersion)
+    Phy->>Phy: while submerged: scale horizontal speed,<br/>replace gravity with bounded sink or swim-up accel
     Phy->>W: query solid AABBs in swept region
     Phy->>Phy: resolve per axis X, Z, Y, set onGround
     Srv->>BI: if break/place requested
@@ -308,7 +310,8 @@ flowchart LR
     FRUS --> OPAQUE["Pass 2: opaque chunk meshes<br/>atlas texture, depth write on<br/>fog ends one chunk inside render boundary"]
     OPAQUE --> MODELS["Pass 3: sub-voxel models + entities<br/>.vmdl instances, players, atlas-backed item drops<br/>opaque/cutout batches then back-to-front transparent items"]
     MODELS --> WATER["Pass 4: transparent<br/>water, leaves, glass — sorted back to front, depth write off"]
-    WATER --> DEBUG["Pass 5: debug lines<br/>targeted block outline, chunk bounds if enabled"]
+    WATER --> UNDERWATER["Pass 4.5: underwater overlay<br/>full-screen blue tint, only when eye is submerged<br/>(GameSession.IsEyeSubmerged/GetSubmersionFraction)"]
+    UNDERWATER --> DEBUG["Pass 5: debug lines<br/>targeted block outline, chunk bounds if enabled"]
     DEBUG --> HUD["Pass 6: HUD primitives<br/>crosshair, hotbar, held item"]
     HUD --> IMGUI["Pass 7: ImGui draw data<br/>display-encoded UI bypasses framebuffer sRGB conversion"]
     IMGUI --> WEBUI["Pass 8 (VOXELS_ENABLE_WEB_UI only): CEF React menu layer<br/>WebUiOpenGLCompositor draws the browser's premultiplied-BGRA<br/>paint with framebuffer sRGB conversion bypassed, then restores it;<br/>menu routes replace ImGui, while pause/HUD remain native"]

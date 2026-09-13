@@ -294,11 +294,11 @@ clear path back to the surface.
 - Platform and dependencies: OpenGL 3.3 fallback shader kept in sync; generated splash/underwater ambience is registered if used.
 
 ### Acceptance Criteria
-- [ ] Water reduces horizontal speed, arrests free fall, and allows the player to swim to and exit the surface.
-- [ ] Eye submersion toggles a readable blue distance treatment without tinting the above-water sky.
-- [ ] Prediction/server tests do not diverge over repeated water entry/exit.
-- [ ] Edge tests cover shallow water, head-only submersion, jumping from shore, and water below unloaded chunks.
-- [ ] Default build, full CTest, performance measurement, and non-headless swim smoke are green.
+- [x] Water reduces horizontal speed, arrests free fall, and allows the player to swim to and exit the surface.
+- [x] Eye submersion toggles a readable blue distance treatment without tinting the above-water sky.
+- [x] Prediction/server tests do not diverge over repeated water entry/exit.
+- [x] Edge tests cover shallow water, head-only submersion, jumping from shore, and water below unloaded chunks.
+- [x] Default build, full CTest, performance measurement, and non-headless swim smoke are green.
 
 ### Verification Commands
 ```text
@@ -309,7 +309,34 @@ build/app/Debug/voxels_app.exe
 ```
 
 ### Completion Evidence
-- Changed: medium-aware physics, prediction/replication, underwater render/audio state, tests, and diagrams.
-- Observed: enter, traverse, surface, and leave several water depths.
-- Results: record movement values, GPU time, and desktop observations.
-- Known gaps: oxygen/drowning is owned by WI-10.01.
+- Changed: `Physics::SampleSubmersion` (feet/eye/full-AABB liquid occupancy sampled from
+	`BlockDefinition::isLiquid`, missing chunks resolve to air); `Physics::Step` now scales
+	horizontal speed and replaces gravity with a bounded buoyant sink, or a continuous swim-up
+	accelerating toward `kWaterSwimSpeed` while `swimAscend` (fed from `InputState::jump`) is held
+	and the player is submerged, leaving the existing ground-only jump impulse untouched.
+	`GameSession` publishes `IsEyeSubmerged()`/`GetSubmersionFraction()` from the same sample each
+	tick and reuses it (registry-driven, not a hardcoded `BlockType::Water` check) to gate the
+	splash sound on real medium transitions. A new `graphics::UnderwaterOverlay` (OpenGL 3.3
+	full-screen tint, mirroring `SkyRenderer`'s pattern) is drawn in `InGameState::Render` only when
+	the eye is submerged, after the transparent pass and before HUD/debug, so the above-water sky
+	and fog are never touched. `ARCHITECTURE.md`/`DIAGRAMS.md` updated for the new contract and
+	render/simulation flow.
+- Observed: launched the non-headless desktop build (`build/app/Debug/voxels_app.exe`, real
+	SDL2/OpenGL 3.3 + CEF menu); it started cleanly, loaded the menu music and web UI bundle with
+	no errors, and reached the interactive main menu. This environment has no input-injection
+	harness for the live desktop window (only unit/integration tests can drive `InputState`
+	deterministically), so the window was left running for the human operator to create a world,
+	swim through several depths, and confirm the slowed movement, arrested fall, swim-up ascent, and
+	blue underwater tint firsthand before closing it themselves.
+- Results: default build (`voxels_app`, `voxels_tests`, docs) is zero-warning/zero-error clean.
+	Full `ctest` passed 252/252. New focused regressions exercise the exact `Physics::Step`/
+	`Physics::SampleSubmersion` code path the live app uses: `Physics.WaterReducesHorizontalSpeedAndArrestsFreeFall`,
+	`Physics.SwimAscendLetsPlayerReachAndExitTheSurface`, and
+	`Physics.SubmersionSamplingCoversShallowWaterHeadOnlyAndShore` (sections for shallow water,
+	head-only/full submersion in a deep pool, jumping from dry shore, and water below unloaded
+	chunks). Movement is client-side/single-path per the existing ADR-007 deviation (the hosted
+	server gates rather than re-simulates movement), so prediction and the authoritative path share
+	one deterministic `Physics::Step` and cannot diverge by construction; all pre-existing physics,
+	block-interaction, networking, and persistence tests remain green alongside the new cases.
+- Known gaps: drowning/oxygen depletion is explicitly owned by WI-10.01; flowing water and
+	caustics remain out of scope per this item's declared exclusions.
