@@ -276,7 +276,7 @@ sequenceDiagram
     Srv->>Phy: apply intent → velocity
     Phy->>Phy: gravity, drag, jump impulse
     Phy->>W: sample liquid occupancy at feet/eye/full AABB (SampleSubmersion)
-    Phy->>Phy: while submerged: scale horizontal speed,<br/>replace gravity with bounded sink or swim-up accel
+    Phy->>Phy: while submerged/mid-climb: scale horizontal speed,<br/>converge onto tread-water or ledge-climb ceiling (no free float)
     Phy->>W: query solid AABBs in swept region
     Phy->>Phy: resolve per axis X, Z, Y, set onGround
     Srv->>BI: if break/place requested

@@ -31,18 +31,22 @@ public:
     static constexpr float kPlayerHalfHeight = 0.9f;  ///< AABB half-extent on Y, in blocks (centred on position).
     static constexpr float kEyeOffsetFromCenter = 0.72f; ///< Camera eye height above the AABB center, in blocks.
 
-    static constexpr float kWaterHorizontalSpeedScale = 0.45f; ///< Horizontal velocity multiplier while fully submerged.
+    static constexpr float kWaterHorizontalSpeedScale = 0.9f; ///< Horizontal velocity multiplier while fully submerged.
     static constexpr float kWaterGravity = 3.0f;      ///< Downward acceleration while submerged and not swimming up.
     static constexpr float kWaterTerminalVelocity = 3.4f; ///< Maximum sink speed while submerged, blocks/s.
-    static constexpr float kWaterSwimAccel = 14.0f;   ///< Upward acceleration applied while holding swim-up submerged.
-    static constexpr float kWaterSwimSpeed = 3.6f;    ///< Maximum upward swim speed, blocks/s.
+    static constexpr float kWaterSwimSpeed = 3.6f;    ///< Maximum swim-up speed while below the tread/climb ceiling, blocks/s.
+    static constexpr float kSwimCeilingGain = 6.0f;   ///< Proportional gain (1/s) converging onto the tread/climb ceiling without overshoot.
+    static constexpr float kSwimSurfaceClearance = 0.1f; ///< How far the eye pokes above the surface while treading water.
 
     /// Advances one tick: applies gravity (capped at terminal velocity) while airborne, then
     /// sweeps the player AABB axis-by-axis (X, Y, Z) against solid blocks, zeroing each blocked
     /// velocity component and refreshing onGround. Honours per-block collision bounds. While the
     /// AABB overlaps liquid blocks, horizontal speed is scaled down, free fall is arrested by a
     /// reduced gravity/terminal velocity, and holding `swimAscend` accelerates the player upward
-    /// instead of the ground-only jump impulse.
+    /// toward a tread-water ceiling (mostly submerged, head just clearing the surface) instead of
+    /// the ground-only jump impulse. The player only rises past that ceiling when a climbable,
+    /// at-most-one-block-tall ledge is immediately ahead; a taller obstruction still requires
+    /// breaking a block, matching normal ground movement.
     static void Step(const World& world, Player& player, float deltaTime, const BlockRegistry* registry = nullptr,
                       bool swimAscend = false);
     /// No-op unless onGround; sets vertical velocity to kJumpImpulse and clears onGround.

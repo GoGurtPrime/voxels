@@ -154,11 +154,50 @@ TEST_CASE("Physics.WaterReducesHorizontalSpeedAndArrestsFreeFall", "[gameplay][p
     REQUIRE(wetPlayer.state.velocity.y > -20.0f);
 }
 
-TEST_CASE("Physics.SwimAscendLetsPlayerReachAndExitTheSurface", "[gameplay][physics][swimming]") {
+TEST_CASE("Physics.WalkingIntoShallowWaterWhileHoldingSpaceSinksInsteadOfHovering", "[gameplay][physics][swimming]") {
     voxels::World world;
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
-    for (int x = -2; x <= 2; ++x) {
-        for (int z = -2; z <= 2; ++z) {
+    // Dry shore floor at y=0 (top=1); the water side is a basin with no floor near the surface -
+    // stepping off the shore edge must sink the player in, not hold them at the dry walking height.
+    for (int x = -5; x <= 5; ++x) {
+        for (int z = -1; z <= 1; ++z) {
+            if (x < 0) {
+                world.SetBlock(voxels::Vec3I{x, 0, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+            } else {
+                world.SetBlock(voxels::Vec3I{x, -5, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+                for (int y = -4; y <= 1; ++y) {
+                    world.SetBlock(voxels::Vec3I{x, y, z}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+                }
+            }
+        }
+    }
+
+    voxels::Player player;
+    player.state.position = voxels::Vec3{-1.5f, 1.9f, 0.5f}; // standing on dry ground
+    player.state.velocity = voxels::Vec3{0.0f};
+    player.state.onGround = true;
+
+    const float startY = player.state.position.y;
+    bool everSankBelowStart = false;
+    for (int step = 0; step < 300; ++step) {
+        player.state.velocity.x = 2.0f; // walk forward into the water
+        voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f, &registry, /*swimAscend=*/true);
+        if (player.state.position.x > 0.0f && player.state.position.y < startY - 0.05f) {
+            everSankBelowStart = true;
+        }
+    }
+
+    REQUIRE(everSankBelowStart); // must actually sink in, not hover at the dry walking height
+    REQUIRE(player.state.position.y < startY); // settles lower than the dry shore, not on top of the water
+}
+
+TEST_CASE("Physics.SwimAscendTreadsAtTheSurfaceInsteadOfWalkingOnTopOfOpenWater", "[gameplay][physics][swimming]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    // A wide open pool: no shore within drifting range, so nothing to climb onto. Wide enough
+    // that ~5 seconds of horizontal drift never reaches an edge.
+    for (int x = -30; x <= 30; ++x) {
+        for (int z = -30; z <= 30; ++z) {
             world.SetBlock(voxels::Vec3I{x, 0, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
             for (int y = 1; y <= 6; ++y) {
                 world.SetBlock(voxels::Vec3I{x, y, z}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
@@ -170,18 +209,74 @@ TEST_CASE("Physics.SwimAscendLetsPlayerReachAndExitTheSurface", "[gameplay][phys
     player.state.position = voxels::Vec3{0.5f, 2.5f, 0.5f};
     player.state.velocity = voxels::Vec3{0.0f};
 
-    bool reachedOpenAir = false;
-    for (int step = 0; step < 400; ++step) {
-        const voxels::gameplay::SubmersionInfo submersion =
-            voxels::gameplay::Physics::SampleSubmersion(world, player, &registry);
+    float maxHeightReached = player.state.position.y;
+    for (int step = 0; step < 300; ++step) {
+        player.state.velocity.x = 2.0f; // simulate holding a movement key while treading water
         voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f, &registry, /*swimAscend=*/true);
-        if (!submersion.eyeSubmerged && player.state.position.y > 6.5f) {
-            reachedOpenAir = true;
-            break;
-        }
+        maxHeightReached = std::max(maxHeightReached, player.state.position.y);
     }
 
-    REQUIRE(reachedOpenAir);
+    const voxels::gameplay::SubmersionInfo finalSubmersion =
+        voxels::gameplay::Physics::SampleSubmersion(world, player, &registry);
+    REQUIRE_FALSE(player.state.onGround);
+    REQUIRE(maxHeightReached > 6.0f); // rises close to the tread ceiling (surface=7, ceiling~6.38)
+    REQUIRE(maxHeightReached < 6.6f); // ...but never reaches/passes the y=7 open-air surface
+    REQUIRE(finalSubmersion.bodyFraction > 0.5f); // stays mostly submerged, not floating on top
+}
+
+TEST_CASE("Physics.SwimClimbsOutOntoAOneBlockLedgeButNotATwoBlockWall", "[gameplay][physics][swimming]") {
+    const auto buildWorld = [](int ledgeHeightAboveSurface) {
+        voxels::World world;
+        // Water pool for x <= 0; dry ground for x >= 1, its top `ledgeHeightAboveSurface`
+        // blocks above the water surface (y=3 is the first air cell above the water).
+        for (int z = -1; z <= 1; ++z) {
+            for (int x = -3; x <= 0; ++x) {
+                world.SetBlock(voxels::Vec3I{x, 0, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+                for (int y = 1; y <= 2; ++y) {
+                    world.SetBlock(voxels::Vec3I{x, y, z}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+                }
+            }
+            for (int x = 1; x <= 3; ++x) {
+                for (int y = 0; y < 3 + ledgeHeightAboveSurface; ++y) {
+                    world.SetBlock(voxels::Vec3I{x, y, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+                }
+            }
+        }
+        return world;
+    };
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+
+    SECTION("A single-block-high shore is climbable while swimming towards it") {
+        voxels::World world = buildWorld(1);
+        voxels::Player player;
+        player.state.position = voxels::Vec3{-1.5f, 2.0f, 0.5f};
+        player.state.velocity = voxels::Vec3{0.0f};
+
+        bool climbedOut = false;
+        for (int step = 0; step < 500; ++step) {
+            player.state.velocity.x = 2.0f;
+            voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f, &registry, /*swimAscend=*/true);
+            if (player.state.onGround && player.state.position.x > 1.0f) {
+                climbedOut = true;
+                break;
+            }
+        }
+        REQUIRE(climbedOut);
+    }
+
+    SECTION("A two-block-high wall cannot be swim-climbed") {
+        voxels::World world = buildWorld(2);
+        voxels::Player player;
+        player.state.position = voxels::Vec3{-1.5f, 2.0f, 0.5f};
+        player.state.velocity = voxels::Vec3{0.0f};
+
+        for (int step = 0; step < 500; ++step) {
+            player.state.velocity.x = 2.0f;
+            voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f, &registry, /*swimAscend=*/true);
+        }
+        REQUIRE_FALSE(player.state.onGround);
+        REQUIRE(player.state.position.x < 1.0f);
+    }
 }
 
 TEST_CASE("Physics.SubmersionSamplingCoversShallowWaterHeadOnlyAndShore", "[gameplay][physics][swimming]") {

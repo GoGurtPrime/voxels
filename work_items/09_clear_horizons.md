@@ -310,28 +310,44 @@ build/app/Debug/voxels_app.exe
 
 ### Completion Evidence
 - Changed: `Physics::SampleSubmersion` (feet/eye/full-AABB liquid occupancy sampled from
-	`BlockDefinition::isLiquid`, missing chunks resolve to air); `Physics::Step` now scales
-	horizontal speed and replaces gravity with a bounded buoyant sink, or a continuous swim-up
-	accelerating toward `kWaterSwimSpeed` while `swimAscend` (fed from `InputState::jump`) is held
-	and the player is submerged, leaving the existing ground-only jump impulse untouched.
-	`GameSession` publishes `IsEyeSubmerged()`/`GetSubmersionFraction()` from the same sample each
-	tick and reuses it (registry-driven, not a hardcoded `BlockType::Water` check) to gate the
+	`BlockDefinition::isLiquid`, missing chunks resolve to air); `Physics::Step` scales horizontal
+	speed by `kWaterHorizontalSpeedScale` while submerged. Vertical motion converges proportionally
+	(`kSwimCeilingGain`) onto a target height rather than integrating a fixed acceleration (a
+	fixed-acceleration model was tried first and produced a sink/climb oscillation right at the
+	surface and against ledges): holding `swimAscend` (fed from `InputState::jump`) targets a
+	tread-water ceiling that keeps the player mostly submerged with only the head clearing the
+	surface (`kSwimSurfaceClearance`), which is the fix for holding space letting the player float
+	up and walk across open water. `TryFindClimbableLedgeTop` raises that ceiling only when a solid
+	ledge immediately ahead tops out at most one block above the water surface with two blocks of
+	clear headroom; a taller face is left uncapped by design, matching "a two-block wall needs a
+	broken block, not a swim-climb." `FindNearbyLiquidSurfaceTopY` keeps swim-assist active through
+	the brief airborne arc of actually climbing onto a found ledge (gating purely on current
+	submersion let gravity yank the player back down mid-climb). Releasing `swimAscend` (or holding
+	it while still above the ceiling, e.g. having just walked off a shore into deeper water) applies
+	a low buoyant `kWaterGravity`/`kWaterTerminalVelocity` sink instead of full gravity, so walking
+	into water while holding space sinks the player in rather than hovering at the dry-land height.
+	Land-only jumping is untouched. `GameSession` publishes `IsEyeSubmerged()`/`GetSubmersionFraction()`
+	each tick and reuses it (registry-driven, not a hardcoded `BlockType::Water` check) to gate the
 	splash sound on real medium transitions. A new `graphics::UnderwaterOverlay` (OpenGL 3.3
 	full-screen tint, mirroring `SkyRenderer`'s pattern) is drawn in `InGameState::Render` only when
 	the eye is submerged, after the transparent pass and before HUD/debug, so the above-water sky
-	and fog are never touched. `ARCHITECTURE.md`/`DIAGRAMS.md` updated for the new contract and
-	render/simulation flow.
+	and fog are never touched. `ARCHITECTURE.md`/`DIAGRAMS.md` updated for the corrected contract.
 - Observed: launched the non-headless desktop build (`build/app/Debug/voxels_app.exe`, real
 	SDL2/OpenGL 3.3 + CEF menu); it started cleanly, loaded the menu music and web UI bundle with
 	no errors, and reached the interactive main menu. This environment has no input-injection
 	harness for the live desktop window (only unit/integration tests can drive `InputState`
 	deterministically), so the window was left running for the human operator to create a world,
-	swim through several depths, and confirm the slowed movement, arrested fall, swim-up ascent, and
-	blue underwater tint firsthand before closing it themselves.
+	swim through several depths, hold space at the surface, and swim toward a one-block shore to
+	confirm the tread cap, ledge climb-out, and sinking-on-entry behavior firsthand before closing
+	it themselves.
 - Results: default build (`voxels_app`, `voxels_tests`, docs) is zero-warning/zero-error clean.
-	Full `ctest` passed 252/252. New focused regressions exercise the exact `Physics::Step`/
-	`Physics::SampleSubmersion` code path the live app uses: `Physics.WaterReducesHorizontalSpeedAndArrestsFreeFall`,
-	`Physics.SwimAscendLetsPlayerReachAndExitTheSurface`, and
+	Full `ctest` passed 254/254. Focused regressions exercise the exact `Physics::Step`/
+	`Physics::SampleSubmersion` code path the live app uses:
+	`Physics.WaterReducesHorizontalSpeedAndArrestsFreeFall`,
+	`Physics.WalkingIntoShallowWaterWhileHoldingSpaceSinksInsteadOfHovering`,
+	`Physics.SwimAscendTreadsAtTheSurfaceInsteadOfWalkingOnTopOfOpenWater`,
+	`Physics.SwimClimbsOutOntoAOneBlockLedgeButNotATwoBlockWall` (both a climbable one-block shore
+	and a rejected two-block wall), and
 	`Physics.SubmersionSamplingCoversShallowWaterHeadOnlyAndShore` (sections for shallow water,
 	head-only/full submersion in a deep pool, jumping from dry shore, and water below unloaded
 	chunks). Movement is client-side/single-path per the existing ADR-007 deviation (the hosted
