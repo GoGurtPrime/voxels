@@ -140,6 +140,42 @@ TEST_CASE("GameSession.HoldingSwimUpAtTheSurfaceDoesNotSpamSplashSounds", "[play
     REQUIRE(splashCount <= 1);
 }
 
+TEST_CASE("GameSession.WalkingInAShallowPuddleWhileHoldingJumpDoesNotSpamSplashSounds",
+         "[player][audio][swimming]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    for (int x = -3; x <= 3; ++x) {
+        for (int z = -3; z <= 3; ++z) {
+            world.SetBlock({x, 0, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+            world.SetBlock({x, 1, z}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+        }
+    }
+    voxels::InputManager input;
+    input.BindAction("Jump", voxels::InputBinding{"", static_cast<int>(' '), 0, voxels::InputDeviceType::Keyboard});
+    input.BindAction("MoveForward", voxels::InputBinding{"", static_cast<int>('w'), 0, voxels::InputDeviceType::Keyboard});
+
+    voxels::GameSession session(&world);
+    session.SetBlockRegistry(&registry);
+    session.SetInputManager(&input);
+    session.SetPlayerSpawn(voxels::Vec3{0.5f, 1.9f, 0.5f});
+    session.Initialize();
+
+    input.InjectKeyEvent(static_cast<int>(' '), true);
+    input.InjectKeyEvent(static_cast<int>('w'), true);
+    for (int i = 0; i < 180; ++i) { // 3s at 60Hz while standing/walking in a one-block puddle
+        session.Update(1.0f / 60.0f);
+    }
+
+    int splashCount = 0;
+    for (const auto& event : session.GetSoundEvents()) {
+        if (event.type == voxels::GameplaySoundEventType::Splash) ++splashCount;
+    }
+    // A shallow puddle must not engage the swim ceiling: holding jump there should behave like a
+    // normal, comparatively slow land-jump cadence rather than a rapid buoyant bounce loop, so the
+    // splash count over 3 seconds stays low instead of in the dozens.
+    REQUIRE(splashCount <= 3);
+}
+
 TEST_CASE("GameSession.SelectedItemLabelTracksSelectedSlotContents", "[player][inventory]") {
     voxels::World world;
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();

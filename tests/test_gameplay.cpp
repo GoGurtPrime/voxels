@@ -356,6 +356,37 @@ TEST_CASE("Physics.FallingIntoDeepWaterSinksNaturallyWithoutTeleportingToTheSurf
     REQUIRE(singleTickDrop >= 0.0f);
 }
 
+TEST_CASE("Physics.JumpingInAShallowOneBlockPuddleActsLikeANormalLandJump", "[gameplay][physics][swimming]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    for (int x = -2; x <= 2; ++x) {
+        for (int z = -2; z <= 2; ++z) {
+            world.SetBlock(voxels::Vec3I{x, 0, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+            world.SetBlock(voxels::Vec3I{x, 1, z}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+        }
+    }
+    // Standing here submerges ~0.56 of the AABB (a single water layer against a 1.8-tall player)
+    // even though the head is clearly above the surface - this must not engage the swim ceiling.
+
+    voxels::Player player;
+    player.state.position = voxels::Vec3{0.5f, 1.9f, 0.5f};
+    player.state.onGround = true;
+
+    float maxHeight = player.state.position.y;
+    for (int step = 0; step < 120; ++step) {
+        if (player.state.onGround) {
+            voxels::gameplay::Physics::Jump(player); // mimics CameraController::Jump() while holding space
+        }
+        voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f, &registry, /*swimAscend=*/true);
+        maxHeight = std::max(maxHeight, player.state.position.y);
+    }
+
+    // A normal land jump (impulse 8.2, gravity 22) reaches roughly y=3.4; the swim-ceiling bug
+    // capped this around the shallow tread line (~y=1.4), producing rapid buoyant micro-bounces
+    // instead of a normal jump arc.
+    REQUIRE(maxHeight > 3.0f);
+}
+
 TEST_CASE("Physics.SwimmingCrossesASubmergedOneBlockBumpAnywhereUnderwater", "[gameplay][physics][swimming]") {
     voxels::World world;
     voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();

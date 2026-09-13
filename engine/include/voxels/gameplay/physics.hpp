@@ -37,6 +37,11 @@ public:
     static constexpr float kWaterSwimSpeed = 3.6f;    ///< Maximum swim-up speed while below the tread/climb ceiling, blocks/s.
     static constexpr float kSwimCeilingGain = 6.0f;   ///< Proportional gain (1/s) converging onto the tread/climb ceiling without overshoot.
     static constexpr float kSwimSurfaceClearance = 0.1f; ///< How far the eye pokes above the surface while treading water.
+    /// Minimum AABB liquid-occupancy fraction that counts as genuinely swimming (buoyant
+    /// tread/ledge-climb ceiling engaged) rather than merely wading through a shallow puddle with a
+    /// normal land jump. A single one-block-deep puddle submerges ~0.56 of the AABB by geometry
+    /// alone even with the player's head clearly above the surface, so this must sit above that.
+    static constexpr float kMinSwimBodyFraction = 0.65f;
 
     /// Advances one tick: applies gravity (capped at terminal velocity) while airborne, then
     /// sweeps the player AABB axis-by-axis (X, Y, Z) against solid blocks, zeroing each blocked

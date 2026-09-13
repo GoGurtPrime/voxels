@@ -81,6 +81,19 @@ bool FindNearbyLiquidSurfaceTopY(const World& world, const BlockRegistry* regist
     return false;
 }
 
+/// Counts the contiguous liquid blocks immediately below `surfaceTopY` at (x,z). Used to tell a
+/// genuine, swimmable body of water from a one-block-deep puddle: a jump out of a shallow puddle
+/// must never re-engage the swim-ceiling assist just because some liquid is nearby.
+int LiquidDepthBelow(const World& world, const BlockRegistry* registry, int x, int z, float surfaceTopY) {
+    int y = static_cast<int>(std::floor(surfaceTopY)) - 1;
+    int depth = 0;
+    while (depth < 64 && IsLiquidAt(world, registry, x, static_cast<float>(y) + 0.5f, z)) {
+        ++depth;
+        --y;
+    }
+    return depth;
+}
+
 /// Solid ground/obstruction is climbable while swimming when it begins at or within one block
 /// above `anchorY` with two clear blocks of headroom above it; anything taller returns false so
 /// the player must break a block instead of swim-climbing an arbitrary wall. Used both anchored to
@@ -279,28 +292,44 @@ void Physics::Step(const World& world, Player& player, float deltaTime, const Bl
     }
 
     const SubmersionInfo submersion = SampleSubmersion(world, player, registry);
-    const bool swimming = submersion.bodyFraction > 0.0f;
+    const bool wet = submersion.bodyFraction > 0.0f;
+    // A single one-block-deep puddle submerges roughly half of the AABB by construction (one full
+    // block against a 1.8-block-tall player), even though the player's head is clearly above the
+    // surface and they are simply wading, standing on solid ground beneath. Only fractions past
+    // this cross over into "actually swimming" (a floor two or more blocks under water, or genuinely
+    // mid-water) and should engage the buoyant tread/ledge-climb ceiling; a wading puddle should
+    // never fight a normal land jump with the swim-ceiling sink, which was bouncing the player and
+    // spamming the splash sound every cycle.
+    const bool deeplySubmerged = submersion.bodyFraction >= kMinSwimBodyFraction;
     const int columnX = static_cast<int>(std::floor(player.state.position.x));
     const int columnZ = static_cast<int>(std::floor(player.state.position.z));
     float surfaceTopY = 0.0f;
     const bool nearLiquidSurface = FindNearbyLiquidSurfaceTopY(world, registry, columnX, columnZ,
                                                                player.state.position.y - kPlayerHalfHeight, surfaceTopY);
+    // A body of water only counts as swimmable (for the airborne-climb bridge below) once it is
+    // deep enough that standing on its floor would itself cross kMinSwimBodyFraction - otherwise a
+    // normal jump out of a one-block puddle would immediately re-trigger the swim ceiling the
+    // instant the player leaves the ground, truncating the jump into a rapid buoyant bounce.
+    const bool nearSwimmableLiquid = nearLiquidSurface &&
+                                     LiquidDepthBelow(world, registry, columnX, columnZ, surfaceTopY) >= 2;
     // Swim-assist (the tread/climb ceiling below) stays active through the brief airborne arc of
     // climbing out onto a ledge, where the AABB has already cleared the water but hasn't yet
     // landed - gating purely on current submersion would let normal gravity yank the player back
     // down mid-climb, oscillating forever instead of completing the exit.
-    const bool swimAssistActive = swimming || (swimAscend && !player.state.onGround && nearLiquidSurface);
+    const bool swimAssistActive = deeplySubmerged || (swimAscend && !player.state.onGround && nearSwimmableLiquid);
     float swimCeilingCenterY = 0.0f;
     bool hasNearbyClimbStep = false;
     float nearbyClimbStepTopY = 0.0f;
 
-    if (swimAssistActive) {
-        if (swimming) {
-            const float speedScale = 1.0f - submersion.bodyFraction * (1.0f - kWaterHorizontalSpeedScale);
-            player.state.velocity.x *= speedScale;
-            player.state.velocity.z *= speedScale;
-        }
+    if (wet) {
+        // Wading through any depth of water resists horizontal motion, whether or not the deeper
+        // swim-ceiling assist below is also active.
+        const float speedScale = 1.0f - submersion.bodyFraction * (1.0f - kWaterHorizontalSpeedScale);
+        player.state.velocity.x *= speedScale;
+        player.state.velocity.z *= speedScale;
+    }
 
+    if (swimAssistActive) {
         // Treading water floats the player mostly submerged with only the head poking out - this
         // is the ceiling that stops holding space from just walking across the top of the water.
         swimCeilingCenterY = surfaceTopY + kSwimSurfaceClearance - kEyeOffsetFromCenter;
