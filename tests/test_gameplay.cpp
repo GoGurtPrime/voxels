@@ -10,6 +10,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
+
 #include "voxels/gameplay/block_interaction.hpp"
 #include "voxels/gameplay/camera_controller.hpp"
 #include "voxels/gameplay/physics.hpp"
@@ -123,6 +125,129 @@ TEST_CASE("Physics.ModelBoundsLandOnSlabHeight", "[gameplay][physics]") {
     }
     REQUIRE(player.state.onGround);
     REQUIRE(player.state.position.y == Catch::Approx(1.4f).margin(0.05f));
+}
+
+TEST_CASE("Physics.WaterReducesHorizontalSpeedAndArrestsFreeFall", "[gameplay][physics][swimming]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    for (int x = -3; x <= 3; ++x) {
+        for (int z = -3; z <= 3; ++z) {
+            for (int y = -4; y <= 4; ++y) {
+                world.SetBlock(voxels::Vec3I{x, y, z}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+            }
+        }
+    }
+
+    voxels::Player dryPlayer;
+    dryPlayer.state.position = voxels::Vec3{0.5f, 10.0f, 0.5f};
+    dryPlayer.state.velocity = voxels::Vec3{4.3f, -20.0f, 0.0f};
+    voxels::gameplay::Physics::Step(world, dryPlayer, 1.0f / 60.0f, &registry);
+    const float dryHorizontalDistance = std::abs(dryPlayer.state.position.x - 0.5f);
+
+    voxels::Player wetPlayer;
+    wetPlayer.state.position = voxels::Vec3{0.5f, 0.0f, 0.5f};
+    wetPlayer.state.velocity = voxels::Vec3{4.3f, -20.0f, 0.0f};
+    voxels::gameplay::Physics::Step(world, wetPlayer, 1.0f / 60.0f, &registry);
+
+    REQUIRE(std::abs(wetPlayer.state.position.x - 0.5f) < dryHorizontalDistance);
+    REQUIRE(wetPlayer.state.velocity.y >= -voxels::gameplay::Physics::kWaterTerminalVelocity - 0.01f);
+    REQUIRE(wetPlayer.state.velocity.y > -20.0f);
+}
+
+TEST_CASE("Physics.SwimAscendLetsPlayerReachAndExitTheSurface", "[gameplay][physics][swimming]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    for (int x = -2; x <= 2; ++x) {
+        for (int z = -2; z <= 2; ++z) {
+            world.SetBlock(voxels::Vec3I{x, 0, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+            for (int y = 1; y <= 6; ++y) {
+                world.SetBlock(voxels::Vec3I{x, y, z}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+            }
+        }
+    }
+
+    voxels::Player player;
+    player.state.position = voxels::Vec3{0.5f, 2.5f, 0.5f};
+    player.state.velocity = voxels::Vec3{0.0f};
+
+    bool reachedOpenAir = false;
+    for (int step = 0; step < 400; ++step) {
+        const voxels::gameplay::SubmersionInfo submersion =
+            voxels::gameplay::Physics::SampleSubmersion(world, player, &registry);
+        voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f, &registry, /*swimAscend=*/true);
+        if (!submersion.eyeSubmerged && player.state.position.y > 6.5f) {
+            reachedOpenAir = true;
+            break;
+        }
+    }
+
+    REQUIRE(reachedOpenAir);
+}
+
+TEST_CASE("Physics.SubmersionSamplingCoversShallowWaterHeadOnlyAndShore", "[gameplay][physics][swimming]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    world.SetBlock({0, 0, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+    world.SetBlock({0, 1, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+
+    SECTION("Shallow ankle-deep water only partially submerges the AABB") {
+        voxels::Player player;
+        player.state.position = voxels::Vec3{0.5f, 1.9f, 0.5f};
+        const voxels::gameplay::SubmersionInfo submersion =
+            voxels::gameplay::Physics::SampleSubmersion(world, player, &registry);
+        REQUIRE(submersion.feetSubmerged);
+        REQUIRE_FALSE(submersion.eyeSubmerged);
+        REQUIRE(submersion.bodyFraction > 0.3f);
+        REQUIRE(submersion.bodyFraction < 0.8f);
+    }
+
+    SECTION("Head-only submersion in a deep pool reports eye submerged") {
+        world.SetBlock({0, 2, 0}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+        voxels::Player player;
+        player.state.position = voxels::Vec3{0.5f, 1.9f, 0.5f};
+        const voxels::gameplay::SubmersionInfo submersion =
+            voxels::gameplay::Physics::SampleSubmersion(world, player, &registry);
+        REQUIRE(submersion.eyeSubmerged);
+        REQUIRE(submersion.bodyFraction > 0.5f);
+    }
+
+    SECTION("Jumping from dry shore is unaffected by nearby water") {
+        voxels::World dryWorld;
+        for (int x = -2; x <= 2; ++x) {
+            for (int z = -2; z <= 2; ++z) {
+                dryWorld.SetBlock(voxels::Vec3I{x, 0, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+            }
+        }
+        voxels::Player player;
+        player.state.position = voxels::Vec3{0.5f, 1.9f, 0.5f};
+        player.state.onGround = true;
+        const voxels::gameplay::SubmersionInfo submersion =
+            voxels::gameplay::Physics::SampleSubmersion(dryWorld, player, &registry);
+        REQUIRE_FALSE(submersion.feetSubmerged);
+        REQUIRE(submersion.bodyFraction == Catch::Approx(0.0f));
+
+        voxels::gameplay::Physics::Jump(player);
+        const float startY = player.state.position.y;
+        bool fell = false;
+        for (int step = 0; step < 200; ++step) {
+            voxels::gameplay::Physics::Step(dryWorld, player, 1.0f / 60.0f, &registry);
+            if (player.state.velocity.y < 0.0f) fell = true;
+        }
+        REQUIRE(fell);
+        REQUIRE(player.state.onGround);
+        REQUIRE(player.state.position.y == Catch::Approx(startY).margin(0.08f));
+    }
+
+    SECTION("Water below unloaded chunks never reports submersion") {
+        voxels::World emptyWorld;
+        voxels::Player player;
+        player.state.position = voxels::Vec3{500.5f, 500.0f, 500.5f};
+        const voxels::gameplay::SubmersionInfo submersion =
+            voxels::gameplay::Physics::SampleSubmersion(emptyWorld, player, &registry);
+        REQUIRE_FALSE(submersion.feetSubmerged);
+        REQUIRE_FALSE(submersion.eyeSubmerged);
+        REQUIRE(submersion.bodyFraction == Catch::Approx(0.0f));
+    }
 }
 
 TEST_CASE("BlockInteraction.BreakAndPlace", "[gameplay][block_interaction]") {
