@@ -693,6 +693,7 @@ void InGameState::OnEnter() {
             m_chunkRenderer->SetBackgroundMeshQueueLimit(1);
         }
         if (m_skyRenderer == nullptr) m_skyRenderer = std::make_unique<graphics::SkyRenderer>();
+        if (m_underwaterOverlay == nullptr) m_underwaterOverlay = std::make_unique<graphics::UnderwaterOverlay>();
         if (m_itemDropRenderer == nullptr) {
             m_itemDropRenderer = std::make_unique<graphics::ItemDropRenderer>(*m_registry, *m_atlas);
         }
@@ -785,11 +786,13 @@ void InGameState::OnExit() {
         m_chunkRenderer->Shutdown();
     }
     if (m_skyRenderer) m_skyRenderer->Shutdown();
+    if (m_underwaterOverlay) m_underwaterOverlay->Shutdown();
     if (m_itemDropRenderer) m_itemDropRenderer->Shutdown();
     if (m_hudRenderer) m_hudRenderer->Shutdown();
     if (m_remotePlayerRenderer) m_remotePlayerRenderer->Shutdown();
     m_chunkRenderer.reset();
     m_skyRenderer.reset();
+    m_underwaterOverlay.reset();
     m_itemDropRenderer.reset();
     m_hudRenderer.reset();
     m_remotePlayerRenderer.reset();
@@ -1405,6 +1408,9 @@ void InGameState::Render() {
         m_itemDropRenderer->Render(camera, m_session.GetItemDrops());
     }
     if (m_chunkRenderer) m_chunkRenderer->RenderTransparent(camera);
+    if (m_underwaterOverlay && m_session.IsEyeSubmerged()) {
+        m_underwaterOverlay->Render(m_session.GetSubmersionFraction());
+    }
     CompletePendingPreviewCapture();
     if (m_hudRenderer) {
         const bool drawNativeScreenHud =

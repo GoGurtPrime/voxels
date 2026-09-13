@@ -36,6 +36,7 @@
 #include "voxels/render/item_drop_renderer.hpp"
 #include "voxels/render/remote_player_renderer.hpp"
 #include "voxels/render/sky_renderer.hpp"
+#include "voxels/render/underwater_overlay.hpp"
 #include "voxels/world/generation_pipeline.hpp"
 #include "voxels/world/world.hpp"
 #include "voxels/world/world_options.hpp"
@@ -381,6 +382,7 @@ private:
     std::unique_ptr<JobSystem> m_jobSystem;
     std::unique_ptr<graphics::ChunkRenderer> m_chunkRenderer;
     std::unique_ptr<graphics::SkyRenderer> m_skyRenderer;
+    std::unique_ptr<graphics::UnderwaterOverlay> m_underwaterOverlay;
     std::unique_ptr<graphics::ItemDropRenderer> m_itemDropRenderer;
     std::unique_ptr<graphics::GameplayHudRenderer> m_hudRenderer;
     std::unique_ptr<graphics::RemotePlayerRenderer> m_remotePlayerRenderer;
