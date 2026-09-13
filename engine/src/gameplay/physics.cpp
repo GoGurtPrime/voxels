@@ -62,9 +62,11 @@ bool IsLiquidAt(const World& world, const BlockRegistry* registry, int x, float 
 /// first, within `kSearchWindow` blocks, for the nearest liquid cell - covering the brief airborne
 /// arc while climbing out of water onto a ledge, where the AABB has already cleared the surface
 /// but the player is still mid-climb - then climbs upward from there to the true top boundary.
+/// Kept deliberately small (just over the tallest climbable step) so a player still falling toward
+/// water from well above it is not affected before actually touching the surface.
 bool FindNearbyLiquidSurfaceTopY(const World& world, const BlockRegistry* registry, int x, int z, float fromY,
                                  float& outSurfaceTopY) {
-    constexpr float kSearchWindow = 4.0f;
+    constexpr float kSearchWindow = 2.2f;
     const int startY = static_cast<int>(std::floor(fromY));
     const int minY = startY - static_cast<int>(kSearchWindow);
     for (int probe = startY; probe >= minY; --probe) {
@@ -79,18 +81,30 @@ bool FindNearbyLiquidSurfaceTopY(const World& world, const BlockRegistry* regist
     return false;
 }
 
-/// A ledge is climbable while swimming when its ground layer sits right at the water surface and
-/// there is two blocks of clear headroom above it; a taller face returns false so the player must
-/// break a block instead of swim-climbing an arbitrary wall.
+/// A ledge is climbable while swimming when solid ground begins at or within one block above the
+/// water surface (a flush shoreline, or a single step up) with two clear blocks of headroom above
+/// it to actually stand on; anything taller returns false so the player must break a block instead
+/// of swim-climbing an arbitrary wall.
 bool TryFindClimbableLedgeTop(const World& world, const BlockRegistry* registry, int x, int z,
                               float surfaceTopY, float& outLedgeTopY) {
     const int groundY = static_cast<int>(std::floor(surfaceTopY));
-    if (!Physics::IsSolidBlock(world.GetBlock(Vec3I{x, groundY, z}), registry)) return false;
-    if (Physics::IsSolidBlock(world.GetBlock(Vec3I{x, groundY + 1, z}), registry) ||
-        Physics::IsSolidBlock(world.GetBlock(Vec3I{x, groundY + 2, z}), registry)) {
-        return false;
+    // Solid ground may start one block below the surface (a flush shore, the common case), right
+    // at the surface (a one-block step), or not at all within reach.
+    int y = groundY - 1;
+    while (y <= groundY + 1 && !Physics::IsSolidBlock(world.GetBlock(Vec3I{x, y, z}), registry)) {
+        ++y;
     }
-    outLedgeTopY = static_cast<float>(groundY + 1);
+    if (y > groundY + 1) return false; // no solid ground within reach of the surface
+
+    // Climb through any contiguous solid stack to find its true top.
+    while (Physics::IsSolidBlock(world.GetBlock(Vec3I{x, y, z}), registry)) {
+        ++y;
+    }
+    const float ledgeTopY = static_cast<float>(y);
+    if (ledgeTopY > surfaceTopY + 1.0f + 1.0e-4f) return false; // too tall to swim-climb
+    if (Physics::IsSolidBlock(world.GetBlock(Vec3I{x, y + 1, z}), registry)) return false; // no headroom
+
+    outLedgeTopY = ledgeTopY;
     return true;
 }
 } // namespace
@@ -275,7 +289,6 @@ void Physics::Step(const World& world, Player& player, float deltaTime, const Bl
     // landed - gating purely on current submersion would let normal gravity yank the player back
     // down mid-climb, oscillating forever instead of completing the exit.
     const bool swimAssistActive = swimming || (swimAscend && !player.state.onGround && nearLiquidSurface);
-    bool hasSwimCeiling = false;
     float swimCeilingCenterY = 0.0f;
 
     if (swimAssistActive) {
@@ -288,7 +301,6 @@ void Physics::Step(const World& world, Player& player, float deltaTime, const Bl
         // Treading water floats the player mostly submerged with only the head poking out - this
         // is the ceiling that stops holding space from just walking across the top of the water.
         swimCeilingCenterY = surfaceTopY + kSwimSurfaceClearance - kEyeOffsetFromCenter;
-        hasSwimCeiling = true;
 
         const float horizontalSpeedSq = player.state.velocity.x * player.state.velocity.x +
                                         player.state.velocity.z * player.state.velocity.z;
@@ -337,13 +349,6 @@ void Physics::Step(const World& world, Player& player, float deltaTime, const Bl
     player.state.onGround = grounded || IsGrounded(world, player, registry);
     if (player.state.onGround && player.state.velocity.y < 0.0f) {
         player.state.velocity.y = 0.0f;
-    }
-
-    // Without solid footing, the player never floats above the tread-water/ledge-climb ceiling -
-    // this is what stops "hold space and walk across the surface of the water".
-    if (hasSwimCeiling && !player.state.onGround && player.state.position.y > swimCeilingCenterY) {
-        player.state.position.y = swimCeilingCenterY;
-        if (player.state.velocity.y > 0.0f) player.state.velocity.y = 0.0f;
     }
 }
 

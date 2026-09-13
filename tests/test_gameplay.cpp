@@ -277,6 +277,77 @@ TEST_CASE("Physics.SwimClimbsOutOntoAOneBlockLedgeButNotATwoBlockWall", "[gamepl
         REQUIRE_FALSE(player.state.onGround);
         REQUIRE(player.state.position.x < 1.0f);
     }
+
+    SECTION("A shoreline flush with the water surface is climbable") {
+        voxels::World world = buildWorld(0); // land top == water surface height, no step at all
+        voxels::Player player;
+        player.state.position = voxels::Vec3{-1.5f, 2.0f, 0.5f};
+        player.state.velocity = voxels::Vec3{0.0f};
+
+        bool climbedOut = false;
+        for (int step = 0; step < 500; ++step) {
+            player.state.velocity.x = 2.0f;
+            voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f, &registry, /*swimAscend=*/true);
+            if (player.state.onGround && player.state.position.x > 1.0f) {
+                climbedOut = true;
+                break;
+            }
+        }
+        REQUIRE(climbedOut);
+    }
+
+    SECTION("Breaking the top block of a two-block wall opens a climbable one-block step") {
+        voxels::World world = buildWorld(2);
+        for (int z = -1; z <= 1; ++z) {
+            for (int x = 1; x <= 3; ++x) {
+                world.SetBlock(voxels::Vec3I{x, 4, z}, static_cast<voxels::BlockId>(voxels::BlockType::Air));
+            }
+        }
+        voxels::Player player;
+        player.state.position = voxels::Vec3{-1.5f, 2.0f, 0.5f};
+        player.state.velocity = voxels::Vec3{0.0f};
+
+        bool climbedOut = false;
+        for (int step = 0; step < 500; ++step) {
+            player.state.velocity.x = 2.0f;
+            voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f, &registry, /*swimAscend=*/true);
+            if (player.state.onGround && player.state.position.x > 1.0f) {
+                climbedOut = true;
+                break;
+            }
+        }
+        REQUIRE(climbedOut);
+    }
+}
+
+TEST_CASE("Physics.FallingIntoDeepWaterSinksNaturallyWithoutTeleportingToTheSurfaceEquilibrium",
+         "[gameplay][physics][swimming]") {
+    voxels::World world;
+    voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    for (int x = -3; x <= 3; ++x) {
+        for (int z = -3; z <= 3; ++z) {
+            world.SetBlock(voxels::Vec3I{x, 0, z}, static_cast<voxels::BlockId>(voxels::BlockType::Stone));
+            for (int y = 1; y <= 10; ++y) {
+                world.SetBlock(voxels::Vec3I{x, y, z}, static_cast<voxels::BlockId>(voxels::BlockType::Water));
+            }
+        }
+    }
+    // Surface is at y=11; the tread equilibrium sits well below it (~9.8), so a player who just
+    // touched the surface from above starts far above that equilibrium.
+
+    voxels::Player player;
+    player.state.position = voxels::Vec3{0.5f, 11.1f, 0.5f}; // feet just touching the surface
+    player.state.velocity = voxels::Vec3{0.0f, -25.0f, 0.0f}; // falling fast, as if from a height
+
+    const float positionBeforeEntry = player.state.position.y;
+    voxels::gameplay::Physics::Step(world, player, 1.0f / 60.0f, &registry, /*swimAscend=*/true);
+    const float singleTickDrop = positionBeforeEntry - player.state.position.y;
+
+    // A natural sink (bounded by kWaterTerminalVelocity) moves at most ~0.06 blocks in one 1/60s
+    // tick; a forced snap straight down to the tread equilibrium would move roughly 1.9 blocks in
+    // that same single tick.
+    REQUIRE(singleTickDrop < 0.3f);
+    REQUIRE(singleTickDrop >= 0.0f);
 }
 
 TEST_CASE("Physics.SubmersionSamplingCoversShallowWaterHeadOnlyAndShore", "[gameplay][physics][swimming]") {
