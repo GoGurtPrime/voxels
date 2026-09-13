@@ -229,11 +229,11 @@ placeable block.
 - Platform and dependencies: add a block-definition `replaceable` property rather than hard-coded liquid exceptions.
 
 ### Acceptance Criteria
-- [ ] A multi-seed composed loading test reproduces the full generation-to-player-spawn path and asserts dry support plus clear AABB.
-- [ ] Failure to find a dry spawn expands generation/search or enters a visible error; it never returns a high fallback over water.
-- [ ] A player can place into a water cell while aiming through water at solid support.
-- [ ] Placement inventory consumption, mesh invalidation, skylight, and replication occur exactly once.
-- [ ] Default build, full CTest, and new-world/underwater-placement smoke are green.
+- [x] A multi-seed composed loading test reproduces the full generation-to-player-spawn path and asserts dry support plus clear AABB.
+- [x] Failure to find a dry spawn expands generation/search or enters a visible error; it never returns a high fallback over water.
+- [x] A player can place into a water cell while aiming through water at solid support.
+- [x] Placement inventory consumption, mesh invalidation, skylight, and replication occur exactly once.
+- [x] Default build, full CTest, and new-world/underwater-placement smoke are green.
 
 ### Verification Commands
 ```text
@@ -244,9 +244,36 @@ build/app/Debug/voxels_app.exe
 ```
 
 ### Completion Evidence
-- Changed: spawn gate/fallback, replaceable block contract, interaction integration, tests, and docs.
-- Observed: create several worlds, spawn dry, submerge, and replace water with a held block.
-- Results: record seed corpus and test/smoke outcomes.
+- Changed: `BlockDefinition.isReplaceable` (data-driven `"replaceable"` in `blocks.json`, defaulting
+	to a block's `liquid` flag; `air` explicitly marked replaceable) replaces the old air-only
+	placement check in `BlockInteraction::PlaceBlock`. `SpawnCalculator` gained `TryFindSafeSpawn`
+	(ring search, now re-validated against `IsSafePlayerSpawn`) and `FindAnyLoadedDrySpawn`
+	(exhaustive scan of every loaded chunk for the nearest dry surface); `LoadingScreenState` calls
+	both on the fully composed world and transitions to `ErrorState` with a clear message instead of
+	ever accepting an unsafe sky-over-water fallback. `FindSafeSpawn` keeps its old always-succeeds
+	contract only for the non-interactive dedicated-`--server` bootstrap path. While verifying this
+	item, found and fixed a related raycast bug: `World::Raycast` gained an optional
+	`BlockRegistry*` so liquid voxels are skipped within one continuous DDA traversal instead of
+	relaunching the ray from a nudged origin per liquid cell - the old relaunch design could leave a
+	hit's reported face at its uninitialized default (`Face::PosY`) whenever the eye or approach path
+	was submerged, so every underwater placement landed on top of the previous block instead of
+	alongside the targeted face. `BlockInteraction::Target` now delegates directly to the single-pass
+	`Raycast` and the manual entry/exit boundary math was deleted.
+- Observed: operator ran the non-headless desktop build, created a new world, confirmed dry spawn,
+	swam underwater, and repeatedly placed blocks against the seafloor and against the faces of
+	blocks just placed underwater; placement now extends alongside the targeted face instead of
+	stacking upward or silently failing on the second placement. Operator confirmed the fix resolves
+	the issue.
+- Results: full default build (`voxels_app`, `voxels_tests`, docs) is zero-warning/zero-error clean.
+	Full `ctest` passed 249/249. Focused spawn/placement/raycast regressions added for this item:
+	`WorldGen.ComposedWorldSpawnIsAlwaysDryAcrossSeeds` (seeds `20260830`, `7`, `424242`,
+	`99999999`), `WorldGen.SpawnSearchNeverFallsBackOverWaterWhenAreaIsAllOcean`,
+	`BlockRegistry.AirAndWaterAreReplaceableByDefault`,
+	`BlockInteraction.PlaceBlockReplacesWaterWhenAimingThroughItAtSolidSupport`,
+	`BlockInteraction.PlaceBlockRejectsNonReplaceableTarget`,
+	`BlockInteraction.TargetThroughWaterPlacesOnTopOfSolidSupport`, and
+	`Raycast.ReportsTrueEntryFaceWhenEyeAndPathAreFullySubmerged` (the operator-reported regression).
+	All pre-existing spawn/interaction/networking tests remain green alongside them.
 - Known gaps: liquid flow remains outside the current roadmap scope.
 
 ## WI-09.07: Implement swimming and underwater presentation
