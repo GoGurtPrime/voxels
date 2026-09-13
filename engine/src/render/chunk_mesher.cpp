@@ -65,12 +65,14 @@ struct FaceCell {
     std::uint8_t tint = 0;
     std::array<std::uint8_t, 4> ao{3, 3, 3, 3};
     bool waterSurface = false;
+    bool rotateTopUv = false;
     Face face = Face::PosY;
 
     [[nodiscard]] bool MergeEquals(const FaceCell& other) const noexcept {
         return present && other.present && blockId == other.blockId && atlasLayer == other.atlasLayer &&
                transparent == other.transparent && skyLight == other.skyLight && blockLight == other.blockLight &&
-               tint == other.tint && ao == other.ao && waterSurface == other.waterSurface && face == other.face;
+               tint == other.tint && ao == other.ao && waterSurface == other.waterSurface &&
+               rotateTopUv == other.rotateTopUv && face == other.face;
     }
 };
 
@@ -267,6 +269,26 @@ ChunkMeshData BuildChunkMesh(const Chunk& chunk, const ChunkNeighborhood& neighb
                                     : 0;
                     cell.waterSurface = ownerDef->isLiquid && face == Face::PosY &&
                                          !(neighborDef != nullptr && neighborDef->isLiquid && neighborId == ownerId);
+                    const auto tilled = [&](BlockId id) {
+                        const BlockDefinition* candidate = registry.GetDefinition(id);
+                        if (candidate == nullptr) return false;
+                        const auto marker = candidate->metadata.find("tilled");
+                        return marker != candidate->metadata.end() && marker->second == "true";
+                    };
+                    if (face == Face::PosY && tilled(ownerId)) {
+                        const int ownerX = sign ? ax : bx;
+                        const int ownerY = sign ? ay : by;
+                        const int ownerZ = sign ? az : bz;
+                        const auto [west, westKnown] = SampleFace(ownerX - 1, ownerY, ownerZ);
+                        const auto [east, eastKnown] = SampleFace(ownerX + 1, ownerY, ownerZ);
+                        const auto [north, northKnown] = SampleFace(ownerX, ownerY, ownerZ - 1);
+                        const auto [south, southKnown] = SampleFace(ownerX, ownerY, ownerZ + 1);
+                        const int eastWestLength = static_cast<int>(westKnown && tilled(west)) +
+                                                   static_cast<int>(eastKnown && tilled(east));
+                        const int northSouthLength = static_cast<int>(northKnown && tilled(north)) +
+                                                     static_cast<int>(southKnown && tilled(south));
+                        cell.rotateTopUv = eastWestLength > northSouthLength;
+                    }
                     cell.face = face;
 
                     // Ambient occlusion: sample the boundary layer (the empty side of the face).
@@ -372,6 +394,9 @@ ChunkMeshData BuildChunkMesh(const Chunk& chunk, const ChunkNeighborhood& neighb
                     } else if (cell.face == Face::PosY || cell.face == Face::NegY) {
                         // Horizontal masks are built as Z-by-X rectangles; keep U east-west.
                         uvs = {{{0, 0}, {0, widthUv}, {heightUv, widthUv}, {heightUv, 0}}};
+                        if (cell.rotateTopUv) {
+                            uvs = {{{0, heightUv}, {widthUv, heightUv}, {widthUv, 0}, {0, 0}}};
+                        }
                     }
 
                     std::vector<ChunkVertex>& outVerts = cell.transparent ? transparentVerts : opaqueVerts;

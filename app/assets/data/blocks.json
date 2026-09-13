@@ -373,7 +373,7 @@
     },
     {
       "id": "tilled_soil", "numeric_id": 31, "display_name": "Tilled Soil", "solid": true, "opaque": true, "liquid": false, "hardness": 0.5, "light_emission": 0,
-      "metadata": { "tool_tag": "dirt", "tilled": "true" }, "textures": { "all": "blocks/dirt" }, "render_type": "cube", "model_id": null,
+      "metadata": { "tool_tag": "dirt", "tilled": "true" }, "textures": { "top": "blocks/tilled_soil_top", "bottom": "blocks/dirt", "side": "blocks/dirt" }, "render_type": "cube", "model_id": null,
       "sounds": { "break": "sfx/break_dirt", "step": "sfx/step_dirt", "place": "sfx/place_dirt" }, "drops": [{ "item": "dirt", "count": 1 }]
     }
   ]

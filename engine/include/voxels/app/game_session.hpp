@@ -102,6 +102,8 @@ public:
     [[nodiscard]] const RaycastHit& GetTarget() const noexcept { return m_target; }
     /// 0..1 fraction of the current block-break hold; resets when the target changes.
     [[nodiscard]] float GetBreakProgress() const noexcept { return m_breakProgress; }
+    /// Presentation-only held-action state used by the first-person item renderer.
+    [[nodiscard]] bool IsDestroyBlockHeld() const noexcept { return m_destroyBlockHeld; }
     /// True when the camera eye (not just the feet) is inside a liquid block this frame; drives
     /// the underwater render overlay without granting the UI layer any physics authority.
     [[nodiscard]] bool IsEyeSubmerged() const noexcept { return m_eyeSubmerged; }
@@ -183,6 +185,7 @@ private:
     BlockId m_breakTargetBlockId = static_cast<BlockId>(BlockType::Air);
     bool m_hasBreakTarget = false;
     float m_breakProgress = 0.0f;
+    bool m_destroyBlockHeld = false;
     float m_placeCooldown = 0.0f;
     float m_footstepSeconds = 0.0f;
     bool m_wasInWater = false;

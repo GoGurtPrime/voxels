@@ -318,9 +318,10 @@ flowchart LR
     MODELS --> WATER["Pass 4: transparent<br/>water, leaves, glass — sorted back to front, depth write off"]
     WATER --> UNDERWATER["Pass 4.5: underwater overlay<br/>full-screen blue tint, only when eye is submerged<br/>(GameSession.IsEyeSubmerged/GetSubmersionFraction)"]
     UNDERWATER --> DEBUG["Pass 5: debug lines<br/>targeted block outline, chunk bounds if enabled"]
-    DEBUG --> HUD["Pass 6: HUD primitives<br/>crosshair, hotbar, held item"]
-    HUD --> IMGUI["Pass 7: ImGui draw data<br/>display-encoded UI bypasses framebuffer sRGB conversion"]
-    IMGUI --> WEBUI["Pass 8 (VOXELS_ENABLE_WEB_UI only): CEF React menu layer<br/>WebUiOpenGLCompositor draws the browser's premultiplied-BGRA<br/>paint with framebuffer sRGB conversion bypassed, then restores it;<br/>menu routes replace ImGui, while pause/HUD remain native"]
+    DEBUG --> HELD["Pass 6: first-person hand + procedural tool<br/>camera-relative, held-input swing"]
+    HELD --> HUD["Pass 7: HUD primitives<br/>crosshair, hotbar, target feedback"]
+    HUD --> IMGUI["Pass 8: ImGui draw data<br/>display-encoded UI bypasses framebuffer sRGB conversion"]
+    IMGUI --> WEBUI["Pass 9 (VOXELS_ENABLE_WEB_UI only): CEF React menu layer<br/>WebUiOpenGLCompositor draws the browser's premultiplied-BGRA<br/>paint with framebuffer sRGB conversion bypassed, then restores it;<br/>menu routes replace ImGui, while pause/HUD remain native"]
     WEBUI --> PRES["Renderer.EndFrame → Present"]
 ```
 

@@ -326,7 +326,7 @@ TEST_CASE("TextureForge.ForgesAllLaunchTexturesToDisk", "[assets][forge]") {
     const std::filesystem::path targetDir = "app/assets/textures/blocks";
 #endif
     const std::size_t count = voxels::TextureForge::ForgeLaunchTextures(targetDir, true, 1337U);
-    REQUIRE(count == 15);
+    REQUIRE(count == 16);
 
     for (const auto& name : voxels::TextureForge::GetLaunchTextureNames()) {
         const std::filesystem::path filePath = targetDir / (name + ".png");

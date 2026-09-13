@@ -196,6 +196,20 @@ ImageData ForgeDirt(std::uint32_t seed) {
     return img;
 }
 
+ImageData ForgeTilledSoilTop(std::uint32_t seed) {
+    ImageData img = ForgeDirt(seed);
+    const ColorRGBA wetDark{67, 43, 29, 255};
+    const ColorRGBA wetMid{87, 57, 37, 255};
+    for (int y = 0; y < 16; ++y) {
+        const bool wetRow = (y >= 1 && y <= 3) || (y >= 6 && y <= 8) || (y >= 11 && y <= 13);
+        if (!wetRow) continue;
+        for (int x = 0; x < 16; ++x) {
+            SetPixel(img, x, y, Noise2D(x, y, seed + 901U) > 0.3f ? wetMid : wetDark);
+        }
+    }
+    return img;
+}
+
 ImageData ForgeGrassTop(std::uint32_t seed) {
     ImageData img = CreateEmptyImage();
     const ColorRGBA darkGreen{72, 120, 42, 255};
@@ -535,6 +549,7 @@ std::vector<std::string> TextureForge::GetLaunchTextureNames() {
     return {
         "stone",
         "dirt",
+        "tilled_soil_top",
         "grass_top",
         "grass_side",
         "sand",
@@ -554,6 +569,7 @@ std::vector<std::string> TextureForge::GetLaunchTextureNames() {
 ImageData TextureForge::GenerateTexture(std::string_view textureName, std::uint32_t seed) {
     if (textureName == "blocks/stone" || textureName == "stone") return ForgeStone(seed);
     if (textureName == "blocks/dirt" || textureName == "dirt") return ForgeDirt(seed);
+    if (textureName == "blocks/tilled_soil_top" || textureName == "tilled_soil_top") return ForgeTilledSoilTop(seed);
     if (textureName == "blocks/grass_top" || textureName == "grass_top") return ForgeGrassTop(seed);
     if (textureName == "blocks/grass_side" || textureName == "grass_side") return ForgeGrassSide(seed);
     if (textureName == "blocks/sand" || textureName == "sand") return ForgeSand(seed);

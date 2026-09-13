@@ -12,6 +12,8 @@
 #include "voxels/gameplay/tool_catalogue.hpp"
 #include "voxels/app/game_session.hpp"
 #include "voxels/input/input_manager.hpp"
+#include "voxels/render/held_item_renderer.hpp"
+#include "voxels/render/texture_forge.hpp"
 
 namespace {
 
@@ -147,4 +149,43 @@ TEST_CASE("GameSession.ToolsAccelerateMiningAndTillOnlyAfterSuccessfulMutation",
     REQUIRE(world.GetBlock({0, 2, -2}) == tilledSoil->id);
     REQUIRE(session.GetPlayer().state.inventory.GetSlot(0).durability == 131);
     session.Shutdown();
+}
+
+TEST_CASE("ToolContent.DefinesSolidAxeMiningAndTilledSoilMaterials", "[tool][assets]") {
+    const voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::gameplay::ToolCatalogue catalogue;
+    catalogue.LoadFromFile(ShippedToolsPath(), registry);
+    const auto* axe = registry.GetDefinition("stone_axe");
+    const auto* tilled = registry.GetDefinition("tilled_soil");
+    REQUIRE(axe != nullptr);
+    REQUIRE(tilled != nullptr);
+    const auto* tool = catalogue.FindByItem(axe->id);
+    REQUIRE(tool != nullptr);
+    REQUIRE(catalogue.MiningSpeedMultiplier(*tool, "stone") > 1.0f);
+    REQUIRE(tilled->GetFaceTexture(voxels::Face::PosY) == "blocks/tilled_soil_top");
+    REQUIRE(tilled->GetFaceTexture(voxels::Face::PosX) == "blocks/dirt");
+
+    const voxels::ImageData top = voxels::TextureForge::GenerateTexture("blocks/tilled_soil_top", 7U);
+    const voxels::ImageData dirt = voxels::TextureForge::GenerateTexture("blocks/dirt", 7U);
+    REQUIRE(top.pixels != dirt.pixels);
+    const std::size_t dryOffset = (static_cast<std::size_t>(4) * 16U + 4U) * 4U;
+    const std::size_t wetOffset = (static_cast<std::size_t>(2) * 16U + 4U) * 4U;
+    REQUIRE(top.pixels[wetOffset] < top.pixels[dryOffset]);
+}
+
+TEST_CASE("HeldItemRenderer.BuildsArmAndDistinctToolSilhouettes", "[tool][render]") {
+    const voxels::BlockRegistry registry = voxels::CreateDefaultBlockRegistry();
+    voxels::TextureAtlas atlas;
+    atlas.RegisterTexture("blocks/dirt", voxels::TextureForge::GenerateTexture("dirt"));
+    atlas.RegisterTexture("blocks/stone", voxels::TextureForge::GenerateTexture("stone"));
+    REQUIRE(atlas.BuildGLTexture());
+    const auto* axe = registry.GetDefinition("stone_axe");
+    const auto* pickaxe = registry.GetDefinition("stone_pickaxe");
+    REQUIRE(axe != nullptr);
+    REQUIRE(pickaxe != nullptr);
+    const auto axeMesh = voxels::graphics::BuildHeldItemMesh({axe->id, 1}, registry, atlas, false, 0.0f);
+    const auto pickaxeMesh = voxels::graphics::BuildHeldItemMesh({pickaxe->id, 1}, registry, atlas, false, 0.0f);
+    REQUIRE(axeMesh.size() > 36U);
+    REQUIRE(pickaxeMesh.size() == axeMesh.size());
+    REQUIRE(axeMesh[72].position.x != pickaxeMesh[72].position.x);
 }

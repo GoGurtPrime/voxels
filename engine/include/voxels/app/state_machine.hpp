@@ -34,6 +34,7 @@
 #include "voxels/platform/platform_services.hpp"
 #include "voxels/render/chunk_renderer.hpp"
 #include "voxels/render/gameplay_hud.hpp"
+#include "voxels/render/held_item_renderer.hpp"
 #include "voxels/render/item_drop_renderer.hpp"
 #include "voxels/render/remote_player_renderer.hpp"
 #include "voxels/render/sky_renderer.hpp"
@@ -387,6 +388,7 @@ private:
     std::unique_ptr<graphics::SkyRenderer> m_skyRenderer;
     std::unique_ptr<graphics::UnderwaterOverlay> m_underwaterOverlay;
     std::unique_ptr<graphics::ItemDropRenderer> m_itemDropRenderer;
+    std::unique_ptr<graphics::HeldItemRenderer> m_heldItemRenderer;
     std::unique_ptr<graphics::GameplayHudRenderer> m_hudRenderer;
     std::unique_ptr<graphics::RemotePlayerRenderer> m_remotePlayerRenderer;
     RemoteChunkApplier m_remoteChunkApplier;

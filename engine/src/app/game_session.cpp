@@ -330,6 +330,7 @@ void GameSession::Update(float deltaSeconds) {
         }
         if (m_registry != nullptr) {
             m_target = m_blockInteraction.Target(*m_world, m_player, *m_registry);
+            m_destroyBlockHeld = input.destroyBlock;
             if (input.hotbarSlot >= 0) m_player.state.inventory.SetSelectedSlot(input.hotbarSlot);
             if (input.mouseWheelY != 0) m_player.state.inventory.CycleSelectedSlot(input.mouseWheelY > 0 ? -1 : 1);
             m_placeCooldown = std::max(0.0f, m_placeCooldown - deltaSeconds);
@@ -463,6 +464,7 @@ void GameSession::Update(float deltaSeconds) {
         m_eyeSubmerged = submersion.eyeSubmerged;
         m_submersionFraction = submersion.bodyFraction;
         m_breakProgress = 0.0f;
+        m_destroyBlockHeld = false;
         m_hasBreakTarget = false;
     }
 
