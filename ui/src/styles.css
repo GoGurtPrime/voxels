@@ -1046,7 +1046,7 @@ input[type="range"] { height: 34px; accent-color: var(--ui-amber); }
 .hud-overlay-shell {
   position: absolute;
   inset: clamp(16px, 2.4vmin, 34px);
-  width: min(1400px, calc(100vw - clamp(32px, 4.8vmin, 90px)));
+  width: min(1560px, calc(100vw - clamp(32px, 4.8vmin, 90px)));
   max-height: calc(100vh - clamp(32px, 4.8vmin, 90px));
   margin: auto;
   pointer-events: auto;
@@ -1133,7 +1133,7 @@ input[type="range"] { height: 34px; accent-color: var(--ui-amber); }
 
 .hud-crafting-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 0.95fr) minmax(440px, 1.35fr);
+  grid-template-columns: minmax(260px, 0.6fr) minmax(0, 1.4fr);
   gap: clamp(14px, 1.3vmin, 22px);
   min-height: 0;
   flex: 1 1 auto;
@@ -1255,6 +1255,7 @@ input[type="range"] { height: 34px; accent-color: var(--ui-amber); }
   text-align: left;
   position: relative;
   cursor: grab;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease, background 140ms ease;
 }
 
 .hud-slot.empty {
@@ -1265,6 +1266,33 @@ input[type="range"] { height: 34px; accent-color: var(--ui-amber); }
 .hud-slot.selected {
   border-color: var(--ui-amber);
   background: linear-gradient(180deg, rgba(95, 70, 29, 0.82), rgba(39, 30, 15, 0.82));
+}
+
+.hud-crafting-modal {
+  --hud-slot-min: clamp(52px, 5.5vmin, 92px);
+}
+
+.hud-slot:hover:not(.empty),
+.hud-slot:focus-visible {
+  border-color: rgba(121, 228, 220, 0.92);
+  background: rgba(18, 42, 40, 0.92);
+  box-shadow: 0 0 0 2px rgba(121, 228, 220, 0.2), 0 8px 18px rgba(0, 0, 0, 0.26);
+  outline: none;
+}
+
+.hud-slot.lifted {
+  z-index: 2;
+  transform: translateY(-8px);
+  border-color: var(--ui-amber);
+  background: linear-gradient(180deg, rgba(119, 87, 31, 0.95), rgba(47, 35, 15, 0.96));
+  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(255, 216, 137, 0.3);
+  cursor: grabbing;
+}
+
+.hud-slot.drag-target {
+  border-color: rgba(121, 228, 220, 0.9);
+  background: rgba(19, 55, 52, 0.94);
+  box-shadow: inset 0 0 0 2px rgba(121, 228, 220, 0.26);
 }
 
 .hud-slot-number {
@@ -1310,14 +1338,6 @@ input[type="range"] { height: 34px; accent-color: var(--ui-amber); }
 .hud-slot:hover .hud-slot-drop,
 .hud-slot:focus-visible .hud-slot-drop {
   opacity: 1;
-}
-
-.hud-slot-drag-hint {
-  position: absolute;
-  inset: 2px;
-  border-radius: 8px;
-  border: 2px dashed rgba(255, 216, 137, 0.55);
-  pointer-events: none;
 }
 
 .hud-control-hints {
