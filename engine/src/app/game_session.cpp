@@ -33,7 +33,8 @@ constexpr float kSplashCooldownSeconds = 0.35f;
 constexpr float kDamageInvulnerabilitySeconds = 0.65f;
 constexpr float kDrowningGraceSeconds = 10.0f;
 constexpr float kDrowningDamageIntervalSeconds = 1.0f;
-constexpr float kFallDamageVelocityThreshold = 10.0f;
+// A six-block fall reaches roughly 16 blocks/s; routine drops should remain safe.
+constexpr float kFallDamageVelocityThreshold = 18.0f;
 
 /// Counts orthogonally-adjacent solid blocks around `position` (6-connectivity, excluding
 /// `position` itself). Used as a cheap, real-geometry proxy for "this placement joined an

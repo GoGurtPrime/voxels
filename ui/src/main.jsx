@@ -788,19 +788,6 @@ function HudRoute({ model }) {
         {Array.from({ length: 8 }, (_, index) => <span className={`hud-heart ${health >= (index + 1) * 2 ? "full" : health === index * 2 + 1 ? "half" : "empty"}`} key={index} aria-hidden="true" />)}
       </div> : null}
 
-      {!overlayOpen ? (
-        <aside className="hud-feed glass-panel" aria-label="Session events">
-          <div className="hud-feed-header">
-            <span>Events</span>
-            <button type="button" className="hud-utility" onClick={() => sendUiAction("open-chat")}>Chat (T)</button>
-            <button type="button" className="hud-utility" onClick={() => sendUiAction("open-crafting")}>Inventory & Crafting (E)</button>
-          </div>
-          <div className="hud-feed-log" role="log" aria-label="Session messages">
-            {notifications.length ? notifications.map((entry) => <p key={entry.id}>{entry.text}</p>) : <p className="quiet">No messages yet.</p>}
-          </div>
-        </aside>
-      ) : null}
-
       {chatOpen ? (
         <section className="glass-panel hud-chat-panel" aria-label="Chat input">
           <header className="hud-overlay-header">
